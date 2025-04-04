@@ -237,12 +237,12 @@ pub fn run_app<B: Backend>(
                             }
                             else {
                                 return Ok((
-                                    app.main_selected.clone(), 
-                                    app.host_discovery_selected.clone(),
-                                    app.port_scan_selected.clone(),
+                                    app.main_selected, 
+                                    app.host_discovery_selected,
+                                    app.port_scan_selected,
                                     app.ip_input.clone(),
                                     app.port_needed,
-                                    app.port_mode.clone(),
+                                    app.port_mode,
                                     app.port_input.clone(),
                                 ));
                             }
@@ -280,12 +280,12 @@ pub fn run_app<B: Backend>(
                         KeyCode::Char('1') => {
                             app.port_mode = Some(PortOptions::NormalMode);
                             return Ok((
-                                app.main_selected.clone(), 
-                                app.host_discovery_selected.clone(),
-                                app.port_scan_selected.clone(),
+                                app.main_selected, 
+                                app.host_discovery_selected,
+                                app.port_scan_selected,
                                 app.ip_input.clone(),
                                 app.port_needed,
-                                app.port_mode.clone(),
+                                app.port_mode,
                                 app.port_input.clone(),
                             ));
                         }
@@ -296,12 +296,12 @@ pub fn run_app<B: Backend>(
                         KeyCode::Char('3') => {
                             app.port_mode = Some(PortOptions::FastMode);
                             return Ok((
-                                app.main_selected.clone(), 
-                                app.host_discovery_selected.clone(),
-                                app.port_scan_selected.clone(),
+                                app.main_selected, 
+                                app.host_discovery_selected,
+                                app.port_scan_selected,
                                 app.ip_input.clone(),
                                 app.port_needed,
-                                app.port_mode.clone(),
+                                app.port_mode,
                                 app.port_input.clone(),
                             ));
 
@@ -309,12 +309,12 @@ pub fn run_app<B: Backend>(
                         KeyCode::Char('4') => {
                             app.port_mode = Some(PortOptions::SequentialMode);
                             return Ok((
-                                app.main_selected.clone(), 
-                                app.host_discovery_selected.clone(),
-                                app.port_scan_selected.clone(),
+                                app.main_selected, 
+                                app.host_discovery_selected,
+                                app.port_scan_selected,
                                 app.ip_input.clone(),
                                 app.port_needed,
-                                app.port_mode.clone(),
+                                app.port_mode,
                                 app.port_input.clone(),
                             ));
                         }
@@ -326,12 +326,12 @@ pub fn run_app<B: Backend>(
                         KeyCode::Enter => {
                                 app.cursor_position = 0;
                                 return Ok((
-                                    app.main_selected.clone(), 
-                                    app.host_discovery_selected.clone(),
-                                    app.port_scan_selected.clone(),
+                                    app.main_selected, 
+                                    app.host_discovery_selected,
+                                    app.port_scan_selected,
                                     app.ip_input.clone(),
                                     app.port_needed,
-                                    app.port_mode.clone(),
+                                    app.port_mode,
                                     app.port_input.clone(),
                                 ));
                         }

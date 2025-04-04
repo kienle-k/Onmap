@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum AppState {
     MainMenu,
     SubMenuHostDiscovery,
@@ -8,7 +8,7 @@ pub enum AppState {
     PortRangeInput
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum MainMenuItem {
     SubMenuHostDiscovery,
     SubMenuPortScan,
@@ -17,7 +17,7 @@ pub enum MainMenuItem {
 }
 
 /*
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum AllMenuItem {
     SubMenuHostDiscovery,
     SubMenuPortScan,
@@ -46,7 +46,7 @@ pub enum AllMenuItem {
 }
 */
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum HostDiscoveryOption {
     ListScan,
     PingScan,
@@ -59,7 +59,7 @@ pub enum HostDiscoveryOption {
     IcmpNetmask,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum PortScanOption {
     SynScan,
     ConnectScan,
@@ -72,7 +72,7 @@ pub enum PortScanOption {
     UdpScan,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum PortOptions {
     NormalMode,
     PortRangeInput,
