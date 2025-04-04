@@ -74,6 +74,7 @@ pub enum PortScanOption {
 
 #[derive(Clone)]
 pub enum PortOptions {
+    NormalMode,
     PortRangeInput,
     FastMode,
     SequentialMode

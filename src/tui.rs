@@ -278,10 +278,22 @@ pub fn run_app<B: Backend>(
                         }
                         KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
                         KeyCode::Char('1') => {
+                            app.port_mode = Some(PortOptions::NormalMode);
+                            return Ok((
+                                app.main_selected.clone(), 
+                                app.host_discovery_selected.clone(),
+                                app.port_scan_selected.clone(),
+                                app.ip_input.clone(),
+                                app.port_needed,
+                                app.port_mode.clone(),
+                                app.port_input.clone(),
+                            ));
+                        }
+                        KeyCode::Char('2') => {
                             app.state = AppState::PortRangeInput;
                             app.port_mode = Some(PortOptions::PortRangeInput)
                         }
-                        KeyCode::Char('2') => {
+                        KeyCode::Char('3') => {
                             app.port_mode = Some(PortOptions::FastMode);
                             return Ok((
                                 app.main_selected.clone(), 
@@ -294,7 +306,7 @@ pub fn run_app<B: Backend>(
                             ));
 
                         }
-                        KeyCode::Char('3') => {
+                        KeyCode::Char('4') => {
                             app.port_mode = Some(PortOptions::SequentialMode);
                             return Ok((
                                 app.main_selected.clone(), 
@@ -745,7 +757,7 @@ fn ui(f: &mut Frame, app: &App) {
                 ListItem::new(
                     Line::from(
                         Span::styled(
-                            "1. Port ranges (-p)",
+                            "1. Normal mode (all ports in a random order)",
                             Style::default().fg(Color::White),
                         )
                     )
@@ -753,7 +765,7 @@ fn ui(f: &mut Frame, app: &App) {
                 ListItem::new(
                     Line::from(
                         Span::styled(
-                            "2. Fast mode (-F)",
+                            "2. Port ranges (-p)",
                             Style::default().fg(Color::White),
                         )
                     )
@@ -761,7 +773,15 @@ fn ui(f: &mut Frame, app: &App) {
                 ListItem::new(
                     Line::from(
                         Span::styled(
-                            "3. Sequentially (-r)",
+                            "3. Fast mode (-F)",
+                            Style::default().fg(Color::White),
+                        )
+                    )
+                ),
+                ListItem::new(
+                    Line::from(
+                        Span::styled(
+                            "4. Sequentially (-r)",
                             Style::default().fg(Color::White),
                         )
                     )
