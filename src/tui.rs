@@ -249,7 +249,7 @@ pub fn run_app<B: Backend>(
                         }
                         KeyCode::Char(c) => {
                             // Only allow characters valid for IP addresses
-                            if c.is_digit(10) || c == '.' {
+                            if c.is_digit(10) || c == '.' || c == '-' || c == '/' {
                                 app.input_ip(c);
                             }
                         }
