@@ -11,6 +11,8 @@ use crossterm::{
 use crate::tui::{run_app, App};
 use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption};
 
+use async_std;
+
 mod host_discovery;
 mod port_scanning;
 mod service_detection;
@@ -21,7 +23,9 @@ mod tui;
 mod models;
 
 
-fn main() -> Result<(), io::Error> {
+#[async_std::main]
+
+async fn main() -> Result<(), io::Error> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -105,7 +109,7 @@ fn main() -> Result<(), io::Error> {
                     if let Some(port_scan_selected) = port_scan_selected {
                         match port_scan_selected {
                             PortScanOption::SynScan => port_scanning::run_syn_scan(),
-                            PortScanOption::ConnectScan => port_scanning::run_connect_scan(),
+                            PortScanOption::ConnectScan => port_scanning::run_connect_scan(&ip_input, ports_arr, 300).await,
                             PortScanOption::AckScan => port_scanning::run_ack_scan(),
                             PortScanOption::WindowScan => println!("Doing WindowScan"),
                             PortScanOption::MaimonScan => println!("Doing MaimonScan"),
