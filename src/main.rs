@@ -24,7 +24,6 @@ mod models;
 
 
 #[async_std::main]
-
 async fn main() -> Result<(), io::Error> {
     // Setup terminal
     enable_raw_mode()?;
@@ -92,7 +91,7 @@ async fn main() -> Result<(), io::Error> {
                     if let Some(host_discovery_selected) = host_discovery_selected {
                         match host_discovery_selected {
                             HostDiscoveryOption::ListScan => println!("Doing ListScan"),
-                            HostDiscoveryOption::PingScan => host_discovery::run_ping_scan(),
+                            HostDiscoveryOption::PingScan => host_discovery::run_ping_scan(ip_addresses_arr, ports_arr).await,
                             HostDiscoveryOption::TcpSynDiscovery => host_discovery::run_tcp_syn_discovery(),
                             HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery"),
                             HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery"),
@@ -128,9 +127,6 @@ async fn main() -> Result<(), io::Error> {
             }
         }
 
-    println!("ip_input: {}", ip_input);
-    println!("port_needed: {}", port_needed);
-    println!("port_mode: ... cant be printed (also has _ please remove later on)");
     }
     Ok(())
 }
