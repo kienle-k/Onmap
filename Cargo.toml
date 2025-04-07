@@ -7,3 +7,5 @@ edition = "2024"
 ratatui = "0.26.0"
 crossterm = "0.27.0"
 rand = "0.8.5"
+async-std = { version = "1.13", features = ["attributes"] }
+futures = "0.3"
