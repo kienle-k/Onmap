@@ -22,6 +22,10 @@ mod parsing;
 mod tui;
 mod models;
 
+mod utils;
+
+// use utils::json_loader::{load_protocols, get_port_info};
+
 
 #[async_std::main]
 async fn main() -> Result<(), io::Error> {
@@ -76,9 +80,9 @@ async fn main() -> Result<(), io::Error> {
                 Vec::new()
             };
 
-            for port in &ports_arr {
-                println!("{}", port);
-            }
+            // for port in &ports_arr {
+            //     println!("{}", port);
+            // }
 
             if let Ok(addresses) = &ip_addresses_arr {
                 for ip_address in addresses {
