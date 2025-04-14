@@ -84,11 +84,11 @@ async fn main() -> Result<(), io::Error> {
             //     println!("{}", port);
             // }
 
-            if let Ok(addresses) = &ip_addresses_arr {
-                for ip_address in addresses {
-                    println!("{:?}", ip_address);
-                }
-            }
+            // if let Ok(addresses) = &ip_addresses_arr {
+            //     for ip_address in addresses {
+            //         println!("{:?}", ip_address);
+            //     }
+            // }
 
             match main_selected {
                 MainMenuItem::SubMenuHostDiscovery => {

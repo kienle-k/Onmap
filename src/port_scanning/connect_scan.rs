@@ -2,12 +2,12 @@ use async_std::task;
 use futures::stream::{FuturesUnordered, StreamExt};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
-
+use chrono::Local;
+use std::process::Command;
 
 use crate::utils::json_loader::{load_protocols, get_port_info}; // Verweise auf utils korrekt
 
 
-use std::process::Command;
 
 async fn ping_host(ip: &str) -> Result<(bool, f64), Box<dyn std::error::Error>> {
     let ip = ip.to_string();
@@ -49,6 +49,16 @@ async fn scan_port(ip: &str, port: u16, timeout: Duration) -> (u16, String) {
 
 // Main function to run the connect scan
 pub async fn run_connect_scan(ip: &str, ports: Vec<u16>, timeout_ms: u64) {
+
+
+    let now = Local::now();
+    let formatted_time = now.format("%Y-%m-%d %H:%M %Z");
+
+    println!("Starting Onmap 1.0 (https://oxy-nmap.com) at {}", formatted_time);
+
+
+    println!("Nmap scan report for {}\n", ip);
+
     // Record the start time
     let start_time = Instant::now();
     let mut host_num: i32 = 0;
@@ -58,8 +68,8 @@ pub async fn run_connect_scan(ip: &str, ports: Vec<u16>, timeout_ms: u64) {
                 host_num = 1;
                 println!("Host is up ({} s latency)", latency / 1000.0);
             } else {
-                host_num = 0;
                 println!("Host is down.");
+                return;
             }
         },
         Err(e) => println!("Error: {}", e),
@@ -78,13 +88,14 @@ pub async fn run_connect_scan(ip: &str, ports: Vec<u16>, timeout_ms: u64) {
     let timeout = Duration::from_millis(timeout_ms);
     let mut tasks = FuturesUnordered::new();
 
-    println!("Starting Nmap X.XX ( https://localhost/oxy-poxy-doxy-map )");
-    println!("Nmap scan report for {}\n", ip);
 
     // Add tasks for all ports
     for port in ports {
         tasks.push(scan_port(ip, port, timeout));
     }
+
+    let mut closed_port_num = 0;
+    let mut open_ports = vec![];
 
     // Process scan results
     while let Some((port, status)) = tasks.next().await {
@@ -95,16 +106,35 @@ pub async fn run_connect_scan(ip: &str, ports: Vec<u16>, timeout_ms: u64) {
                 } else {
                     String::from("unknown")
                 };
-                println!("{:<6}/tcp  open     {}", port, service_name);
+                open_ports.push((port, service_name));
             },
-            _ => {}
+            _ => {
+                closed_port_num += 1;
+            }
         }
+    }
+
+    // Display closed ports info first
+    if closed_port_num > 0 {
+        println!("Not shown: {} closed ports", closed_port_num);
+    }
+
+    println!("\n{:<7}      STATE    SERVICE", "PORT");
+
+
+    // Now display open ports
+    for (port, service_name) in open_ports {
+        println!("{:<7}/tcp  open     {}", port, service_name);
     }
 
     // Calculate elapsed time
     let elapsed_time = start_time.elapsed();
 
-
     // Add "x hosts up" message
-    println!("\nNmap done: 1 IP address ({} hosts up) scanned in {:.2} seconds", host_num, elapsed_time.as_secs_f32());
+    println!(
+        "\nNmap done: 1 IP address ({} hosts up) scanned in {:.2} seconds",
+        host_num,
+        elapsed_time.as_secs_f32()
+    );
 }
+
