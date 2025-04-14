@@ -21,7 +21,7 @@ mod tui;
 mod models;
 
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<(), io::Error> {
     // Setup terminal
     enable_raw_mode()?;
@@ -94,7 +94,7 @@ async fn main() -> Result<(), io::Error> {
                             HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery"),
                             HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery"),
                             HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery"),
-                            HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(),
+                            HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(ip_addresses_arr).await,
                             HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(),
                             HostDiscoveryOption::IcmpNetmask => host_discovery::run_icmp_netmask()
                         }
