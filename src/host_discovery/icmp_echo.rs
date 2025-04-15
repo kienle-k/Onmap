@@ -6,8 +6,9 @@ use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::Packet;
 use pnet::transport::{icmp_packet_iter, transport_channel, TransportChannelType, TransportProtocol};
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::Instant;
+use std::time::{Duration,Instant};
 use futures::stream::{FuturesUnordered, StreamExt};
+use tokio::time::timeout;
 use tokio::task;
 
 pub async fn run_icmp_echo(ip_addresses: Result<Vec<Ipv4Addr>, String>) {
@@ -57,6 +58,8 @@ pub async fn run_icmp_echo(ip_addresses: Result<Vec<Ipv4Addr>, String>) {
     } else {
         println!("\nNo reachable IP addresses found.");
     }
+
+    // TODO fix program not ending when ip timouts
 }
 
 /// Asynchronously pings a host using ICMP echo requests.
@@ -64,7 +67,7 @@ pub async fn run_icmp_echo(ip_addresses: Result<Vec<Ipv4Addr>, String>) {
 async fn icmp_ping_host(ip: &Ipv4Addr) -> bool {
     // Clone the IP to move into the blocking task.
     let ip = *ip;
-    let result = task::spawn_blocking(move || {
+    let ping_future = task::spawn_blocking(move || {
         // Set up transport channel for ICMP over IPv4.
         let protocol = TransportChannelType::Layer4(TransportProtocol::Ipv4(
             IpNextHeaderProtocols::Icmp,
@@ -76,6 +79,12 @@ async fn icmp_ping_host(ip: &Ipv4Addr) -> bool {
                 return false;
             }
         };
+
+        // // Set a read timeout on the receiver (e.g., 2 seconds)
+        // if let Err(e) = rx.set_read_timeout(Some(Duration::from_secs(2))) {
+        //     eprintln!("Failed to set read timeout: {}", e);
+        //     return false;
+        // }
 
         let mut packet_buffer = [0u8; 64];
         let mut echo_packet = match MutableEchoRequestPacket::new(&mut packet_buffer) {
@@ -133,9 +142,14 @@ async fn icmp_ping_host(ip: &Ipv4Addr) -> bool {
                 }
             }
         }
-    })
-    .await
-    .unwrap_or(false);
+    });
 
-    result
+    // Wrap the spawn_blocking future in an async timeout (e.g., 3 seconds)
+    match timeout(Duration::from_secs(3), ping_future).await {
+        Ok(join_result) => join_result.unwrap_or(false),
+        Err(_) => {
+            eprintln!("ICMP echo request timed out");
+            false
+        }
+    }
 }
