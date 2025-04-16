@@ -1,5 +1,6 @@
 use std::io;
-use models::PortOptions;
+use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions};
+use printing::print_host_discovery_results;
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 use crossterm::{
@@ -9,19 +10,21 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use crate::tui::{run_app, App};
-use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption};
+use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanResult};
 
 mod host_discovery;
 mod port_scanning;
 mod service_detection;
 mod os_detection;
 mod parsing;
+mod printing;
+mod resolving;
 
 mod tui;
 mod models;
 
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<(), io::Error> {
     // Setup terminal
     enable_raw_mode()?;
@@ -44,6 +47,9 @@ async fn main() -> Result<(), io::Error> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
+
+    let mut port_scan_result: Vec<PortScanResult> = Vec::new();
+    let mut host_discovery_result: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) = (Vec::new(), HostDiscoveryAllResult::new());
     
     // Handle application result
     if let Ok((
@@ -74,9 +80,7 @@ async fn main() -> Result<(), io::Error> {
                 Vec::new()
             };
 
-            for port in &ports_arr {
-                println!("{}", port);
-            }
+            /* Output ip address and ports for debugging
 
             if let Ok(addresses) = &ip_addresses_arr {
                 for ip_address in addresses {
@@ -84,12 +88,17 @@ async fn main() -> Result<(), io::Error> {
                 }
             }
 
+            for port in &ports_arr {
+                println!("{}", port);
+            }
+            */
+
             match main_selected {
                 MainMenuItem::SubMenuHostDiscovery => {
                     if let Some(host_discovery_selected) = host_discovery_selected {
                         match host_discovery_selected {
                             HostDiscoveryOption::ListScan => println!("Doing ListScan"),
-                            HostDiscoveryOption::PingScan => host_discovery::run_ping_scan(ip_addresses_arr, ports_arr).await,
+                            HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr, ports_arr).await,
                             HostDiscoveryOption::TcpSynDiscovery => host_discovery::run_tcp_syn_discovery(),
                             HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery"),
                             HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery"),
@@ -98,6 +107,7 @@ async fn main() -> Result<(), io::Error> {
                             HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(),
                             HostDiscoveryOption::IcmpNetmask => host_discovery::run_icmp_netmask()
                         }
+                        print_host_discovery_results(host_discovery_result);
                     } else {
                         println!("Something went wrong");
                     }
@@ -105,7 +115,7 @@ async fn main() -> Result<(), io::Error> {
                 MainMenuItem::SubMenuPortScan => {
                     if let Some(port_scan_selected) = port_scan_selected {
                         match port_scan_selected {
-                            PortScanOption::SynScan => port_scanning::run_syn_scan(),
+                            PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr).await.expect("SYN scan failed"),
                             PortScanOption::ConnectScan => port_scanning::run_connect_scan(),
                             PortScanOption::AckScan => port_scanning::run_ack_scan(),
                             PortScanOption::WindowScan => println!("Doing WindowScan"),
@@ -123,6 +133,7 @@ async fn main() -> Result<(), io::Error> {
                 MainMenuItem::SubMenuServiceDetection => service_detection::run_service_detection(),
                 MainMenuItem::SubMenuOperatingSystemDetection => os_detection::run_os_detection(),
             }
+
         }
 
     }
