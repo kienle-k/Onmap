@@ -34,14 +34,16 @@ pub fn get_resolv_conf_nameservers() -> Vec<NameServerConfig> {
                                 socket_addr: SocketAddr::new(IpAddr::V4(ipv4), 53),
                                 protocol: Protocol::Udp,
                                 tls_dns_name: None,
-                                trust_nx_responses: true,
+                                trust_negative_responses: true,
+                                bind_addr: None
                             });
                         } else if let Ok(ipv6) = ip_str.parse::<Ipv6Addr>() {
                             nameservers.push(NameServerConfig {
                                 socket_addr: SocketAddr::new(IpAddr::V6(ipv6), 53),
                                 protocol: Protocol::Udp,
                                 tls_dns_name: None,
-                                trust_nx_responses: true,
+                                trust_negative_responses: true,
+                                bind_addr: None
                             });
                         }
                     }
@@ -59,7 +61,8 @@ pub fn get_resolv_conf_nameservers() -> Vec<NameServerConfig> {
             socket_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             protocol: Protocol::Udp,
             tls_dns_name: None,
-            trust_nx_responses: true,
+            trust_negative_responses: true,
+            bind_addr: None
         });
     }
     
