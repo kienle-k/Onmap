@@ -1,0 +1,145 @@
+use std::time::Duration;
+use prettytable::{Table, Row, Cell, format};
+use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
+
+// Helper function to format Duration in a readable way
+fn format_duration(duration: &Duration) -> String {
+    let total_millis = duration.as_millis();
+    if total_millis < 1 {
+        format!("<1ms")
+    } else if total_millis < 1000 {
+        format!("{}ms", total_millis)
+    } else {
+        let seconds = total_millis / 1000;
+        let millis = total_millis % 1000;
+        format!("{}s {}ms", seconds, millis)
+    }
+}
+
+pub fn print_host_discovery_results(results: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
+
+    println!();
+    let (single_results, all_results) = results;
+    
+    // Print summary information
+    println!("=== Host Discovery Summary ===");
+
+    println!();
+    
+    let mut summary_table = Table::new();
+    summary_table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+    
+    summary_table.add_row(Row::new(vec![
+        Cell::new("Hosts scanned"), 
+        Cell::new(&all_results.scanned_addresses.len().to_string())
+    ]));
+    summary_table.add_row(Row::new(vec![
+        Cell::new("Hosts up"), 
+        Cell::new(&all_results.hosts_up.to_string())
+    ]));
+    summary_table.add_row(Row::new(vec![
+        Cell::new("Hosts with DNS resolution"), 
+        Cell::new(&all_results.hosts_dns_resolution.to_string())
+    ]));
+    summary_table.add_row(Row::new(vec![
+        Cell::new("Ports scanned per host"), 
+        Cell::new(&all_results.ports_per_host.to_string())
+    ]));
+    summary_table.add_row(Row::new(vec![
+        Cell::new("Total packets sent"), 
+        Cell::new(&all_results.packets_sent.to_string())
+    ]));
+    
+    // Calculate and add scan duration
+    let duration_str = match all_results.end_time.duration_since(all_results.start_time) {
+        Ok(duration) => format_duration(&duration),
+        Err(_) => String::from("Invalid time calculation"),
+    };
+    summary_table.add_row(Row::new(vec![
+        Cell::new("Scan duration"), 
+        Cell::new(&duration_str)
+    ]));
+    
+    summary_table.printstd();
+    
+    // Print detailed host information
+    println!("\n=== Host Details ===");
+    
+    // Sort results by IP address for consistent output
+    let reachable_hosts: Vec<&HostDiscoverySingleResult> = single_results.iter()
+        .filter(|host| host.is_up)
+        .collect();
+    
+    if reachable_hosts.is_empty() {
+        println!("No hosts discovered.");
+    } else {
+        let mut host_table = Table::new();
+        host_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        
+        // Add header row
+        host_table.set_titles(Row::new(vec![
+            Cell::new("IP Address"),
+            Cell::new("Status"),
+            Cell::new("Latency"),
+            Cell::new("Hostname"),
+            Cell::new("Reply Type"),
+            Cell::new("TTL")
+        ]));
+
+
+
+        
+        // Add each host as a row
+        for host in reachable_hosts {
+            let status = if host.is_up { "up" } else { "down" };
+            let latency = match host.latency {
+                Some(duration) => format_duration(&duration),
+                None => String::from("-"),
+            };
+            let hostname = match &host.dns_resolve {
+                Some(name) => name,
+                None => &String::from("-"),
+            };
+            
+            host_table.add_row(Row::new(vec![
+                Cell::new(&host.ip_address.to_string()),
+                Cell::new(status),
+                Cell::new(&latency),
+                Cell::new(&hostname),
+                Cell::new(&host.reply_type),
+                Cell::new(&host.ttl.to_string())
+            ]));
+        }
+        
+        host_table.printstd();
+        println!();
+    }
+
+}
+
+// Example usage:
+// fn main() {
+//     let single_results = vec![
+//         HostDiscoverySingleResult {
+//             ip_address: "192.168.1.1".parse().unwrap(),
+//             dns_resolve: Some("router.local".to_string()),
+//             latency: Some(Duration::from_millis(15)),
+//             is_up: true,
+//             reply_type: "echo-reply".to_string(),
+//             ttl: 64
+//         },
+//         // Add more results as needed
+//     ];
+//
+//     let all_results = HostDiscoveryAllResult {
+//         scanned_addresses: vec!["192.168.1.1".parse().unwrap()],
+//         ports_per_host: 100,
+//         hosts_up: 1,
+//         hosts_dns_resolution: 1,
+//         start_time: SystemTime::now(),
+//         end_time: SystemTime::now(),
+//         packets_sent: 100
+//     };
+//
+//     print_host_discovery_results((single_results, all_results));
+// }
