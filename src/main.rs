@@ -1,6 +1,6 @@
 use std::io;
-use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions};
-use printing::print_host_discovery_results;
+use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
+use printing::{print_port_scan_results, print_host_discovery_results};
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 use crossterm::{
@@ -10,7 +10,6 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use crate::tui::{run_app, App};
-use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanResult};
 
 mod host_discovery;
 mod port_scanning;
@@ -48,7 +47,7 @@ async fn main() -> Result<(), io::Error> {
     )?;
     terminal.show_cursor()?;
 
-    let mut port_scan_result: Vec<PortScanResult> = Vec::new();
+    let mut port_scan_result: (Vec<PortScanSingleResult>, PortScanAllResult) = (Vec::new(), PortScanAllResult::new());
     let mut host_discovery_result: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) = (Vec::new(), HostDiscoveryAllResult::new());
     
     // Handle application result
@@ -125,6 +124,7 @@ async fn main() -> Result<(), io::Error> {
                             PortScanOption::XmasScan => println!("Doing XmasScan"),
                             PortScanOption::UdpScan => port_scanning::run_udp_scan(),
                         }
+                        print_port_scan_results(port_scan_result);
                     }
                     else {
                         println!("Something went wrong")
