@@ -11,8 +11,6 @@ use crossterm::{
 use crate::tui::{run_app, App};
 use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption};
 
-use async_std;
-
 mod host_discovery;
 mod port_scanning;
 mod service_detection;
@@ -27,7 +25,7 @@ mod utils;
 // use utils::json_loader::{load_protocols, get_port_info};
 
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<(), io::Error> {
     // Setup terminal
     enable_raw_mode()?;

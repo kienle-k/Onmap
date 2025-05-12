@@ -20938,7 +20938,7 @@
         },
         "7801": {
             "service": "ssp-client",
-            "pservice": "Secure Server Protocol -"
+            "pservice": "Secure Server Protocol"
         },
         "7802": {
             "service": "",
@@ -21233,7 +21233,7 @@
             "pservice": "Reserved"
         },
         "8080": {
-            "service": "http",
+            "service": "http-proxy",
             "pservice": "HTTP Alternate (see port 80)"
         },
         "8081": {
@@ -22603,6 +22603,10 @@
         "9925": {
             "service": "xybrid-cloud",
             "pservice": "XYBRID Cloud"
+        },        
+        "9929": {
+            "service": "nping-echo",
+            "pservice": "nping-echo"
         },
         "9950": {
             "service": "apc-9950",
