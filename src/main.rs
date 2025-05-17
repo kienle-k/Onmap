@@ -28,7 +28,6 @@ mod utils;
 
 
 #[tokio::main]
-#[tokio::main]
 async fn main() -> Result<(), io::Error> {
     // Setup terminal
     enable_raw_mode()?;
@@ -123,7 +122,7 @@ async fn main() -> Result<(), io::Error> {
                     if let Some(port_scan_selected) = port_scan_selected {
                         match port_scan_selected {
                             PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr).await.expect("SYN scan failed."),
-                            PortScanOption::ConnectScan => port_scan_result = port_scanning::run_connect_scan(&ip_input, ports_arr, 300).await,
+                            PortScanOption::ConnectScan => port_scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr, 300).await.expect("TCP-Connect scan failed."),
                             PortScanOption::AckScan => port_scanning::run_ack_scan(),
                             PortScanOption::WindowScan => println!("Doing WindowScan"),
                             PortScanOption::MaimonScan => println!("Doing MaimonScan"),
