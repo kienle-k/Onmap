@@ -8,13 +8,12 @@ use pnet::transport::{transport_channel, TransportChannelType, TransportProtocol
 use rand::Rng;
 use pnet::transport::tcp_packet_iter;
 use std::result::Result;
-use local_ip_address::local_ip;
 
 use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResult, PortScanAllResult};
 use crate::resolving::get_service_name;
 
 // Function to scan a single port on a single IP address
-pub async fn port_syn_scan(ip_address: IpAddr, port: u16) -> Result<PortScanSingleResult, String> {
+pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4Addr) -> Result<PortScanSingleResult, String> {
     //println!("Scanning {}:{}", ip_address, port);
     
     // Only IPv4 is supported for simplicity
@@ -53,31 +52,14 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16) -> Result<PortScanSing
     tcp_packet.set_window(64240);
     tcp_packet.set_urgent_ptr(0);
     
-    // Get the local source IP for proper checksum calculation
-    let source_ip: Ipv4Addr = match local_ip() {
-        Ok(ip) => match ip {
-            IpAddr::V4(ipv4) => ipv4,
-            IpAddr::V6(_) => {
-                println!("Got an IPv6 address, but need IPv4");
-                // Default to localhost when we get an IPv6
-                Ipv4Addr::new(127, 0, 0, 1)
-            }
-        },
-        Err(e) => {
-            eprintln!("Error getting IP: {}", e);
-            // Default to localhost on error
-            Ipv4Addr::new(127, 0, 0, 1)
-        }
-    };
-    
-    
     
     // Calculate checksum with the proper source IP
     let checksum = pnet::packet::tcp::ipv4_checksum(
         &tcp_packet.to_immutable(),
-        &source_ip,
+        &local_ip_address,
         &ipv4,
     );
+    
     tcp_packet.set_checksum(checksum);
     //println!("Packet checksum: {}", checksum);
 
@@ -91,7 +73,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16) -> Result<PortScanSing
     let response_future = async {
         // Use a more generous timeout for packet reception
         let start_time = std::time::Instant::now();
-        let timeout_duration = Duration::from_millis(2000);
+        let timeout_duration = Duration::from_millis(800);
         
         //println!("Waiting for response...");
         while start_time.elapsed() < timeout_duration {
@@ -102,14 +84,6 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16) -> Result<PortScanSing
                     
                     // Less strict packet filtering - check if it's for our query
                     if packet.get_destination() == source_port {
-                        //println!("Packet is for our query (dest port matches source port)");
-                        // Extra debug info to see what packets we're receiving
-                        if addr == ip_address {
-                            //println!("Packet is from target IP");
-                        }
-                        if packet.get_source() == port {
-                            //println!("Packet source port matches target port");
-                        }
                         
                         // If both addr and source port match what we expect
                         if addr == ip_address && packet.get_source() == port {
@@ -178,7 +152,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16) -> Result<PortScanSing
     };
 
     // Wait for response with a timeout
-    match timeout(Duration::from_millis(3000), response_future).await {
+    match timeout(Duration::from_millis(800), response_future).await {
         Ok(result) => {
             //println!("Response received within timeout");
             result
@@ -203,7 +177,8 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16) -> Result<PortScanSing
 // Function to run SYN scan on multiple IP addresses and ports
 pub async fn run_syn_scan(
     ip_address_arr: Result<Vec<Ipv4Addr>, String>, 
-    ports_arr: Vec<u16>
+    ports_arr: Vec<u16>,
+    local_ip_address: Ipv4Addr
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     // First, handle the Result to extract the IP addresses or propagate the error
     let ip_addresses = match ip_address_arr {
@@ -220,8 +195,7 @@ pub async fn run_syn_scan(
     let packets_sent = Arc::new(Mutex::new(0u32));
 
     // Limit concurrent scans to avoid overwhelming the network
-    // Reduced from 50 to 10 for better reliability
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(200));
 
     // Create a task for each IP/port combination
     for ip in ip_addresses {
@@ -244,7 +218,7 @@ pub async fn run_syn_scan(
                     *counter += 1;
                 }
                 
-                match port_syn_scan(ip_addr, port).await {
+                match port_syn_scan(ip_addr, port, local_ip_address).await {
                     Ok(result) => {
                         let mut results = single_results_clone.lock().unwrap();
                         results.push(result.clone());
