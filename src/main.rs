@@ -1,5 +1,6 @@
 use std::io;
-use models::PortOptions;
+use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
+use printing::{print_port_scan_results, print_host_discovery_results};
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 use crossterm::{
@@ -9,13 +10,14 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use crate::tui::{run_app, App};
-use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption};
 
 mod host_discovery;
 mod port_scanning;
 mod service_detection;
 mod os_detection;
 mod parsing;
+mod printing;
+mod resolving;
 
 mod tui;
 mod models;
@@ -25,6 +27,7 @@ mod utils;
 // use utils::json_loader::{load_protocols, get_port_info};
 
 
+#[tokio::main]
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
     // Setup terminal
@@ -48,6 +51,9 @@ async fn main() -> Result<(), io::Error> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
+
+    let mut port_scan_result: (Vec<PortScanSingleResult>, PortScanAllResult) = (Vec::new(), PortScanAllResult::new());
+    let mut host_discovery_result: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) = (Vec::new(), HostDiscoveryAllResult::new());
     
     // Handle application result
     if let Ok((
@@ -81,27 +87,34 @@ async fn main() -> Result<(), io::Error> {
             // for port in &ports_arr {
             //     println!("{}", port);
             // }
+            /* Output ip address and ports for debugging
 
-            // if let Ok(addresses) = &ip_addresses_arr {
-            //     for ip_address in addresses {
-            //         println!("{:?}", ip_address);
-            //     }
-            // }
+            if let Ok(addresses) = &ip_addresses_arr {
+                for ip_address in addresses {
+                    println!("{:?}", ip_address);
+                }
+            }
+
+            for port in &ports_arr {
+                println!("{}", port);
+            }
+            */
 
             match main_selected {
                 MainMenuItem::SubMenuHostDiscovery => {
                     if let Some(host_discovery_selected) = host_discovery_selected {
                         match host_discovery_selected {
                             HostDiscoveryOption::ListScan => println!("Doing ListScan"),
-                            HostDiscoveryOption::PingScan => host_discovery::run_ping_scan(ip_addresses_arr, ports_arr).await,
+                            HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr, ports_arr).await,
                             HostDiscoveryOption::TcpSynDiscovery => host_discovery::run_tcp_syn_discovery(),
                             HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery"),
                             HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery"),
                             HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery"),
-                            HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(),
+                            HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(ip_addresses_arr).await,
                             HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(),
                             HostDiscoveryOption::IcmpNetmask => host_discovery::run_icmp_netmask()
                         }
+                        print_host_discovery_results(host_discovery_result);
                     } else {
                         println!("Something went wrong");
                     }
@@ -119,6 +132,7 @@ async fn main() -> Result<(), io::Error> {
                             PortScanOption::XmasScan => println!("Doing XmasScan"),
                             PortScanOption::UdpScan => port_scanning::run_udp_scan(),
                         }
+                        print_port_scan_results(port_scan_result);
                     }
                     else {
                         println!("Something went wrong")
@@ -127,6 +141,7 @@ async fn main() -> Result<(), io::Error> {
                 MainMenuItem::SubMenuServiceDetection => service_detection::run_service_detection(),
                 MainMenuItem::SubMenuOperatingSystemDetection => os_detection::run_os_detection(),
             }
+
         }
 
     }
