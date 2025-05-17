@@ -72,6 +72,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
     let response_future = async {
 
         loop {
+            
             match iter.next() {
 
                 Ok((packet, addr)) => {
@@ -103,6 +104,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
             }
             
             tokio::task::yield_now().await;
+
         }
     };
 
