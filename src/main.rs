@@ -122,8 +122,8 @@ async fn main() -> Result<(), io::Error> {
                 MainMenuItem::SubMenuPortScan => {
                     if let Some(port_scan_selected) = port_scan_selected {
                         match port_scan_selected {
-                            PortScanOption::SynScan => port_scanning::run_syn_scan(),
-                            PortScanOption::ConnectScan => port_scanning::run_connect_scan(&ip_input, ports_arr, 300).await,
+                            PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr).await.expect("SYN scan failed."),
+                            PortScanOption::ConnectScan => port_scan_result = port_scanning::run_connect_scan(&ip_input, ports_arr, 300).await,
                             PortScanOption::AckScan => port_scanning::run_ack_scan(),
                             PortScanOption::WindowScan => println!("Doing WindowScan"),
                             PortScanOption::MaimonScan => println!("Doing MaimonScan"),
