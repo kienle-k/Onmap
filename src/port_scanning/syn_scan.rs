@@ -1,7 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
-use tokio::time::timeout;
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::tcp::{MutableTcpPacket, TcpFlags};
 use pnet::transport::{transport_channel, TransportChannelType, TransportProtocol};
@@ -71,94 +70,48 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
 
     // Wait for response with timeout
     let response_future = async {
-        // Use a more generous timeout for packet reception
-        let start_time = std::time::Instant::now();
-        let timeout_duration = Duration::from_millis(800);
-        
-        //println!("Waiting for response...");
-        while start_time.elapsed() < timeout_duration {
+
+        loop {
             match iter.next() {
+
                 Ok((packet, addr)) => {
-                    //println!("Received packet from {} - source: {}, dest: {}, flags: {}",
-                        //addr, packet.get_source(), packet.get_destination(), packet.get_flags());
-                    
-                    // Less strict packet filtering - check if it's for our query
-                    if packet.get_destination() == source_port {
-                        
-                        // If both addr and source port match what we expect
-                        if addr == ip_address && packet.get_source() == port {
-                            let flags = packet.get_flags();
-                            //println!("Packet is match! Flags: {}", flags);
-                            
-                            // Check for SYN+ACK (port open)
-                            if (flags & TcpFlags::SYN != 0) && (flags & TcpFlags::ACK != 0) {
-                                //println!("Port {} is OPEN (SYN+ACK)", port);
-                                
-                                // Get TTL (default to 64 if we can't determine it)
-                                let ttl = 64; // Ideally, this would be extracted from the IP header
-                                
-                                return Ok(PortScanSingleResult {
-                                    ip_address,
-                                    port,
-                                    protocol: Protocols::TCP,
-                                    port_state: PortStates::Open,
-                                    ttl,
-                                    reason: PortStateReasons::SynAck,
-                                    service: get_service_name(port),
-                                });
-                            }
-                            
-                            // Check for RST or RST+ACK (port closed)
-                            if flags & TcpFlags::RST != 0 {
-                                //println!("Port {} is CLOSED (RST)", port);
-                                
-                                // Get TTL (default to 64 if we can't determine it)
-                                let ttl = 64; // Ideally, this would be extracted from the IP header
-                                
-                                return Ok(PortScanSingleResult {
-                                    ip_address,
-                                    port,
-                                    protocol: Protocols::TCP,
-                                    port_state: PortStates::Closed,
-                                    ttl,
-                                    reason: PortStateReasons::Reset,
-                                    service: get_service_name(port),
-                                });
-                            }
+                    if packet.get_destination() == source_port && addr == ip_address && packet.get_source() == port {
+                        let flags = packet.get_flags();
+                        if (flags & TcpFlags::SYN != 0) && (flags & TcpFlags::ACK != 0) {
+                            let ttl = 63; // Placeholder
+                            return Ok(PortScanSingleResult {
+                                ip_address, port, protocol: Protocols::TCP,
+                                port_state: PortStates::Open, ttl,
+                                reason: PortStateReasons::SynAck, service: get_service_name(port),
+                            });
+                        }
+                        if flags & TcpFlags::RST != 0 {
+                            let ttl = 63; // Placeholder
+                            return Ok(PortScanSingleResult {
+                                ip_address, port, protocol: Protocols::TCP,
+                                port_state: PortStates::Closed, ttl,
+                                reason: PortStateReasons::Reset, service: get_service_name(port),
+                            });
                         }
                     }
                 }
-                Err(e) => {
-                    //eprintln!("Error receiving packet: {}", e);
-                    tokio::time::sleep(Duration::from_millis(10)).await;
+                Err(_e) => { // I/O error from iter.next()
+                    // eprintln!("Error receiving packet for {}:{}: {}", ip_address, port, e);
+                    // Short delay before retrying to prevent fast spinning on persistent errors
+                    tokio::time::sleep(Duration::from_millis(20)).await;
                 }
             }
             
-            // Small delay to prevent CPU spinning
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::task::yield_now().await;
         }
-        
-        //println!("No definitive response received, assuming filtered");
-        // If we get here, assume port is filtered
-        Ok(PortScanSingleResult {
-            ip_address,
-            port,
-            protocol: Protocols::TCP,
-            port_state: PortStates::Filtered,
-            ttl: 0, // No TTL since we didn't receive a packet
-            reason: PortStateReasons::Timeout,
-            service: get_service_name(port),
-        })
     };
 
-    // Wait for response with a timeout
-    match timeout(Duration::from_millis(800), response_future).await {
-        Ok(result) => {
-            //println!("Response received within timeout");
-            result
-        },
-        Err(_) => {
-            //println!("Timeout occurred while waiting for response");
+    // Wait for response with a single overall timeout
+    match tokio::time::timeout(Duration::from_millis(800), response_future).await {
+        Ok(Ok(result)) => Ok(result), // Double Ok: timeout succeeded, response_future succeeded
+        Ok(Err(e)) => Err(e), // Error from within response_future's logic (if it could return its own errors)
+        Err(_) => { // This is the timeout from tokio::time::timeout
+            //println!("Timeout occurred while waiting for response for {}:{}", ip_address, port);
             Ok(PortScanSingleResult {
                 ip_address,
                 port,
@@ -168,7 +121,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
                 reason: PortStateReasons::Timeout,
                 service: get_service_name(port),
             })
-        },
+        }
     }
 }
 
@@ -195,7 +148,7 @@ pub async fn run_syn_scan(
     let packets_sent = Arc::new(Mutex::new(0u32));
 
     // Limit concurrent scans to avoid overwhelming the network
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(200));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
 
     // Create a task for each IP/port combination
     for ip in ip_addresses {
@@ -231,7 +184,7 @@ pub async fn run_syn_scan(
                         }
                     }
                     Err(e) => {
-                        //eprintln!("Error scanning {}:{}: {}", ip_addr, port, e);
+                        eprintln!("Error scanning {}:{}: {}", ip_addr, port, e);
                     }
                 }
             });
