@@ -30,6 +30,12 @@ pub fn convert_port_range_to_arr(port_input: String) -> Vec<u16> {
 
 pub fn set_ports_arr(port_option: PortOptions) -> Vec<u16> {
     match port_option {
+        PortOptions::NormalMode => {
+
+            (1..=1000).collect()
+
+        },
+
         PortOptions::FastMode => {
             // Return the 100 most common ports
             vec![
@@ -45,25 +51,13 @@ pub fn set_ports_arr(port_option: PortOptions) -> Vec<u16> {
                 32768, 32769, 49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159
             ]
         },
+        
         PortOptions::SequentialMode => {
-            // Return all ports from 1 to 65535 in order
-            (1..=65535).collect()
-        },
-        PortOptions::NormalMode => {
 
-            let mut ports: Vec<u16> = (1..=65535).collect();
-            
-            // Fisher-Yates shuffle algorithm to randomize the array
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            
-            for i in (1..ports.len()).rev() {
-                let j = rng.gen_range(0..=i);
-                ports.swap(i, j);
-            }
-            
-            ports
+            (1..=65535).collect()
+
         },
+
         _ => Vec::new(),
     }
 }

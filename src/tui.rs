@@ -757,7 +757,7 @@ fn ui(f: &mut Frame, app: &App) {
                 ListItem::new(
                     Line::from(
                         Span::styled(
-                            "1. Normal mode (all ports in a random order)",
+                            "1. Normal mode (1-1000)",
                             Style::default().fg(Color::White),
                         )
                     )
