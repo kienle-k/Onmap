@@ -1,6 +1,7 @@
 use std::io;
-use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions};
-use printing::print_host_discovery_results;
+use std::io::{Write};
+use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
+use printing::{print_port_scan_results, print_host_discovery_results};
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 use crossterm::{
@@ -10,7 +11,6 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use crate::tui::{run_app, App};
-use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanResult};
 
 mod host_discovery;
 mod port_scanning;
@@ -23,9 +23,16 @@ mod resolving;
 mod tui;
 mod models;
 
+mod utils;
+
+// use utils::json_loader::{load_protocols, get_port_info};
+
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
+    // Flush to enable TUI in docker
+    // This is a workaround for the issue where the TUI doesn't show up in Docker
+    io::stdout().flush()?;
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -48,7 +55,7 @@ async fn main() -> Result<(), io::Error> {
     )?;
     terminal.show_cursor()?;
 
-    let mut port_scan_result: Vec<PortScanResult> = Vec::new();
+    let mut port_scan_result: (Vec<PortScanSingleResult>, PortScanAllResult) = (Vec::new(), PortScanAllResult::new());
     let mut host_discovery_result: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) = (Vec::new(), HostDiscoveryAllResult::new());
     
     // Handle application result
@@ -80,6 +87,9 @@ async fn main() -> Result<(), io::Error> {
                 Vec::new()
             };
 
+            // for port in &ports_arr {
+            //     println!("{}", port);
+            // }
             /* Output ip address and ports for debugging
 
             if let Ok(addresses) = &ip_addresses_arr {
@@ -103,7 +113,7 @@ async fn main() -> Result<(), io::Error> {
                             HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery"),
                             HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery"),
                             HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery"),
-                            HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(),
+                            HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(ip_addresses_arr).await,
                             HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(),
                             HostDiscoveryOption::IcmpNetmask => host_discovery::run_icmp_netmask()
                         }
@@ -115,8 +125,8 @@ async fn main() -> Result<(), io::Error> {
                 MainMenuItem::SubMenuPortScan => {
                     if let Some(port_scan_selected) = port_scan_selected {
                         match port_scan_selected {
-                            PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr).await.expect("SYN scan failed"),
-                            PortScanOption::ConnectScan => port_scanning::run_connect_scan(),
+                            PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr).await.expect("SYN scan failed."),
+                            PortScanOption::ConnectScan => port_scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr, 300).await.expect("TCP-Connect scan failed."),
                             PortScanOption::AckScan => port_scanning::run_ack_scan(),
                             PortScanOption::WindowScan => println!("Doing WindowScan"),
                             PortScanOption::MaimonScan => println!("Doing MaimonScan"),
@@ -125,6 +135,7 @@ async fn main() -> Result<(), io::Error> {
                             PortScanOption::XmasScan => println!("Doing XmasScan"),
                             PortScanOption::UdpScan => port_scanning::run_udp_scan(),
                         }
+                        print_port_scan_results(port_scan_result);
                     }
                     else {
                         println!("Something went wrong")

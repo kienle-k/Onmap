@@ -11,4 +11,3 @@ pub use ack_scan::run_ack_scan;
 pub mod upd_scan;
 pub use upd_scan::run_udp_scan;
 
-

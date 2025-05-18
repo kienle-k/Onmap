@@ -13,19 +13,10 @@ pub async fn resolve_hostname(ip: &Ipv4Addr) -> Option<String> {
         config.add_name_server(ns);
     }
     
-    // Create the resolver with our custom config
-    let resolver = match TokioAsyncResolver::tokio(
+    let resolver = TokioAsyncResolver::tokio(
         config,
         ResolverOpts::default()
-    ) {
-        Ok(r) => {
-            r
-        },
-        Err(e) => {
-            println!("Failed to create resolver: {:?}", e);
-            return None;
-        }
-    };
+    );
    
     // Perform the reverse lookup
     match resolver.reverse_lookup(ip_addr).await {
@@ -35,7 +26,7 @@ pub async fn resolve_hostname(ip: &Ipv4Addr) -> Option<String> {
             lookup.iter().next().and_then(|name| {
                 // Convert to string and take the first part before the dot
                 let hostname_str = name.to_string();
-                let hostname = hostname_str.split('.').next().unwrap_or("");
+                let hostname = hostname_str.trim_end_matches(".").trim().to_string();
                 
                 // Check if empty after processing
                 if hostname.is_empty() {
