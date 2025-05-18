@@ -1,4 +1,5 @@
 use std::io;
+use std::io::{Write};
 use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
 use printing::{print_port_scan_results, print_host_discovery_results};
 use ratatui::backend::CrosstermBackend;
@@ -29,6 +30,9 @@ mod utils;
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
+    // Flush to enable TUI in docker
+    // This is a workaround for the issue where the TUI doesn't show up in Docker
+    io::stdout().flush()?;
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
