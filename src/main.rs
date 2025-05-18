@@ -286,6 +286,7 @@ async fn main() -> Result<(), io::Error> {
                     },
                 "-PE" => {
                         let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
+                        print_host_discovery_results(host_discovery_result);
                 }
                 
                 _ => println!("Scan method not implemented yet")
