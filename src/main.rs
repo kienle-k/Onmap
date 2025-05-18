@@ -3,8 +3,7 @@ use std::io;
 use std::io::{Write};
 use std::net::{IpAddr, Ipv4Addr};
 use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
-use printing::host_discovery_results;
-use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original};
+use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 use crossterm::{
@@ -42,7 +41,7 @@ async fn main() -> Result<(), io::Error> {
     // This is a workaround for the issue where the TUI doesn't show up in Docker
     io::stdout().flush()?;
 
-    let mut use_original_printing = true;
+    let mut use_original_printing = false;
 
     // Get command-line arguments
     let args: Vec<String> = env::args().collect();
@@ -190,7 +189,7 @@ async fn main() -> Result<(), io::Error> {
                             if use_original_printing == false{
                                 print_port_scan_results(port_scan_result);
                             } else {
-                                print_port_scan_results_original(port_scan_result);
+                                print_port_scan_results_original(port_scan_result).await;
                             }
                         } else {
                             println!("No port scan option selected or an error occurred.");
@@ -217,23 +216,24 @@ async fn main() -> Result<(), io::Error> {
         // or if the user quits in a way that doesn't populate the selections.
 
     } else {
+
+        let mut arg_len = args.len();
+        if !args.is_empty() { 
+            if args[args.len() - 1] == "-pp" {
+                arg_len = arg_len - 1; // Remove the last arguments visibility for the parser
+                use_original_printing = false;
+            } else {
+                use_original_printing = true;
+            }
+        }
         
-        match args.len() {
-            4 | 5 => {
+        match arg_len {
+            4 => {
                 let scan_method_arg = &args[1];
                 let port_arg = &args[2];
                 let ip_addresses_arg = &args[3];
 
                 let port_prefix = "-p";
-
-                if args.len() == 5 {
-                    // Check if the last argument is a flag
-                    if args[4] == "-pp" {
-                        use_original_printing = false;
-                    } else {
-                        use_original_printing = true;
-                    }
-                }
 
                 // Attempt to remove the prefix
                 if let Some(result_port_string) = port_arg.strip_prefix(port_prefix) {
@@ -249,7 +249,7 @@ async fn main() -> Result<(), io::Error> {
                                 if use_original_printing == false{
                                     print_port_scan_results(port_scan_result);
                                 } else {
-                                    print_port_scan_results_original(port_scan_result);
+                                    print_port_scan_results_original(port_scan_result).await;
                                 }
                             },
                         "-sT" => {
@@ -261,7 +261,7 @@ async fn main() -> Result<(), io::Error> {
                                 if use_original_printing == false{
                                     print_port_scan_results(port_scan_result);
                                 } else {
-                                    print_port_scan_results_original(port_scan_result);
+                                    print_port_scan_results_original(port_scan_result).await;
                                 }
                             },
                         
@@ -282,12 +282,19 @@ async fn main() -> Result<(), io::Error> {
             match scan_method_arg.as_ref() {
                 "-sn" => {
                         let host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await;
-                        print_host_discovery_results(host_discovery_result);
+                        if use_original_printing == true {
+                            print_host_discovery_results_original(host_discovery_result);
+                        }else {
+                            print_host_discovery_results(host_discovery_result);
+                        }
                     },
                 "-PE" => {
                         let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
-                        print_host_discovery_results(host_discovery_result);
-                }
+                        if use_original_printing == true {
+                            print_host_discovery_results_original(host_discovery_result);
+                        }else {
+                            print_host_discovery_results(host_discovery_result);
+                        }                }
                 
                 _ => println!("Scan method not implemented yet")
             }

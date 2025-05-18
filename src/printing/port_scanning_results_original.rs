@@ -1,11 +1,13 @@
-use std::time::Duration;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols};
-
+use crate::resolving::{resolve_hostname};
 
 // Hauptfunktion zum Ausführen des Connect-Scans
-pub fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, PortScanAllResult)) {
+pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, PortScanAllResult)) {
+
+    println!("");
+
     let (single_results, all_results) = results;
 
     let mut results_by_ip: HashMap<IpAddr, Vec<&PortScanSingleResult>> = HashMap::new();
@@ -17,7 +19,14 @@ pub fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, Por
     }
 
     for (ip_address, host_results) in results_by_ip.iter() {
-        println!("Onmap scan report for {}", ip_address);
+        let mut hostname = String::from("-");
+        if let IpAddr::V4(ipv4_addr) = ip_address {
+            if let Some(resolved_hostname) = resolve_hostname(&ipv4_addr).await {
+                hostname = resolved_hostname;
+            }
+        }
+        
+        println!("Onmap scan report for {} ({})", &hostname, &ip_address);
         
         // Filter for only open ports first
         let open_ports: Vec<&PortScanSingleResult> = host_results.iter()
@@ -82,5 +91,7 @@ pub fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, Por
             num_hosts_scanned, num_hosts_scanned, elapsed_time
         );
     }
+    println!("");
+
     
 }
