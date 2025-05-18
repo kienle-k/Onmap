@@ -7,12 +7,12 @@ use pnet::transport::{transport_channel, TransportChannelType, TransportProtocol
 use rand::Rng;
 use pnet::transport::tcp_packet_iter;
 use std::result::Result;
+use crate::utils::get_service_name::{ProtocolMap, load_protocol_map, get_service_name};
 
 use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResult, PortScanAllResult};
-use crate::resolving::get_service_name;
 
 // Function to scan a single port on a single IP address
-pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4Addr) -> Result<PortScanSingleResult, String> {
+pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4Addr, protocols: &ProtocolMap) -> Result<PortScanSingleResult, String> {
     //println!("Scanning {}:{}", ip_address, port);
     
     // Only IPv4 is supported for simplicity
@@ -83,7 +83,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
                             return Ok(PortScanSingleResult {
                                 ip_address, port, protocol: Protocols::TCP,
                                 port_state: PortStates::Open, ttl,
-                                reason: PortStateReasons::SynAck, service: get_service_name(port),
+                                reason: PortStateReasons::SynAck, service: get_service_name(protocols, "tcp", port),
                             });
                         }
                         if flags & TcpFlags::RST != 0 {
@@ -91,7 +91,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
                             return Ok(PortScanSingleResult {
                                 ip_address, port, protocol: Protocols::TCP,
                                 port_state: PortStates::Closed, ttl,
-                                reason: PortStateReasons::Reset, service: get_service_name(port),
+                                reason: PortStateReasons::Reset, service: get_service_name(protocols, "tcp", port),
                             });
                         }
                     }
@@ -121,7 +121,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
                 port_state: PortStates::Filtered,
                 ttl: 0,
                 reason: PortStateReasons::Timeout,
-                service: get_service_name(port),
+                service: get_service_name(protocols, "tcp", port),
             })
         }
     }
@@ -140,6 +140,8 @@ pub async fn run_syn_scan(
         Ok(ips) => ips,
         Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
     };
+
+    let protocols = Arc::new(load_protocol_map("src/utils/port_service_mapping.json").expect("Failed to load"));
 
     //println!("Starting scan of {} IPs across {} ports", ip_addresses.len(), ports_arr.len());
     
@@ -161,6 +163,7 @@ pub async fn run_syn_scan(
             let open_ports_clone = Arc::clone(&open_ports);
             let packets_sent_clone = Arc::clone(&packets_sent);
             let sem_clone = Arc::clone(&semaphore);
+            let protocols_clone = Arc::clone(&protocols);
             
             // Spawn a task for each scan
             let task = tokio::spawn(async move {
@@ -173,7 +176,7 @@ pub async fn run_syn_scan(
                     *counter += 1;
                 }
                 
-                match port_syn_scan(ip_addr, port, local_ip_address).await {
+                match port_syn_scan(ip_addr, port, local_ip_address, &protocols_clone).await {
                     Ok(result) => {
                         let mut results = single_results_clone.lock().unwrap();
                         results.push(result.clone());
