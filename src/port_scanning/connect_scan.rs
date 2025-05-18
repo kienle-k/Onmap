@@ -97,7 +97,7 @@ pub async fn run_connect_scan(
         Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
     };
 
-    let protocols = Arc::new(load_protocol_map("src/utils/port_service_mapping.json").expect("Failed to load"));
+    let protocols = Arc::new(load_protocol_map("src/utils/port_service_mapping.json").expect("Failed to load service names"));
 
     //println!("Starting scan of {} IPs across {} ports", ip_addresses.len(), ports_arr.len());
     
@@ -126,7 +126,7 @@ pub async fn run_connect_scan(
                 // Acquire a permit from the semaphore before scanning
                 let _permit = sem_clone.acquire().await.unwrap();
                 
-                // Increment packets sent counter
+                // Increment packets sent counter (Cause every check sends a SYN packet)
                 {
                     let mut counter = packets_sent_clone.lock().unwrap();
                     *counter += 1;
@@ -142,10 +142,14 @@ pub async fn run_connect_scan(
                             //println!("Found open port: {}:{}", ip_addr, port);
                             let mut open = open_ports_clone.lock().unwrap();
                             open.push(port);
+                            {
+                                // Increment packets sent counter by 2 (cause of ACK and RST)
+                                let mut counter = packets_sent_clone.lock().unwrap();
+                                *counter += 2;
+                            }
                         }
                     }
                     Err(_e) => {
-                        //eprintln!("Error scanning {}:{}: {}", ip_addr, port, e);
                     }
                 }
             });
@@ -154,15 +158,14 @@ pub async fn run_connect_scan(
         }
     }
 
-    //println!("Waiting for all scan tasks to complete...");
-    // Wait for all scans to complete
+    // Wait for scans to complete
     for task in tasks {
         let _ = task.await;
     }
     
     let end_time = SystemTime::now();
     
-    // Prepare the final results
+    // Final results
     let single_results = Arc::try_unwrap(single_results)
         .expect("References still exist to single_results")
         .into_inner()
@@ -186,9 +189,6 @@ pub async fn run_connect_scan(
         start_time,
         end_time,
     };
-    
-    //println!("Scan completed. Found {} results with {} open ports", 
-             //single_results.len(), all_result.open_ports.len());
     
     // Return both result types
     Ok((single_results, all_result))

@@ -23,28 +23,35 @@ services:
     build: ./dummy_hosts/dummy_random_ports
     networks:
       testnet:
-        ipv4_address: 172.28.0.11
+        ipv4_address: 172.28.0.20
 
   host_2:
     container_name: host_2
     build: ./dummy_hosts/dummy_random_ports
     networks:
       testnet:
-        ipv4_address: 172.28.0.12
+        ipv4_address: 172.28.0.21
 
   host_3:
     container_name: host_3
     build: ./dummy_hosts/dummy_random_ports
     networks:
       testnet:
-        ipv4_address: 172.28.30.45
+        ipv4_address: 172.28.0.22
 
   host_4:
     container_name: host_4
     build: ./dummy_hosts/dummy_random_ports
     networks:
       testnet:
-        ipv4_address: 172.28.10.124
+        ipv4_address: 172.28.0.23  
+  
+  host_5:
+    container_name: host_5
+    build: ./dummy_hosts/dummy_random_ports
+    networks:
+      testnet:
+        ipv4_address: 172.28.0.24
 
 networks:
   testnet:

@@ -4,7 +4,7 @@ use std::io::{Write};
 use std::net::{IpAddr, Ipv4Addr};
 use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
 use printing::host_discovery_results;
-use printing::{print_port_scan_results, print_host_discovery_results};
+use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original};
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 use crossterm::{
@@ -13,6 +13,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use chrono::prelude::*; // For Utc::now(), .with_timezone() und .format()
+use chrono_tz::Tz;      // For Tz
+use iana_time_zone::get_timezone;
+
 use crate::tui::{run_app, App};
 use local_ip_address::local_ip;
 
@@ -37,6 +41,8 @@ async fn main() -> Result<(), io::Error> {
     // Flush to enable TUI in docker
     // This is a workaround for the issue where the TUI doesn't show up in Docker
     io::stdout().flush()?;
+
+    let mut use_original_printing = true;
 
     // Get command-line arguments
     let args: Vec<String> = env::args().collect();
@@ -97,6 +103,13 @@ async fn main() -> Result<(), io::Error> {
             port_needed,
             port_mode,
             port_input)) = res {
+            
+            // Original startup message from nmap
+            let tz_str = get_timezone().expect("Failed to get system timezone");
+            let tz: Tz = tz_str.parse().expect("Invalid timezone string");
+            let now = Utc::now().with_timezone(&tz);
+            let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
+            println!("Starting Onmap 1.0 (https://github.com/kienle-k/Onmap) at {}", formatted_time);
 
             if let Some(main_selected) = main_selected {
                 // This parsing is specific to how the TUI collects input
@@ -174,7 +187,11 @@ async fn main() -> Result<(), io::Error> {
                                     // port_scanning::run_udp_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await; // Example
                                 }
                             }
-                            print_port_scan_results(port_scan_result);
+                            if use_original_printing == false{
+                                print_port_scan_results(port_scan_result);
+                            } else {
+                                print_port_scan_results_original(port_scan_result);
+                            }
                         } else {
                             println!("No port scan option selected or an error occurred.");
                         }
@@ -202,12 +219,21 @@ async fn main() -> Result<(), io::Error> {
     } else {
         
         match args.len() {
-            4 => {
+            4 | 5 => {
                 let scan_method_arg = &args[1];
                 let port_arg = &args[2];
                 let ip_addresses_arg = &args[3];
 
                 let port_prefix = "-p";
+
+                if args.len() == 5 {
+                    // Check if the last argument is a flag
+                    if args[4] == "-pp" {
+                        use_original_printing = false;
+                    } else {
+                        use_original_printing = true;
+                    }
+                }
 
                 // Attempt to remove the prefix
                 if let Some(result_port_string) = port_arg.strip_prefix(port_prefix) {
@@ -220,7 +246,11 @@ async fn main() -> Result<(), io::Error> {
                                     Ok(result) => port_scan_result = result,
                                     Err(e) => eprintln!("SYN scan failed: {}", e),
                                 }
-                                print_port_scan_results(port_scan_result);
+                                if use_original_printing == false{
+                                    print_port_scan_results(port_scan_result);
+                                } else {
+                                    print_port_scan_results_original(port_scan_result);
+                                }
                             },
                         "-sT" => {
                                 let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.clone(), 300).await;
@@ -228,7 +258,11 @@ async fn main() -> Result<(), io::Error> {
                                     Ok(result) => port_scan_result = result,
                                     Err(e) => eprintln!("SYN scan failed: {}", e),
                                 }
-                                print_port_scan_results(port_scan_result);
+                                if use_original_printing == false{
+                                    print_port_scan_results(port_scan_result);
+                                } else {
+                                    print_port_scan_results_original(port_scan_result);
+                                }
                             },
                         
                         _ => println!("Scan method not implemented yet")
