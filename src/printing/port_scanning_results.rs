@@ -78,11 +78,11 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
         } else {
             println!("\nOpen Ports:");
             
-            let mut port_table = Table::new();
-            port_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+            let mut open_port_table = Table::new();
+            open_port_table.set_format(*format::consts::FORMAT_BOX_CHARS);
             
             // Add header row
-            port_table.set_titles(Row::new(vec![
+            open_port_table.set_titles(Row::new(vec![
                 Cell::new("Port"),
                 Cell::new("Protocol"),
                 Cell::new("Service"),
@@ -111,7 +111,7 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
                     // Handle other reasons as needed
                 };
                 
-                port_table.add_row(Row::new(vec![
+                open_port_table.add_row(Row::new(vec![
                     Cell::new(&port_result.port.to_string()),
                     Cell::new(protocol_str),
                     Cell::new(&port_result.service),
@@ -120,8 +120,68 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
                 ]));
             }
             
-            port_table.printstd();
+            open_port_table.printstd();
         }
+
+        /*
+
+        println!("");
+
+        // Filter for only open ports first
+        let filtered_ports: Vec<&PortScanSingleResult> = host_results.iter()
+            .filter(|r| r.port_state == PortStates::Filtered)
+            .cloned()
+            .collect();
+
+        if filtered_ports.is_empty() {
+            println!("No filtered ports discovered.");
+        } else {
+            println!("\nFiltered Ports:");
+            
+            let mut filtered_ports_table = Table::new();
+            filtered_ports_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+            
+            // Add header row
+            filtered_ports_table.set_titles(Row::new(vec![
+                Cell::new("Port"),
+                Cell::new("Protocol"),
+                Cell::new("Service"),
+                Cell::new("TTL"),
+                Cell::new("Reason")
+            ]));
+            
+            // Add each open port as a row, sorted by port number
+            let mut sorted_filtered_ports = filtered_ports.clone();
+            sorted_filtered_ports.sort_by_key(|r| r.port);
+            
+            for port_result in sorted_filtered_ports {
+                // Convert enum values to strings for display
+                let protocol_str = match port_result.protocol {
+                    Protocols::TCP => "TCP",
+                    Protocols::UDP => "UDP",
+                    Protocols::ICMP => "ICMP",
+                    // Handle other protocols as needed
+                };
+                
+                let reason_str = match port_result.reason {
+                    PortStateReasons::SynAck => "SYN-ACK",
+                    PortStateReasons::Reset => "RST",
+                    PortStateReasons::Timeout => "Timeout",
+                    PortStateReasons::NoResponse => "No Response"
+                    // Handle other reasons as needed
+                };
+                
+                filtered_ports_table.add_row(Row::new(vec![
+                    Cell::new(&port_result.port.to_string()),
+                    Cell::new(protocol_str),
+                    Cell::new(&port_result.service),
+                    Cell::new(&port_result.ttl.to_string()),
+                    Cell::new(reason_str)
+                ]));
+            }
+            filtered_ports_table.printstd();
+        }
+        */
         
     }
     
