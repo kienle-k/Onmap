@@ -24,6 +24,10 @@ mod resolving;
 mod tui;
 mod models;
 
+mod utils;
+
+// use utils::json_loader::{load_protocols, get_port_info};
+
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
@@ -98,6 +102,9 @@ async fn main() -> Result<(), io::Error> {
                 Vec::new()
             };
 
+            // for port in &ports_arr {
+            //     println!("{}", port);
+            // }
             /* Output ip address and ports for debugging
 
             if let Ok(addresses) = &ip_addresses_arr {
@@ -134,7 +141,7 @@ async fn main() -> Result<(), io::Error> {
                     if let Some(port_scan_selected) = port_scan_selected {
                         match port_scan_selected {
                             PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr, local_ip_address).await.expect("SYN scan failed"),
-                            PortScanOption::ConnectScan => port_scanning::run_connect_scan(),
+                            PortScanOption::ConnectScan => port_scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr, 300).await.expect("TCP-Connect scan failed."),
                             PortScanOption::AckScan => port_scanning::run_ack_scan(),
                             PortScanOption::WindowScan => println!("Doing WindowScan"),
                             PortScanOption::MaimonScan => println!("Doing MaimonScan"),
