@@ -1,4 +1,5 @@
 use std::io;
+use std::net::{IpAddr, Ipv4Addr};
 use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
 use printing::{print_port_scan_results, print_host_discovery_results};
 use ratatui::backend::CrosstermBackend;
@@ -10,6 +11,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use crate::tui::{run_app, App};
+use local_ip_address::local_ip;
 
 mod host_discovery;
 mod port_scanning;
@@ -38,6 +40,23 @@ async fn main() -> Result<(), io::Error> {
     
     // Create app state
     let mut app = App::new();
+
+    // Get the local source IP for proper checksum calculation
+    let local_ip_address: Ipv4Addr = match local_ip() {
+        Ok(ip) => match ip {
+            IpAddr::V4(ipv4) => ipv4,
+            IpAddr::V6(_) => {
+                println!("Got an IPv6 address, but need IPv4");
+                // Default to localhost when we get an IPv6
+                Ipv4Addr::new(127, 0, 0, 1)
+            }
+        },
+        Err(e) => {
+            eprintln!("Error getting IP: {}", e);
+            // Default to localhost on error
+            Ipv4Addr::new(127, 0, 0, 1)
+        }
+    };
     
     // Main loop
     let res = run_app(&mut terminal, &mut app);
@@ -121,7 +140,7 @@ async fn main() -> Result<(), io::Error> {
                 MainMenuItem::SubMenuPortScan => {
                     if let Some(port_scan_selected) = port_scan_selected {
                         match port_scan_selected {
-                            PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr).await.expect("SYN scan failed."),
+                            PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr, local_ip_address).await.expect("SYN scan failed"),
                             PortScanOption::ConnectScan => port_scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr, 300).await.expect("TCP-Connect scan failed."),
                             PortScanOption::AckScan => port_scanning::run_ack_scan(),
                             PortScanOption::WindowScan => println!("Doing WindowScan"),
