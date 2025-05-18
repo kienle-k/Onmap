@@ -12,7 +12,6 @@ use crate::resolving::{resolve_hostname, extract_ttl};
 /// Returns a vector of individual host results and an aggregate summary.
 pub async fn run_ping_scan(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
-    ports: Vec<u16>
 ) -> (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) {
     // Start timing the operation
     let start_time = SystemTime::now();
@@ -33,10 +32,6 @@ pub async fn run_ping_scan(
             });
         }
     };
-
-    if !ports.is_empty() {
-        println!("Note: Ports specified but not used for ICMP ping scan: {:?}", ports);
-    }
    
     // Create a collection of futures
     let mut futures = FuturesUnordered::new();
@@ -85,7 +80,7 @@ pub async fn run_ping_scan(
     // Create the summary result
     let summary = HostDiscoveryAllResult {
         scanned_addresses: all_ips,
-        ports_per_host: if ports.is_empty() { 0 } else { ports.len() as u16 },
+        ports_per_host: 0,
         hosts_up,
         hosts_dns_resolution,
         start_time,
