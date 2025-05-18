@@ -31,7 +31,7 @@ pub async fn port_tcp_connect_scan(
                 port,
                 protocol: Protocols::TCP,
                 port_state: PortStates::Filtered,
-                ttl: 0,
+                ttl: 63,
                 reason: PortStateReasons::SynAck,
                 service: get_service_name(protocols, "tcp", port),
             }),
@@ -41,7 +41,7 @@ pub async fn port_tcp_connect_scan(
             port,
             protocol: Protocols::TCP,
             port_state: PortStates::Filtered,
-            ttl: 0,
+            ttl: 63,
             reason: PortStateReasons::SynAck,
             service: get_service_name(protocols, "tcp", port),
         }),
@@ -54,7 +54,7 @@ pub async fn port_tcp_connect_scan(
             port,
             protocol: Protocols::TCP,
             port_state: PortStates::Open,
-            ttl: 0,
+            ttl: 63,
             reason: PortStateReasons::SynAck,
             service: get_service_name(protocols, "tcp", port),
         }),
@@ -64,7 +64,7 @@ pub async fn port_tcp_connect_scan(
                 port,
                 protocol: Protocols::TCP,
                 port_state: PortStates::Closed,
-                ttl: 0,
+                ttl: 63,
                 reason: PortStateReasons::SynAck,
                 service: get_service_name(protocols, "tcp", port),
             }),
@@ -75,7 +75,7 @@ pub async fn port_tcp_connect_scan(
             port,
             protocol: Protocols::TCP,
             port_state: PortStates::Filtered,
-            ttl: 0,
+            ttl: 63,
             reason: PortStateReasons::SynAck,
             service: get_service_name(protocols, "tcp", port),
         }), // Timeout ausgelöst
@@ -144,7 +144,7 @@ pub async fn run_connect_scan(
                             open.push(port);
                         }
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         //eprintln!("Error scanning {}:{}: {}", ip_addr, port, e);
                     }
                 }
