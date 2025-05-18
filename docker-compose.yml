@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  onmap:
+    container_name: onmap
+    build: .
+    depends_on:
+      - host_1
+      - host_2
+      - host_3
+      - host_4
+    networks:
+      testnet:
+        ipv4_address: 172.28.0.10
+    tty: true          # Allocate a pseudo-TTY for interactive processes
+    stdin_open: true   # Keep stdin open even if not attached
+    environment:
+      - TERM=xterm-256color # Explicitly set a common terminal type
+    entrypoint: ["tail", "-f", "/dev/null"] # Keep the container running indefinitely
+
+  host_1:
+    container_name: host_1
+    build: ./dummy_hosts/dummy_random_ports
+    networks:
+      testnet:
+        ipv4_address: 172.28.0.11
+
+  host_2:
+    container_name: host_2
+    build: ./dummy_hosts/dummy_random_ports
+    networks:
+      testnet:
+        ipv4_address: 172.28.0.12
+
+  host_3:
+    container_name: host_3
+    build: ./dummy_hosts/dummy_random_ports
+    networks:
+      testnet:
+        ipv4_address: 172.28.30.45
+
+  host_4:
+    container_name: host_4
+    build: ./dummy_hosts/dummy_random_ports
+    networks:
+      testnet:
+        ipv4_address: 172.28.10.124
+
+networks:
+  testnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
