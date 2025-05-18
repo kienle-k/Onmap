@@ -125,7 +125,7 @@ async fn main() -> Result<(), io::Error> {
                                 HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery (Placeholder)"),
                                 HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery (Placeholder)"),
                                 HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery (Placeholder)"),
-                                HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(ip_addresses_arr).await,
+                                HostDiscoveryOption::IcmpEcho => host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await,
                                 HostDiscoveryOption::IcmpTimestamp => {
                                     println!("Doing IcmpTimestamp (Placeholder - call actual function)");
                                     // host_discovery::run_icmp_timestamp(ip_addresses_arr).await; // Example signature
