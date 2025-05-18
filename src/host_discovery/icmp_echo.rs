@@ -99,7 +99,7 @@ pub async fn run_icmp_echo(
 /// Ping a host using raw ICMP echo request and return reachability, latency, and TTL.
 async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, Option<u8>) {
     let ip = *ip;
-    let result = task::spawn_blocking(move || {
+    let task = task::spawn_blocking(move || {
 
         let protocol = TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp));
         let (mut tx, mut rx) = match transport_channel(1024, protocol) {
@@ -168,10 +168,14 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, 
         (false, None, None)
     });
 
-    match result.await {
-        Ok(res) => res,
+    match timeout(Duration::from_secs(3), task).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(e)) => {
+            eprintln!("Join error in ICMP task: {:?}", e);
+            (false, None, None)
+        }
         Err(_) => {
-            eprintln!("ICMP echo scan task failed");
+            eprintln!("ICMP echo request timed out (hard timeout)");
             (false, None, None)
         }
     }
