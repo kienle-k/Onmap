@@ -1,6 +1,9 @@
+use std::env; // Added to read command-line arguments
 use std::io;
 use std::io::{Write};
+use std::net::{IpAddr, Ipv4Addr};
 use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
+use printing::host_discovery_results;
 use printing::{print_port_scan_results, print_host_discovery_results};
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
@@ -11,6 +14,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use crate::tui::{run_app, App};
+use local_ip_address::local_ip;
 
 mod host_discovery;
 mod port_scanning;
@@ -55,98 +59,232 @@ async fn main() -> Result<(), io::Error> {
     )?;
     terminal.show_cursor()?;
 
+    // Get command-line arguments
+    let args: Vec<String> = env::args().collect();
+    let run_tui_mode = args.contains(&String::from("-tui"));
+
+    // Get the local source IP for proper checksum calculation
+    // This might be needed for both TUI and non-TUI modes if you implement CLI scanning
+    let local_ip_address: Ipv4Addr = match local_ip() {
+        Ok(ip) => match ip {
+            IpAddr::V4(ipv4) => ipv4,
+            IpAddr::V6(_) => {
+                println!("Got an IPv6 address, but need IPv4 for some operations. Defaulting to localhost.");
+                // Default to localhost when we get an IPv6
+                Ipv4Addr::new(127, 0, 0, 1)
+            }
+        },
+        Err(e) => {
+            eprintln!("Error getting local IP: {}. Defaulting to localhost.", e);
+            // Default to localhost on error
+            Ipv4Addr::new(127, 0, 0, 1)
+        }
+    };
+
+    // Initialize results variables specifically for TUI mode,
+    // as they are populated based on TUI interaction.
     let mut port_scan_result: (Vec<PortScanSingleResult>, PortScanAllResult) = (Vec::new(), PortScanAllResult::new());
     let mut host_discovery_result: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) = (Vec::new(), HostDiscoveryAllResult::new());
-    
-    // Handle application result
-    if let Ok((
-        main_selected,
-        host_discovery_selected,
-        port_scan_selected,
-        ip_input,
-        port_needed,
-        port_mode,
-        port_input)) = res {
 
-        if let Some(main_selected) = main_selected {
+    if run_tui_mode {
+        // Setup terminal
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
+        
+        // Create app state
+        let mut app = App::new();
+        
+        // Main TUI loop
+        let res = run_app(&mut terminal, &mut app);
+        
+        // Restore terminal
+        disable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+        terminal.show_cursor()?;
+        
+        // Handle application result from TUI
+        if let Ok((
+            main_selected,
+            host_discovery_selected,
+            port_scan_selected,
+            ip_input,
+            port_needed,
+            port_mode,
+            port_input)) = res {
 
-            let ip_addresses_arr = parsing::parse_ip_addresses(&ip_input);
+            if let Some(main_selected) = main_selected {
+                // This parsing is specific to how the TUI collects input
+                let ip_addresses_arr = parsing::parse_ip_addresses(&ip_input);
 
-            let ports_arr: Vec<u16> = if port_needed {
-                if let Some(port_mode) = port_mode {
-                    match port_mode {
-                        PortOptions::NormalMode => parsing::set_ports_arr(PortOptions::NormalMode),
-                        PortOptions::PortRangeInput => parsing::convert_port_range_to_arr(port_input),
-                        PortOptions::FastMode => parsing::set_ports_arr(PortOptions::FastMode),
-                        PortOptions::SequentialMode => parsing::set_ports_arr(PortOptions::SequentialMode)
+                let ports_arr: Vec<u16> = if port_needed {
+                    if let Some(port_mode) = port_mode {
+                        match port_mode {
+                            PortOptions::NormalMode => parsing::set_ports_arr(PortOptions::NormalMode),
+                            PortOptions::PortRangeInput => parsing::convert_port_range_to_arr(port_input),
+                            PortOptions::FastMode => parsing::set_ports_arr(PortOptions::FastMode),
+                            PortOptions::SequentialMode => parsing::set_ports_arr(PortOptions::SequentialMode)
+                        }
+                    } else {
+                        Vec::new()
                     }
                 } else {
                     Vec::new()
+                };
+
+                match main_selected {
+                    MainMenuItem::SubMenuHostDiscovery => {
+                        if let Some(host_discovery_selected) = host_discovery_selected {
+                            match host_discovery_selected {
+                                HostDiscoveryOption::ListScan => println!("Doing ListScan (Output results or integrate further)"), // Placeholder
+                                HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await,
+                                HostDiscoveryOption::TcpSynDiscovery => {
+                                    println!("Doing TcpSynDiscovery (Placeholder - call actual function)");
+                                    // host_discovery::run_tcp_syn_discovery(ip_addresses_arr, ports_arr).await; // Example signature
+                                },
+                                HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery (Placeholder)"),
+                                HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery (Placeholder)"),
+                                HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery (Placeholder)"),
+                                HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(ip_addresses_arr).await,
+                                HostDiscoveryOption::IcmpTimestamp => {
+                                    println!("Doing IcmpTimestamp (Placeholder - call actual function)");
+                                    // host_discovery::run_icmp_timestamp(ip_addresses_arr).await; // Example signature
+                                },
+                                HostDiscoveryOption::IcmpNetmask => {
+                                     println!("Doing IcmpNetmask (Placeholder - call actual function)");
+                                    // host_discovery::run_icmp_netmask(ip_addresses_arr).await; // Example signature
+                                }
+                            }
+                            print_host_discovery_results(host_discovery_result);
+                        } else {
+                            println!("No host discovery option selected or an error occurred.");
+                        }
+                    }
+                    MainMenuItem::SubMenuPortScan => {
+                        if let Some(port_scan_selected) = port_scan_selected {
+                            match port_scan_selected {
+                                PortScanOption::SynScan => {
+                                    match port_scanning::run_syn_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await {
+                                        Ok(result) => port_scan_result = result,
+                                        Err(e) => eprintln!("SYN scan failed: {}", e),
+                                    }
+                                },
+                                PortScanOption::ConnectScan => {
+                                     match port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.clone(), 300).await { // Assuming 300ms timeout
+                                        Ok(result) => port_scan_result = result,
+                                        Err(e) => eprintln!("TCP-Connect scan failed: {}", e),
+                                    }
+                                },
+                                PortScanOption::AckScan => {
+                                    println!("Doing AckScan (Placeholder - call actual function)");
+                                    // port_scanning::run_ack_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await; // Example
+                                },
+                                PortScanOption::WindowScan => println!("Doing WindowScan (Placeholder)"),
+                                PortScanOption::MaimonScan => println!("Doing MaimonScan (Placeholder)"),
+                                PortScanOption::NullScan => println!("Doing NullScan (Placeholder)"),
+                                PortScanOption::FinScan => println!("Doing FinScan (Placeholder)"),
+                                PortScanOption::XmasScan => println!("Doing XmasScan (Placeholder)"),
+                                PortScanOption::UdpScan => {
+                                    println!("Doing UdpScan (Placeholder - call actual function)");
+                                    // port_scanning::run_udp_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await; // Example
+                                }
+                            }
+                            print_port_scan_results(port_scan_result);
+                        } else {
+                            println!("No port scan option selected or an error occurred.");
+                        }
+                    }
+                    MainMenuItem::SubMenuServiceDetection => {
+                        println!("Service Detection selected (Placeholder - call actual function)");
+                        // service_detection::run_service_detection(ip_addresses_arr, ports_arr).await; // Example
+                    },
+                    MainMenuItem::SubMenuOperatingSystemDetection => {
+                        println!("OS Detection selected (Placeholder - call actual function)");
+                        // os_detection::run_os_detection(ip_addresses_arr).await; // Example
+                    },
                 }
             } else {
-                Vec::new()
-            };
+                 println!("No main menu item was selected, or TUI was exited prematurely.");
+            }
+        } else if let Err(e) = res {
+             // This case handles if run_app itself returns an error, not if the user exits without selection.
+            eprintln!("TUI Application Error: {:?}", e);
+        }
+        // else: TUI finished without error but didn't yield the expected tuple.
+        // This could happen if run_app returns Ok(()) without selections,
+        // or if the user quits in a way that doesn't populate the selections.
 
-            // for port in &ports_arr {
-            //     println!("{}", port);
-            // }
-            /* Output ip address and ports for debugging
+    } else {
+        
+        match args.len() {
+            4 => {
+                let scan_method_arg = &args[1];
+                let port_arg = &args[2];
+                let ip_addresses_arg = &args[3];
 
-            if let Ok(addresses) = &ip_addresses_arr {
-                for ip_address in addresses {
-                    println!("{:?}", ip_address);
+                let port_prefix = "-p";
+
+                // Attempt to remove the prefix
+                if let Some(result_port_string) = port_arg.strip_prefix(port_prefix) {
+                    let ip_addresses_arr = parsing::parse_ip_addresses(&ip_addresses_arg);
+                    let ports_arr = parsing::convert_port_range_to_arr(result_port_string.to_string());
+                    match scan_method_arg.as_ref() {
+                        "-sS" => {
+                                let scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await;
+                                match scan_result {
+                                    Ok(result) => port_scan_result = result,
+                                    Err(e) => eprintln!("SYN scan failed: {}", e),
+                                }
+                                print_port_scan_results(port_scan_result);
+                            },
+                        "-sT" => {
+                                let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.clone(), 300).await;
+                                match scan_result {
+                                    Ok(result) => port_scan_result = result,
+                                    Err(e) => eprintln!("SYN scan failed: {}", e),
+                                }
+                                print_port_scan_results(port_scan_result);
+                            },
+                        
+                        _ => println!("Scan method not implemented yet")
+                    }
+                } else {
+                    println!("Prefix '{}' not found in '{}'.", port_prefix, port_arg);
                 }
-            }
 
-            for port in &ports_arr {
-                println!("{}", port);
-            }
-            */
+            },
 
-            match main_selected {
-                MainMenuItem::SubMenuHostDiscovery => {
-                    if let Some(host_discovery_selected) = host_discovery_selected {
-                        match host_discovery_selected {
-                            HostDiscoveryOption::ListScan => println!("Doing ListScan"),
-                            HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr, ports_arr).await,
-                            HostDiscoveryOption::TcpSynDiscovery => host_discovery::run_tcp_syn_discovery(),
-                            HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery"),
-                            HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery"),
-                            HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery"),
-                            HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(ip_addresses_arr).await,
-                            HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(),
-                            HostDiscoveryOption::IcmpNetmask => host_discovery::run_icmp_netmask()
-                        }
+        3 => {
+            let scan_method_arg = &args[1];
+            let ip_addresses_arg = &args[2];
+
+            let ip_addresses_arr = parsing::parse_ip_addresses(&ip_addresses_arg);
+
+            match scan_method_arg.as_ref() {
+                "-sn" => {
+                        let host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await;
                         print_host_discovery_results(host_discovery_result);
-                    } else {
-                        println!("Something went wrong");
-                    }
+                    },
+                "-PE" => {
+                        let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
                 }
-                MainMenuItem::SubMenuPortScan => {
-                    if let Some(port_scan_selected) = port_scan_selected {
-                        match port_scan_selected {
-                            PortScanOption::SynScan => port_scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr).await.expect("SYN scan failed."),
-                            PortScanOption::ConnectScan => port_scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr, 300).await.expect("TCP-Connect scan failed."),
-                            PortScanOption::AckScan => port_scanning::run_ack_scan(),
-                            PortScanOption::WindowScan => println!("Doing WindowScan"),
-                            PortScanOption::MaimonScan => println!("Doing MaimonScan"),
-                            PortScanOption::NullScan => println!("Doing NullScan"),
-                            PortScanOption::FinScan => println!("Doing FinScan"),
-                            PortScanOption::XmasScan => println!("Doing XmasScan"),
-                            PortScanOption::UdpScan => port_scanning::run_udp_scan(),
-                        }
-                        print_port_scan_results(port_scan_result);
-                    }
-                    else {
-                        println!("Something went wrong")
-                    }
-                }
-                MainMenuItem::SubMenuServiceDetection => service_detection::run_service_detection(),
-                MainMenuItem::SubMenuOperatingSystemDetection => os_detection::run_os_detection(),
+                
+                _ => println!("Scan method not implemented yet")
             }
 
         }
 
+        _ => println!("Please select a valid amount of arguments")
+
+        }
+
     }
+
     Ok(())
 }
