@@ -108,7 +108,7 @@ async fn main() -> Result<(), io::Error> {
             let tz: Tz = tz_str.parse().expect("Invalid timezone string");
             let now = Utc::now().with_timezone(&tz);
             let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
-            println!("Starting Onmap 1.0 (https://github.com/kienle-k/Onmap) at {}", formatted_time);
+            println!("\nStarting Onmap 1.0 (https://github.com/kienle-k/Onmap) at {}", formatted_time);
 
             if let Some(main_selected) = main_selected {
                 // This parsing is specific to how the TUI collects input
@@ -226,6 +226,14 @@ async fn main() -> Result<(), io::Error> {
                 use_original_printing = true;
             }
         }
+
+        // Original startup message from nmap
+        let tz_str = get_timezone().expect("Failed to get system timezone");
+        let tz: Tz = tz_str.parse().expect("Invalid timezone string");
+        let now = Utc::now().with_timezone(&tz);
+        let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
+        println!("\nStarting Onmap 1.0 (https://github.com/kienle-k/Onmap) at {}", formatted_time);
+        
         
         match arg_len {
             4 => {
@@ -236,7 +244,7 @@ async fn main() -> Result<(), io::Error> {
                 let port_prefix = "-p";
 
                 // Attempt to remove the prefix
-                if let Some(result_port_string) = port_arg.strip_prefix(port_prefix) {
+                if let Some(result_port_string) = port_arg.strip_prefix(port_prefix)  {
                     let ip_addresses_arr = parsing::parse_ip_addresses(&ip_addresses_arg);
                     let ports_arr = parsing::convert_port_range_to_arr(result_port_string.to_string());
                     match scan_method_arg.as_ref() {
