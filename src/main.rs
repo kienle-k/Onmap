@@ -167,16 +167,13 @@ async fn main() -> Result<(), io::Error> {
                                     }
                                 },
                                 PortScanOption::ConnectScan => {
-                                     match port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.clone(), 300).await { // Assuming 300ms timeout
+                                    match port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.clone(), 300).await { // Assuming 300ms timeout
                                         Ok(result) => port_scan_result = result,
                                         Err(e) => eprintln!("TCP-Connect scan failed: {}", e),
                                     }
                                 },
                                 PortScanOption::AckScan => {
-                                     match port_scanning::run_ack_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await {
-                                         Ok(result) => port_scan_result = result,
-                                         Err(e) => eprintln!("ACK scan failed: {}", e),
-                                     }
+                                    port_scanning::run_ack_scan(ip_addresses_arr, &ports_arr, local_ip_address).await;
                                 },
                                 PortScanOption::WindowScan => println!("Doing WindowScan (Placeholder)"),
                                 PortScanOption::MaimonScan => println!("Doing MaimonScan (Placeholder)"),
@@ -269,15 +266,7 @@ async fn main() -> Result<(), io::Error> {
                         "-sA" => {
                                 if ports_arr.is_empty() { eprintln!("Error: No ports specified for ACK scan."); return Ok(()); }
                                 // Call the new ACK scan function
-                                match port_scanning::run_ack_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await {
-                                    Ok(result) => port_scan_result = result,
-                                    Err(e) => eprintln!("ACK scan failed: {}", e),
-                                }
-                                if use_original_printing {
-                                    print_port_scan_results_original(port_scan_result).await;
-                                } else {
-                                    print_port_scan_results(port_scan_result);
-                                }
+                                port_scanning::run_ack_scan(ip_addresses_arr, &ports_arr, local_ip_address).await;
                             },
                         
                         _ => println!("Scan method not implemented yet")
