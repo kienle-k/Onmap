@@ -112,9 +112,9 @@ async fn main() -> Result<(), io::Error> {
 
             if let Some(main_selected) = main_selected {
                 // This parsing is specific to how the TUI collects input
-                let ip_addresses_arr = parsing::parse_ip_addresses(&ip_input);
+                let ip_addresses_arr = parsing::parse_ip_addresses(&ip_input).expect("Failed to parse Ip addresses");
 
-                let ports_arr: Vec<u16> = if port_needed {
+                let ports_arr: Result<Vec<u16>, String> = if port_needed {
                     if let Some(port_mode) = port_mode {
                         match port_mode {
                             PortOptions::NormalMode => parsing::set_ports_arr(PortOptions::NormalMode),
@@ -123,10 +123,10 @@ async fn main() -> Result<(), io::Error> {
                             PortOptions::SequentialMode => parsing::set_ports_arr(PortOptions::SequentialMode)
                         }
                     } else {
-                        Vec::new()
+                        Err("Ports array could not be set".to_string())
                     }
                 } else {
-                    Vec::new()
+                    Err("Ports array could not be set".to_string())
                 };
 
                 match main_selected {
@@ -134,7 +134,7 @@ async fn main() -> Result<(), io::Error> {
                         if let Some(host_discovery_selected) = host_discovery_selected {
                             match host_discovery_selected {
                                 HostDiscoveryOption::ListScan => println!("Doing ListScan (Output results or integrate further)"), // Placeholder
-                                HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await,
+                                HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(Ok(ip_addresses_arr)).await,
                                 HostDiscoveryOption::TcpSynDiscovery => {
                                     println!("Doing TcpSynDiscovery (Placeholder - call actual function)");
                                     // host_discovery::run_tcp_syn_discovery(ip_addresses_arr, ports_arr).await; // Example signature
@@ -142,7 +142,7 @@ async fn main() -> Result<(), io::Error> {
                                 HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery (Placeholder)"),
                                 HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery (Placeholder)"),
                                 HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery (Placeholder)"),
-                                HostDiscoveryOption::IcmpEcho => host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await,
+                                HostDiscoveryOption::IcmpEcho => host_discovery_result = host_discovery::run_icmp_echo(Ok(ip_addresses_arr)).await,
                                 HostDiscoveryOption::IcmpTimestamp => {
                                     println!("Doing IcmpTimestamp (Placeholder - call actual function)");
                                     // host_discovery::run_icmp_timestamp(ip_addresses_arr).await; // Example signature
@@ -161,19 +161,19 @@ async fn main() -> Result<(), io::Error> {
                         if let Some(port_scan_selected) = port_scan_selected {
                             match port_scan_selected {
                                 PortScanOption::SynScan => {
-                                    match port_scanning::run_syn_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await {
+                                    match port_scanning::run_syn_scan(Ok(ip_addresses_arr), ports_arr.expect("Ports array not be set"), local_ip_address).await {
                                         Ok(result) => port_scan_result = result,
                                         Err(e) => eprintln!("SYN scan failed: {}", e),
                                     }
                                 },
                                 PortScanOption::ConnectScan => {
-                                    match port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.clone(), 300).await { // Assuming 300ms timeout
+                                    match port_scanning::run_connect_scan(Ok(ip_addresses_arr), ports_arr.expect("Ports array could not be set"), 300).await { // Assuming 300ms timeout
                                         Ok(result) => port_scan_result = result,
                                         Err(e) => eprintln!("TCP-Connect scan failed: {}", e),
                                     }
                                 },
                                 PortScanOption::AckScan => {
-                                    port_scanning::run_ack_scan(ip_addresses_arr, &ports_arr, local_ip_address).await;
+                                    port_scanning::run_ack_scan(Ok(ip_addresses_arr), &ports_arr.expect("Ports array could not be set"), local_ip_address).await;
                                 },
                                 PortScanOption::WindowScan => println!("Doing WindowScan (Placeholder)"),
                                 PortScanOption::MaimonScan => println!("Doing MaimonScan (Placeholder)"),
@@ -248,7 +248,7 @@ async fn main() -> Result<(), io::Error> {
                     let ports_arr = parsing::convert_port_range_to_arr(result_port_string.to_string());
                     match scan_method_arg.as_ref() {
                         "-sS" => {
-                                let scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr.clone(), local_ip_address).await;
+                                let scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr.expect("Ports array could not be set"), local_ip_address).await;
                                 match scan_result {
                                     Ok(result) => port_scan_result = result,
                                     Err(e) => eprintln!("SYN scan failed: {}", e),
@@ -260,7 +260,7 @@ async fn main() -> Result<(), io::Error> {
                                 }
                             },
                         "-sT" => {
-                                let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.clone(), 300).await;
+                                let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.expect("Ports array could not be set"), 300).await;
                                 match scan_result {
                                     Ok(result) => port_scan_result = result,
                                     Err(e) => eprintln!("SYN scan failed: {}", e),
@@ -272,9 +272,8 @@ async fn main() -> Result<(), io::Error> {
                                 }
                             },
                         "-sA" => {
-                                if ports_arr.is_empty() { eprintln!("Error: No ports specified for ACK scan."); return Ok(()); }
                                 // Call the new ACK scan function
-                                port_scanning::run_ack_scan(ip_addresses_arr, &ports_arr, local_ip_address).await;
+                                port_scanning::run_ack_scan(ip_addresses_arr, &ports_arr.expect("Ports array could not be set"), local_ip_address).await;
                             },
                         
                         _ => println!("Scan method not implemented yet")

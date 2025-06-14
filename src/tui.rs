@@ -368,7 +368,7 @@ fn ui(f: &mut Frame, app: &App) {
         .constraints(
             [
                 Constraint::Percentage(0),   // Left margin
-                Constraint::Percentage(25),   // Center content (25% width)
+                Constraint::Percentage(30),   // Center content (30% width)
                 Constraint::Percentage(0),   // Right margin
             ]
             .as_ref(),
@@ -383,7 +383,7 @@ fn ui(f: &mut Frame, app: &App) {
             [
                 Constraint::Length(3),       // Title
                 Constraint::Min(10),         // Menu content
-                Constraint::Length(3),       // Instructions
+                Constraint::Length(5),       // Instructions
             ]
             .as_ref(),
         )
@@ -460,7 +460,7 @@ fn ui(f: &mut Frame, app: &App) {
 
             // Add text to the instructions block
             let instructions_text = Text::from(
-                "Press 1-4 to select an option. Press 'q' to quit."
+            "Press 1-4 to select an option\nPress 'q' to quit"
             );
             f.render_widget(
                 Paragraph::new(instructions_text).block(instructions),
@@ -574,7 +574,7 @@ fn ui(f: &mut Frame, app: &App) {
 
             // Add text to the instructions block
             let instructions_text = Text::from(
-                "Press 1-9 to select a sub-option. Press 'b' to go back to main menu. Press 'q' to quit."
+                "Press 1-9 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit"
             );
             f.render_widget(
                 Paragraph::new(instructions_text).block(instructions),
@@ -688,7 +688,7 @@ fn ui(f: &mut Frame, app: &App) {
 
             // Add text to the instructions block
             let instructions_text = Text::from(
-                "Press 1-9 to select a sub-option. Press 'b' to go back to main menu. Press 'q' to quit."
+                "Press 1-9 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit"
             );
             f.render_widget(
                 Paragraph::new(instructions_text).block(instructions),
@@ -730,7 +730,7 @@ fn ui(f: &mut Frame, app: &App) {
 
             // Add text to the instructions block
             let instructions_text = Text::from(
-                "Enter IP address and press Enter to submit. Press Esc to cancel."
+                "Enter IP address and press Enter to submit\nPress Esc to clear"
             );
             f.render_widget(
                 Paragraph::new(instructions_text).block(instructions),
@@ -805,7 +805,7 @@ fn ui(f: &mut Frame, app: &App) {
 
             // Add text to the instructions block
             let instructions_text = Text::from(
-                "Press 1-3 to select a sub-option. Press 'b' to go back to main menu. Press 'q' to quit."
+                "Press 1-3 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit"
             );
             f.render_widget(
                 Paragraph::new(instructions_text).block(instructions),
@@ -848,7 +848,7 @@ fn ui(f: &mut Frame, app: &App) {
 
             // Add text to the instructions block
             let instructions_text = Text::from(
-                "Enter port range and press Enter to submit. Press Esc to cancel."
+                "Enter port range and press Enter to submit\nPress Esc to clear"
             );
             f.render_widget(
                 Paragraph::new(instructions_text).block(instructions),

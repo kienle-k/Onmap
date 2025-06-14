@@ -1,11 +1,11 @@
 Oxidized nmap
 
 Todo:
-Fit TUI to the screen
+
 Reimplement CLI parsing
 Restructure and add lib.rs
-Add unit tests (integration tests?)
 
+Add unit tests (integration tests?)
 Remove unwraps
 Remove copy / clones
 Remove warnings

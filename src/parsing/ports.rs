@@ -1,6 +1,6 @@
 use super::super::models::PortOptions;
 
-pub fn convert_port_range_to_arr(port_input: String) -> Vec<u16> {
+pub fn convert_port_range_to_arr(port_input: String) -> Result<Vec<u16>, String> {
     let input = port_input.trim();
 
 
@@ -19,53 +19,55 @@ pub fn convert_port_range_to_arr(port_input: String) -> Vec<u16> {
 
     // Handle full range case
     if input == "-" {
-        return (0..=65535).collect();
+        let ports: Vec<u16> = (0u16..=65535).collect();
+        return Ok(ports)
     } else if input == "F" {
-        return most_used;
+        return Ok(most_used);
     }
 
     // Handle single port case
     if !input.contains('-') {
         return match input.parse::<u16>() {
-            Ok(port) => vec![port],
-            Err(_) => Vec::new(),
+            Ok(port) => Ok(vec![port]),
+            Err(_) => Err("Input must contain -".to_string()),
         };
     }
 
     // Handle range case
     let parts: Vec<&str> = input.split('-').collect();
     if parts.len() != 2 {
-        return Vec::new();
+       return Err("Input must contain 2 port numbers".to_string())
     }
 
-    let start = match parts[0].trim().parse::<u16>() {
-        Ok(num) => num,
-        Err(_) => return Vec::new(),
-    };
+    let start = parts[0]
+        .trim()
+        .parse::<u16>()
+        .map_err(|_| format!("Invalid start port number: '{}'", parts[0]))?;
 
-    let end = match parts[1].trim().parse::<u16>() {
-        Ok(num) => num,
-        Err(_) => return Vec::new(),
-    };
+    let end = parts[1]
+        .trim()
+        .parse::<u16>()
+        .map_err(|_| format!("Invalid end port number: '{}'", parts[1]))?;
 
     if start <= end {
-        (start..=end).collect()
+        // Wrap the successful result in Ok()
+        Ok((start..=end).collect())
     } else {
-        Vec::new()
+        // Return a specific error for an invalid range
+        Err(format!("Invalid range: start port {} is greater than end port {}", start, end))
     }
 }
 
-pub fn set_ports_arr(port_option: PortOptions) -> Vec<u16> {
+pub fn set_ports_arr(port_option: PortOptions) -> Result<Vec<u16>, String> {
     match port_option {
         PortOptions::NormalMode => {
 
-            (1..=1000).collect()
-
+            Ok((1..=1000).collect())
         },
 
         PortOptions::FastMode => {
             // Return the 100 most common ports
-            vec![
+            Ok(vec![
                 1, 7, 9, 13, 21, 22, 23, 25, 26, 37, 
                 53, 67, 68, 69, 79, 80, 81, 82, 83, 84,
                 85, 88, 106, 110, 111, 113, 119, 123, 135, 137,
@@ -76,15 +78,15 @@ pub fn set_ports_arr(port_option: PortOptions) -> Vec<u16> {
                 8080, 8081, 8088, 8090, 8118, 8880, 8909, 9000, 9090, 9200, 
                 9300, 9999, 10000, 10001, 11211, 27017, 27018, 27019, 28017, 32400, 
                 32768, 32769, 49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159
-            ]
+            ])
         },
         
         PortOptions::SequentialMode => {
 
-            (1..=65535).collect()
+            Ok((1..=65535).collect())
 
         },
 
-        _ => Vec::new(),
+        _ => Err("Ports array could not be set".to_string())
     }
 }
