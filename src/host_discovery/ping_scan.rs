@@ -15,7 +15,6 @@ pub async fn run_ping_scan(
 ) -> (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) {
     // Start timing the operation
     let start_time = SystemTime::now();
-    let mut packets_sent = 0;
     
     let ips = match ip_addresses {
         Ok(addresses) => addresses,
@@ -42,7 +41,6 @@ pub async fn run_ping_scan(
     // Add ping tasks to our collection
     for ip in ips {
         futures.push(async move {
-            packets_sent += 1;
             let (is_reachable, latency, ttl) = ping_host_with_details(&ip).await;
 
             let mut dns_resolve = None;

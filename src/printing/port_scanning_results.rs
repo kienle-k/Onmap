@@ -97,18 +97,15 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
             for port_result in sorted_open_ports {
                 // Convert enum values to strings for display
                 let protocol_str = match port_result.protocol {
-                    Protocols::TCP => "TCP",
-                    Protocols::UDP => "UDP",
-                    Protocols::ICMP => "ICMP",
-                    // Handle other protocols as needed
+                    Protocols::TCP => "TCP"
+                    // Other protocols not needed yet
                 };
                 
                 let reason_str = match port_result.reason {
                     PortStateReasons::SynAck => "SYN-ACK",
                     PortStateReasons::Reset => "RST",
-                    PortStateReasons::Timeout => "Timeout",
-                    PortStateReasons::NoResponse => "No Response"
-                    // Handle other reasons as needed
+                    PortStateReasons::Timeout => "Timeout"
+                    // Other reasons not needed yet
                 };
                 
                 open_port_table.add_row(Row::new(vec![

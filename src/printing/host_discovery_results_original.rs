@@ -1,5 +1,3 @@
-use std::time::Duration;
-use prettytable::{Table, Row, Cell, format};
 use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
 
 

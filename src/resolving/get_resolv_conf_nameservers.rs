@@ -2,7 +2,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use trust_dns_resolver::config::{NameServerConfig, Protocol};
-use trust_dns_resolver::proto::rr::rdata::name;
 
 
 

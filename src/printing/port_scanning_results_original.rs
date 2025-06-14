@@ -58,9 +58,7 @@ pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult
             for port_result in sorted_open_ports {
                 // Convert enum values to strings for display
                 let protocol_str = match port_result.protocol {
-                    Protocols::TCP => "tcp",
-                    Protocols::UDP => "udp",
-                    Protocols::ICMP => "icmp",
+                    Protocols::TCP => "tcp"
                 };
                 println!("{:<7}/{}  open     {}", &port_result.port.to_string(), protocol_str, &port_result.service);  
             }

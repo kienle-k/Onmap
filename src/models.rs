@@ -1,4 +1,3 @@
-use std::alloc::System;
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
 
@@ -88,7 +87,6 @@ pub enum PortOptions {
 pub enum PortStates {
     Open,
     Closed,
-    Unfiltered,
     Filtered
 }
 
@@ -96,15 +94,12 @@ pub enum PortStates {
 pub enum PortStateReasons {
     SynAck,
     Reset,
-    NoResponse,
     Timeout
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Protocols {
-    TCP,
-    UDP,
-    ICMP
+    TCP
 }
 
 #[derive(Debug, Clone)]
