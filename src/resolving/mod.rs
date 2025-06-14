@@ -6,3 +6,5 @@ pub use resolve_hostname::resolve_hostname;
 
 pub mod extract_ttl;
 pub use extract_ttl::extract_ttl;
+
+pub mod get_service_name;

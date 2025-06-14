@@ -7,7 +7,7 @@ use pnet::transport::{transport_channel, TransportChannelType, TransportProtocol
 use rand::Rng;
 use pnet::transport::tcp_packet_iter;
 use std::result::Result;
-use crate::utils::get_service_name::{ProtocolMap, load_protocol_map, get_service_name};
+use crate::resolving::get_service_name::{ProtocolMap, load_protocol_map, get_service_name};
 
 use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResult, PortScanAllResult};
 
@@ -141,7 +141,7 @@ pub async fn run_syn_scan(
         Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
     };
 
-    let protocols = Arc::new(load_protocol_map("src/utils/port_service_mapping.json").expect("Failed to load"));
+    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json").expect("Failed to load"));
 
     //println!("Starting scan of {} IPs across {} ports", ip_addresses.len(), ports_arr.len());
     

@@ -9,7 +9,6 @@ mod resolving;
 mod tui;
 mod models;
 
-mod utils;
 
 
 use std::env; // Added to read command-line arguments
