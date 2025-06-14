@@ -39,7 +39,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
     
     // Create a SYN packet
     let mut tcp_buffer = [0u8; 66]; // TCP header size + options
-    let mut tcp_packet = MutableTcpPacket::new(&mut tcp_buffer).unwrap();
+    let mut tcp_packet = MutableTcpPacket::new(&mut tcp_buffer).expect("Failed to extract tcp_packet");
     
     // Configure TCP header
     tcp_packet.set_source(source_port);
@@ -168,23 +168,27 @@ pub async fn run_syn_scan(
             // Spawn a task for each scan
             let task = tokio::spawn(async move {
                 // Acquire a permit from the semaphore before scanning
-                let _permit = sem_clone.acquire().await.unwrap();
+                let _permit = sem_clone.acquire().await
+                .expect("Semaphore should not be closed while workers are running");
                 
                 // Increment packets sent counter
                 {
-                    let mut counter = packets_sent_clone.lock().unwrap();
+                    let mut counter = packets_sent_clone.lock()
+                    .expect("Failed to lock the 'packets_sent' counter; the mutex was poisoned.");
                     *counter += 1;
                 }
                 
                 match port_syn_scan(ip_addr, port, local_ip_address, &protocols_clone).await {
                     Ok(result) => {
-                        let mut results = single_results_clone.lock().unwrap();
+                        let mut results = single_results_clone.lock()
+                        .expect("Failed to lock the 'single_results' vector; the mutex was poisoned.");
                         results.push(result.clone());
                         
                         // If port is open, add it to the open ports list
                         if result.port_state == PortStates::Open {
                             //println!("Found open port: {}:{}", ip_addr, port);
-                            let mut open = open_ports_clone.lock().unwrap();
+                            let mut open = open_ports_clone.lock()
+                            .expect("The mutex protecting the 'open_ports' collection was poisoned.");
                             open.push(port);
                         }
                     }
@@ -253,6 +257,9 @@ mod tests {
         let result = run_syn_scan(ips, ports, local_ip).await;
 
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Failed to get IP addresses: Failed to resolve hostname");
+        let err_msg = result
+        .expect_err("Expected run_syn_scan to fail when given an IP input error");
+
+        assert_eq!(err_msg, "Failed to get IP addresses: Failed to resolve hostname");
     }
 }

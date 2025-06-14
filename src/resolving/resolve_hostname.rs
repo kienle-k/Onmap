@@ -84,7 +84,9 @@ mod tests {
         // 192.0.2.255 is a reserved IP, unlikely to be a responsive DNS server.
         let mut config = ResolverConfig::new();
         config.add_name_server(NameServerConfig {
-            socket_addr: "192.0.2.255:53".parse().unwrap(),
+            socket_addr: "192.0.2.255:53"
+                .parse()
+                .expect("Parsing a hardcoded socket address for mock resolver setup should not fail"),
             protocol: Protocol::Udp,
             tls_dns_name: None,
             trust_negative_responses: true,

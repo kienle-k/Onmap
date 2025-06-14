@@ -96,40 +96,39 @@ mod tests {
 
     #[test]
     fn test_parse_single_valid_ip() {
-        let result = parse_ip_addresses("192.168.1.1").unwrap();
+        let result = parse_ip_addresses("192.168.1.1")
+            .expect("Parsing a single valid IP address should succeed");
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], Ipv4Addr::new(192, 168, 1, 1));
     }
 
     #[test]
     fn test_parse_single_valid_ip_with_whitespace() {
-        let result = parse_ip_addresses("  127.0.0.1  ").unwrap();
+        let result = parse_ip_addresses("  127.0.0.1  ")
+            .expect("Parsing a valid IP with whitespace should succeed");
         assert_eq!(result, vec![Ipv4Addr::new(127, 0, 0, 1)]);
     }
 
     #[test]
     fn test_parse_single_invalid_ip() {
-        let result = parse_ip_addresses("192.168.1.256");
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "Invalid IP address: 192.168.1.256"
-        );
+        let err_message = parse_ip_addresses("192.168.1.256")
+            .expect_err("An invalid IP address string should produce an Err");
+        assert_eq!(err_message, "Invalid IP address: 192.168.1.256");
     }
 
     #[test]
     fn test_parse_single_gibberish_input() {
-        let result = parse_ip_addresses("not an ip");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid IP address: not an ip");
+        let err_message = parse_ip_addresses("not an ip")
+            .expect_err("Parsing a gibberish string should result in an error");
+        assert_eq!(err_message, "Invalid IP address: not an ip");
     }
 
     // Tests for CIDR parsing functionality
 
     #[test]
     fn test_parse_cidr_valid_24() {
-        // A /24 should result in 256 addresses.
-        let result = parse_ip_addresses("192.168.1.0/24").unwrap();
+        let result = parse_ip_addresses("192.168.1.0/24")
+            .expect("Parsing a valid /24 CIDR should succeed");
         assert_eq!(result.len(), 256);
         assert_eq!(result.first(), Some(&Ipv4Addr::new(192, 168, 1, 0)));
         assert_eq!(result.last(), Some(&Ipv4Addr::new(192, 168, 1, 255)));
@@ -137,10 +136,8 @@ mod tests {
 
     #[test]
     fn test_parse_cidr_correctly_finds_network_address() {
-        // Input IP is not the network address; the function should find it.
-        // 10.10.10.130/27 -> network address is 10.10.10.128
-        let result = parse_ip_addresses("10.10.10.130/27").unwrap();
-        // 2^(32-27) = 2^5 = 32 addresses
+        let result = parse_ip_addresses("10.10.10.130/27")
+            .expect("Parsing a valid CIDR with a non-network IP should succeed");
         assert_eq!(result.len(), 32);
         assert_eq!(result.first(), Some(&Ipv4Addr::new(10, 10, 10, 128)));
         assert_eq!(result.last(), Some(&Ipv4Addr::new(10, 10, 10, 159)));
@@ -148,15 +145,15 @@ mod tests {
 
     #[test]
     fn test_parse_cidr_valid_32() {
-        // A /32 is a single host.
-        let result = parse_ip_addresses("203.0.113.42/32").unwrap();
+        let result = parse_ip_addresses("203.0.113.42/32")
+            .expect("Parsing a valid /32 CIDR should succeed");
         assert_eq!(result, vec![Ipv4Addr::new(203, 0, 113, 42)]);
     }
 
     #[test]
     fn test_parse_cidr_valid_31() {
-        // A /31 is a special case with 2 addresses.
-        let result = parse_ip_addresses("192.0.2.0/31").unwrap();
+        let result = parse_ip_addresses("192.0.2.0/31")
+            .expect("Parsing a valid /31 CIDR should succeed");
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Ipv4Addr::new(192, 0, 2, 0));
         assert_eq!(result[1], Ipv4Addr::new(192, 0, 2, 1));
@@ -164,33 +161,34 @@ mod tests {
 
     #[test]
     fn test_parse_cidr_invalid_prefix_length() {
-        let result = parse_ip_addresses("192.168.1.1/33");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid prefix length in CIDR: 33");
+        let err_message = parse_ip_addresses("192.168.1.1/33")
+            .expect_err("A prefix length greater than 32 should result in an error");
+        assert_eq!(err_message, "Invalid prefix length in CIDR: 33");
     }
 
     #[test]
     fn test_parse_cidr_invalid_ip_part() {
-        let result = parse_ip_addresses("192.168.abc.1/24");
-        assert!(result.is_err());
+        let err_message = parse_ip_addresses("192.168.abc.1/24")
+            .expect_err("A CIDR with an invalid IP part should result in an error");
         assert_eq!(
-            result.unwrap_err(),
+            err_message,
             "Invalid IP address in CIDR: 192.168.abc.1"
         );
     }
-    
+
     #[test]
     fn test_parse_cidr_invalid_format() {
-        let result = parse_ip_addresses("192.168.1.1/24/extra");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid CIDR format: 192.168.1.1/24/extra");
+        let err_message = parse_ip_addresses("192.168.1.1/24/extra")
+            .expect_err("A CIDR with an invalid format should result in an error");
+        assert_eq!(err_message, "Invalid CIDR format: 192.168.1.1/24/extra");
     }
 
     // Tests for IP Range parsing functionality
 
     #[test]
     fn test_parse_range_valid() {
-        let result = parse_ip_addresses("10.0.0.1 - 10.0.0.4").unwrap();
+        let result = parse_ip_addresses("10.0.0.1 - 10.0.0.4")
+            .expect("Parsing a valid IP range should succeed");
         assert_eq!(
             result,
             vec![
@@ -201,10 +199,11 @@ mod tests {
             ]
         );
     }
-    
+
     #[test]
     fn test_parse_range_crossing_octet() {
-        let result = parse_ip_addresses("192.168.1.254 - 192.168.2.2").unwrap();
+        let result = parse_ip_addresses("192.168.1.254 - 192.168.2.2")
+            .expect("Parsing a valid IP range crossing an octet should succeed");
         assert_eq!(result.len(), 5);
         assert_eq!(result.first(), Some(&Ipv4Addr::new(192, 168, 1, 254)));
         assert_eq!(result.last(), Some(&Ipv4Addr::new(192, 168, 2, 2)));
@@ -212,7 +211,8 @@ mod tests {
 
     #[test]
     fn test_parse_range_with_whitespace() {
-        let result = parse_ip_addresses("  10.0.0.1  -  10.0.0.2  ").unwrap();
+        let result = parse_ip_addresses("  10.0.0.1  -  10.0.0.2  ")
+            .expect("Parsing a valid IP range with extra whitespace should succeed");
         assert_eq!(
             result,
             vec![
@@ -224,38 +224,39 @@ mod tests {
 
     #[test]
     fn test_parse_range_single_ip() {
-        let result = parse_ip_addresses("192.168.1.1 - 192.168.1.1").unwrap();
+        let result = parse_ip_addresses("192.168.1.1 - 192.168.1.1")
+            .expect("Parsing a range with identical start and end IPs should succeed");
         assert_eq!(result, vec![Ipv4Addr::new(192, 168, 1, 1)]);
     }
 
     #[test]
     fn test_parse_range_start_ip_greater() {
-        let result = parse_ip_addresses("192.168.1.10 - 192.168.1.5");
-        assert!(result.is_err());
+        let err_message = parse_ip_addresses("192.168.1.10 - 192.168.1.5")
+            .expect_err("A range where the start IP is greater than the end IP should fail");
         assert_eq!(
-            result.unwrap_err(),
+            err_message,
             "Starting IP address must be less than or equal to ending IP address"
         );
     }
-    
+
     #[test]
     fn test_parse_range_invalid_start_ip() {
-        let result = parse_ip_addresses("192.168.300.1 - 192.168.1.10");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid starting IP address: 192.168.300.1");
+        let err_message = parse_ip_addresses("192.168.300.1 - 192.168.1.10")
+            .expect_err("A range with an invalid start IP should fail");
+        assert_eq!(err_message, "Invalid starting IP address: 192.168.300.1");
     }
 
     #[test]
     fn test_parse_range_invalid_end_ip() {
-        let result = parse_ip_addresses("192.168.1.1 - 192.168.1.xyz");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid ending IP address: 192.168.1.xyz");
+        let err_message = parse_ip_addresses("192.168.1.1 - 192.168.1.xyz")
+            .expect_err("A range with an invalid end IP should fail");
+        assert_eq!(err_message, "Invalid ending IP address: 192.168.1.xyz");
     }
-    
+
     #[test]
     fn test_parse_range_invalid_format() {
-        let result = parse_ip_addresses("192.168.1.1 - 192.168.1.2 - 192.168.1.3");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid IP range format: 192.168.1.1 - 192.168.1.2 - 192.168.1.3");
+        let err_message = parse_ip_addresses("192.168.1.1 - 192.168.1.2 - 192.168.1.3")
+            .expect_err("A range with an invalid format should fail");
+        assert_eq!(err_message, "Invalid IP range format: 192.168.1.1 - 192.168.1.2 - 192.168.1.3");
     }
 }

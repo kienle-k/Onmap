@@ -127,7 +127,7 @@ async fn ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, Optio
         }
     });
    
-    // Unwrap the result from the JoinHandle or return false if the task failed
+    // Extract the result from the JoinHandle or return false if the task failed
     match result.await {
         Ok(ping_result) => ping_result,
         Err(_) => (false, None, None)
@@ -175,7 +175,7 @@ mod tests {
             Ipv4Addr::new(127, 0, 0, 1),      // Reachable
             Ipv4Addr::new(192, 0, 2, 123),    // Unreachable
         ]);
-        let total_ips = ips.as_ref().unwrap().len();
+        let total_ips = ips.as_ref().expect("Failed to extract ips").len();
 
         let (results, summary) = run_ping_scan(ips).await;
 
@@ -191,13 +191,13 @@ mod tests {
         assert_eq!(results.len(), total_ips);
 
         // Find the result for localhost
-        let localhost_result = results.iter().find(|r| r.ip_address.is_loopback()).unwrap();
+        let localhost_result = results.iter().find(|r| r.ip_address.is_loopback()).expect("Failed to extract localhost");
         assert!(localhost_result.is_up);
         assert_eq!(localhost_result.dns_resolve, Some("localhost".to_string()));
         assert_eq!(localhost_result.reply_type, "ICMP echo reply");
 
         // Find the result for the unreachable host
-        let unreachable_result = results.iter().find(|r| !r.ip_address.is_loopback()).unwrap();
+        let unreachable_result = results.iter().find(|r| !r.ip_address.is_loopback()).expect("Failed to extract localhost");
         assert!(!unreachable_result.is_up);
         assert!(unreachable_result.dns_resolve.is_none());
         assert_eq!(unreachable_result.reply_type, "no response");

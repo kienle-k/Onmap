@@ -74,16 +74,15 @@ pub fn get_resolv_conf_nameservers() -> Vec<NameServerConfig> {
 
 #[cfg(test)]
 mod tests {
-    
     use super::*;
 
     #[test]
     fn test_parse_ipv4_and_comments() {
         let mock_data = "
-                                        # This is a comment
-                                        nameserver 8.8.8.8
-                                        nameserver 1.1.1.1
-                                      ";
+                                # This is a comment
+                                nameserver 8.8.8.8
+                                nameserver 1.1.1.1
+                              ";
         let reader = BufReader::new(mock_data.as_bytes());
         let nameservers = parse_resolv_conf(reader);
 
@@ -108,7 +107,11 @@ mod tests {
         assert_eq!(
             nameservers[0].socket_addr,
             SocketAddr::new(
-                IpAddr::V6("2001:4860:4860::8888".parse::<Ipv6Addr>().unwrap()),
+                IpAddr::V6(
+                    "2001:4860:4860::8888"
+                        .parse::<Ipv6Addr>()
+                        .expect("Parsing a hardcoded IPv6 literal for a test should always succeed")
+                ),
                 53
             )
         );
@@ -117,10 +120,10 @@ mod tests {
     #[test]
     fn test_parse_mixed_ips_and_empty_lines() {
         let mock_data = "
-                                        nameserver 8.8.4.4
+                                nameserver 8.8.4.4
 
-                                        nameserver 2606:4700:4700::1111
-                                      ";
+                                nameserver 2606:4700:4700::1111
+                              ";
         let reader = BufReader::new(mock_data.as_bytes());
         let nameservers = parse_resolv_conf(reader);
 
@@ -132,7 +135,11 @@ mod tests {
         assert_eq!(
             nameservers[1].socket_addr,
             SocketAddr::new(
-                IpAddr::V6("2606:4700:4700::1111".parse::<Ipv6Addr>().unwrap()),
+                IpAddr::V6(
+                    "2606:4700:4700::1111"
+                        .parse::<Ipv6Addr>()
+                        .expect("Parsing a hardcoded IPv6 literal for a test should always succeed")
+                ),
                 53
             )
         );
@@ -141,12 +148,12 @@ mod tests {
     #[test]
     fn test_malformed_and_irrelevant_lines() {
         let mock_data = "
-                                        domain example.com
-                                        search example.com
-                                        nameserver 9.9.9.9
-                                        nameserver
-                                        nameserver malformed-ip
-                                      ";
+                                domain example.com
+                                search example.com
+                                nameserver 9.9.9.9
+                                nameserver
+                                nameserver malformed-ip
+                              ";
         let reader = BufReader::new(mock_data.as_bytes());
         let nameservers = parse_resolv_conf(reader);
 
@@ -175,9 +182,9 @@ mod tests {
     #[test]
     fn test_fallback_on_no_nameserver_entries() {
         let mock_data = "
-                                        # No nameservers here
-                                        domain example.com
-                                      ";
+                                # No nameservers here
+                                domain example.com
+                              ";
         let reader = BufReader::new(mock_data.as_bytes());
         let nameservers = parse_resolv_conf(reader);
 
