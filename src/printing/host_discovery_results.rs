@@ -1,20 +1,6 @@
-use std::time::Duration;
 use prettytable::{Table, Row, Cell, format};
 use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
-
-// Helper function to format Duration in a readable way
-fn format_duration(duration: &Duration) -> String {
-    let total_millis = duration.as_millis();
-    if total_millis < 1 {
-        format!("<1ms")
-    } else if total_millis < 1000 {
-        format!("{}ms", total_millis)
-    } else {
-        let seconds = total_millis / 1000;
-        let millis = total_millis % 1000;
-        format!("{}s {}ms", seconds, millis)
-    }
-}
+use super::format_duration;
 
 pub fn print_host_discovery_results(results: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
 
@@ -116,30 +102,3 @@ pub fn print_host_discovery_results(results: (Vec<HostDiscoverySingleResult>, Ho
     }
 
 }
-
-// Example usage:
-// fn main() {
-//     let single_results = vec![
-//         HostDiscoverySingleResult {
-//             ip_address: "192.168.1.1".parse().unwrap(),
-//             dns_resolve: Some("router.local".to_string()),
-//             latency: Some(Duration::from_millis(15)),
-//             is_up: true,
-//             reply_type: "echo-reply".to_string(),
-//             ttl: 64
-//         },
-//         // Add more results as needed
-//     ];
-//
-//     let all_results = HostDiscoveryAllResult {
-//         scanned_addresses: vec!["192.168.1.1".parse().unwrap()],
-//         ports_per_host: 100,
-//         hosts_up: 1,
-//         hosts_dns_resolution: 1,
-//         start_time: SystemTime::now(),
-//         end_time: SystemTime::now(),
-//         packets_sent: 100
-//     };
-//
-//     print_host_discovery_results((single_results, all_results));
-// }

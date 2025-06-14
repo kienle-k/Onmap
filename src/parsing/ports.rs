@@ -90,3 +90,105 @@ pub fn set_ports_arr(port_option: PortOptions) -> Result<Vec<u16>, String> {
         _ => Err("Ports array could not be set".to_string())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests for the convert_port_range_to_arr function
+    #[test]
+    fn test_convert_port_range_full_range() {
+        let ports = convert_port_range_to_arr("-".to_string()).unwrap();
+        assert_eq!(ports.len(), 65536);
+        assert_eq!(ports[0], 0);
+        assert_eq!(ports[65535], 65535);
+    }
+
+    #[test]
+    fn test_convert_port_range_fast_scan() {
+        let ports = convert_port_range_to_arr("F".to_string()).unwrap();
+        assert!(!ports.is_empty());
+        assert_eq!(ports[0], 1);
+        assert!(ports.contains(&80));
+        assert!(ports.contains(&443));
+        assert!(ports.contains(&8080));
+    }
+
+    #[test]
+    fn test_convert_port_range_single_port_valid() {
+        let ports = convert_port_range_to_arr("8080".to_string()).unwrap();
+        assert_eq!(ports, vec![8080]);
+    }
+
+    #[test]
+    fn test_convert_port_range_single_port_invalid() {
+        // This test now expects an error because a single number is not a range
+        let result = convert_port_range_to_arr("not-a-port".to_string());
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Input must contain 2 port numbers".to_string());
+    }
+
+    #[test]
+    fn test_convert_port_range_valid_range() {
+        let ports = convert_port_range_to_arr("80-82".to_string()).unwrap();
+        assert_eq!(ports, vec![80, 81, 82]);
+    }
+
+    #[test]
+    fn test_convert_port_range_invalid_range_start_greater() {
+        let result = convert_port_range_to_arr("90-80".to_string());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Invalid range: start port 90 is greater than end port 80"
+        );
+    }
+
+    #[test]
+    fn test_convert_port_range_invalid_format_too_many_parts() {
+        let result = convert_port_range_to_arr("80-90-100".to_string());
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Input must contain 2 port numbers");
+    }
+
+    #[test]
+    fn test_convert_port_range_invalid_start_port() {
+        let result = convert_port_range_to_arr("abc-90".to_string());
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Invalid start port number: 'abc'");
+    }
+
+    #[test]
+    fn test_convert_port_range_invalid_end_port() {
+        let result = convert_port_range_to_arr("80-xyz".to_string());
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Invalid end port number: 'xyz'");
+    }
+
+    // Tests for the set_ports_arr function
+    #[test]
+    fn test_set_ports_arr_normal_mode() {
+        let ports = set_ports_arr(PortOptions::NormalMode).unwrap();
+        assert_eq!(ports.len(), 1000);
+        assert_eq!(ports[0], 1);
+        assert_eq!(ports[999], 1000);
+    }
+
+    #[test]
+    fn test_set_ports_arr_fast_mode() {
+        let ports = set_ports_arr(PortOptions::FastMode).unwrap();
+        assert!(!ports.is_empty());
+        assert!(ports.contains(&22));
+        assert!(ports.contains(&443));
+        assert!(ports.contains(&3389));
+    }
+
+    #[test]
+    fn test_set_ports_arr_sequential_mode() {
+        let ports = set_ports_arr(PortOptions::SequentialMode).unwrap();
+        assert_eq!(ports.len(), 65535);
+        assert_eq!(ports[0], 1);
+        assert_eq!(ports[65534], 65535);
+    }
+}

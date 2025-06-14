@@ -1,22 +1,8 @@
-use std::time::Duration;
 use prettytable::{Table, Row, Cell, format};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols, PortStateReasons};
-
-// Helper function to format Duration in a readable way
-fn format_duration(duration: &Duration) -> String {
-    let total_millis = duration.as_millis();
-    if total_millis < 1 {
-        format!("<1ms")
-    } else if total_millis < 1000 {
-        format!("{}ms", total_millis)
-    } else {
-        let seconds = total_millis / 1000;
-        let millis = total_millis % 1000;
-        format!("{}s {}ms", seconds, millis)
-    }
-}
+use super::format_duration;
 
 pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllResult)) {
     println!();
@@ -119,94 +105,8 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
             
             open_port_table.printstd();
         }
-
-        /*
-
-        println!("");
-
-        // Filter for only open ports first
-        let filtered_ports: Vec<&PortScanSingleResult> = host_results.iter()
-            .filter(|r| r.port_state == PortStates::Filtered)
-            .cloned()
-            .collect();
-
-        if filtered_ports.is_empty() {
-            println!("No filtered ports discovered.");
-        } else {
-            println!("\nFiltered Ports:");
-            
-            let mut filtered_ports_table = Table::new();
-            filtered_ports_table.set_format(*format::consts::FORMAT_BOX_CHARS);
-            
-            // Add header row
-            filtered_ports_table.set_titles(Row::new(vec![
-                Cell::new("Port"),
-                Cell::new("Protocol"),
-                Cell::new("Service"),
-                Cell::new("TTL"),
-                Cell::new("Reason")
-            ]));
-            
-            // Add each open port as a row, sorted by port number
-            let mut sorted_filtered_ports = filtered_ports.clone();
-            sorted_filtered_ports.sort_by_key(|r| r.port);
-            
-            for port_result in sorted_filtered_ports {
-                // Convert enum values to strings for display
-                let protocol_str = match port_result.protocol {
-                    Protocols::TCP => "TCP",
-                    Protocols::UDP => "UDP",
-                    Protocols::ICMP => "ICMP",
-                    // Handle other protocols as needed
-                };
-                
-                let reason_str = match port_result.reason {
-                    PortStateReasons::SynAck => "SYN-ACK",
-                    PortStateReasons::Reset => "RST",
-                    PortStateReasons::Timeout => "Timeout",
-                    PortStateReasons::NoResponse => "No Response"
-                    // Handle other reasons as needed
-                };
-                
-                filtered_ports_table.add_row(Row::new(vec![
-                    Cell::new(&port_result.port.to_string()),
-                    Cell::new(protocol_str),
-                    Cell::new(&port_result.service),
-                    Cell::new(&port_result.ttl.to_string()),
-                    Cell::new(reason_str)
-                ]));
-            }
-            filtered_ports_table.printstd();
-        }
-        */
         
     }
     
     println!();
 }
-
-// Example usage:
-// fn main() {
-//     let single_results = vec![
-//         PortScanSingleResult {
-//             ip_address: "192.168.1.1".parse().unwrap(),
-//             port: 80,
-//             protocol: Protocols::TCP,
-//             port_state: PortStates::Open,
-//             ttl: 64,
-//             reason: PortStateReasons::SynAck,
-//             service: "HTTP".to_string()
-//         },
-//         // Add more results as needed
-//     ];
-//
-//     let all_results = PortScanAllResult {
-//         ports_scanned: 100,
-//         packets_sent: 100,
-//         open_ports: vec![80],
-//         start_time: SystemTime::now(),
-//         end_time: SystemTime::now()
-//     };
-//
-//     print_port_scan_results((single_results, all_results));
-// }

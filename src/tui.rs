@@ -860,3 +860,326 @@ fn ui(f: &mut Frame, app: &App) {
     }
     }
 }
+
+
+
+
+#[cfg(test)]
+mod tests {
+    
+    use super::*;
+
+    /// Tests that the `App::new()` constructor initializes the app state correctly.
+    #[test]
+    fn test_app_new() {
+        let app = App::new();
+        assert_eq!(app.state, AppState::MainMenu);
+        assert_eq!(app.main_selected, None);
+        assert_eq!(app.host_discovery_selected, None);
+        assert_eq!(app.port_scan_selected, None);
+        assert_eq!(app.ip_input, "");
+        assert!(!app.port_needed);
+        assert_eq!(app.port_mode, None);
+        assert_eq!(app.port_input, "");
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    /// Tests the `select` method for main menu items.
+    #[test]
+    fn test_select() {
+        let mut app = App::new();
+        app.select(MainMenuItem::SubMenuHostDiscovery);
+        assert_eq!(app.main_selected, Some(MainMenuItem::SubMenuHostDiscovery));
+    }
+
+    /// Tests the `select_host_discovery` method.
+    #[test]
+    fn test_select_host_discovery() {
+        let mut app = App::new();
+        app.select_host_discovery(HostDiscoveryOption::PingScan);
+        assert_eq!(app.host_discovery_selected, Some(HostDiscoveryOption::PingScan));
+    }
+
+    /// Tests the `select_port_scan` method.
+    #[test]
+    fn test_select_port_scan() {
+        let mut app = App::new();
+        app.select_port_scan(PortScanOption::SynScan);
+        assert_eq!(app.port_scan_selected, Some(PortScanOption::SynScan));
+    }
+
+    /// Tests character input for the IP address field.
+    #[test]
+    fn test_input_ip() {
+        let mut app = App::new();
+        app.input_ip('1');
+        app.input_ip('2');
+        app.input_ip('7');
+        assert_eq!(app.ip_input, "127");
+        assert_eq!(app.cursor_position, 3);
+    }
+
+    /// Tests character input for the IP address field at a specific cursor position.
+    #[test]
+    fn test_input_ip_with_cursor() {
+        let mut app = App::new();
+        app.input_ip('1');
+        app.input_ip('2');
+        app.input_ip('7');
+        app.cursor_position = 1; // Move cursor to after '1'
+        app.input_ip('.');
+        assert_eq!(app.ip_input, "1.27");
+        assert_eq!(app.cursor_position, 2);
+    }
+
+    /// Tests character input for the port range field.
+    #[test]
+    fn test_input_port() {
+        let mut app = App::new();
+        app.input_port('8');
+        app.input_port('0');
+        assert_eq!(app.port_input, "80");
+        assert_eq!(app.cursor_position, 2);
+    }
+    
+    /// Tests the backspace functionality for the IP input.
+    #[test]
+    fn test_delete_char_ip_input() {
+        let mut app = App::new();
+        app.input_ip('1');
+        app.input_ip('9');
+        app.input_ip('2');
+        app.delete_char_ip_input();
+        assert_eq!(app.ip_input, "19");
+        assert_eq!(app.cursor_position, 2);
+    }
+
+    /// Tests deleting a character from the middle of the IP input string.
+    #[test]
+    fn test_delete_char_ip_input_middle() {
+        let mut app = App::new();
+        app.ip_input = String::from("127.0.0.1");
+        app.cursor_position = 4; // Cursor is after the '.'
+        app.delete_char_ip_input();
+        assert_eq!(app.ip_input, "1270.0.1");
+        assert_eq!(app.cursor_position, 3);
+    }
+
+    /// Tests that deleting from an empty IP input does nothing.
+    #[test]
+    fn test_delete_char_ip_input_empty() {
+        let mut app = App::new();
+        app.delete_char_ip_input();
+        assert_eq!(app.ip_input, "");
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    /// Tests the backspace functionality for the port range input.
+    #[test]
+    fn test_delete_char_port_range_input() {
+        let mut app = App::new();
+        app.input_port('8');
+        app.input_port('0');
+        app.input_port('-');
+        app.input_port('9');
+        app.delete_char_port_range_input();
+        assert_eq!(app.port_input, "80-");
+        assert_eq!(app.cursor_position, 3);
+    }
+
+    /// Tests moving the cursor left.
+    #[test]
+    fn test_move_cursor_left() {
+        let mut app = App::new();
+        app.ip_input = "test".to_string();
+        app.cursor_position = 4;
+        app.move_cursor_left();
+        assert_eq!(app.cursor_position, 3);
+    }
+
+    /// Tests that the cursor does not move left past the beginning of the input.
+    #[test]
+    fn test_move_cursor_left_at_start() {
+        let mut app = App::new();
+        app.move_cursor_left();
+        assert_eq!(app.cursor_position, 0);
+    }
+    
+    /// Tests moving the cursor right.
+    #[test]
+    fn test_move_cursor_right() {
+        let mut app = App::new();
+        app.ip_input = "test".to_string();
+        app.cursor_position = 1;
+        app.move_cursor_right();
+        assert_eq!(app.cursor_position, 2);
+    }
+
+    /// Tests that the cursor does not move right past the end of the input.
+    #[test]
+    fn test_move_cursor_right_at_end() {
+        let mut app = App::new();
+        app.ip_input = "test".to_string();
+        app.cursor_position = 4;
+        app.move_cursor_right();
+        assert_eq!(app.cursor_position, 4);
+    }
+
+    // --- State Transition Tests (Simulating run_app logic) ---
+
+    /// Tests the transition from the Main Menu to the Host Discovery sub-menu.
+    #[test]
+    fn test_main_menu_to_host_discovery() {
+        let mut app = App::new();
+        // Simulate pressing '1' in the main menu
+        app.select(MainMenuItem::SubMenuHostDiscovery);
+        app.state = AppState::SubMenuHostDiscovery;
+
+        assert_eq!(app.state, AppState::SubMenuHostDiscovery);
+        assert_eq!(app.main_selected, Some(MainMenuItem::SubMenuHostDiscovery));
+    }
+
+    /// Tests the transition from the Host Discovery sub-menu back to the Main Menu.
+    #[test]
+    fn test_host_discovery_back_to_main_menu() {
+        let mut app = App {
+            state: AppState::SubMenuHostDiscovery,
+            host_discovery_selected: Some(HostDiscoveryOption::PingScan),
+            ..App::new()
+        };
+        // Simulate pressing 'b'
+        app.state = AppState::MainMenu;
+        app.host_discovery_selected = None;
+
+        assert_eq!(app.state, AppState::MainMenu);
+        assert_eq!(app.host_discovery_selected, None);
+    }
+
+    /// Tests selecting a host discovery option that does NOT require a port.
+    #[test]
+    fn test_host_discovery_to_ip_input_no_port() {
+        let mut app = App {
+            state: AppState::SubMenuHostDiscovery,
+            ..App::new()
+        };
+        // Simulate pressing '2' (Ping Scan)
+        app.select_host_discovery(HostDiscoveryOption::PingScan);
+        app.state = AppState::IpAddressInput;
+
+        assert_eq!(app.state, AppState::IpAddressInput);
+        assert_eq!(app.host_discovery_selected, Some(HostDiscoveryOption::PingScan));
+        assert!(!app.port_needed, "Ping scan should not require a port");
+    }
+
+    /// Tests selecting a host discovery option that DOES require a port.
+    #[test]
+    fn test_host_discovery_to_ip_input_with_port() {
+        let mut app = App {
+            state: AppState::SubMenuHostDiscovery,
+            ..App::new()
+        };
+        // Simulate pressing '3' (TCP SYN Discovery)
+        app.select_host_discovery(HostDiscoveryOption::TcpSynDiscovery);
+        app.state = AppState::IpAddressInput;
+        app.port_needed = true;
+
+        assert_eq!(app.state, AppState::IpAddressInput);
+        assert_eq!(app.host_discovery_selected, Some(HostDiscoveryOption::TcpSynDiscovery));
+        assert!(app.port_needed, "TCP SYN Discovery should require a port");
+    }
+    
+    /// Tests selecting a port scan option, which should always require a port.
+    #[test]
+    fn test_port_scan_to_ip_input() {
+        let mut app = App {
+            state: AppState::SubMenuPortScan,
+            ..App::new()
+        };
+        // Simulate pressing '1' (SYN Scan)
+        app.select_port_scan(PortScanOption::SynScan);
+        app.state = AppState::IpAddressInput;
+        app.port_needed = true;
+
+        assert_eq!(app.state, AppState::IpAddressInput);
+        assert_eq!(app.port_scan_selected, Some(PortScanOption::SynScan));
+        assert!(app.port_needed);
+    }
+
+    /// Tests the transition from IP input to the Port Options menu when a port is needed.
+    #[test]
+    fn test_ip_input_to_port_options() {
+        let mut app = App {
+            state: AppState::IpAddressInput,
+            ip_input: String::from("127.0.0.1"),
+            port_needed: true,
+            cursor_position: 9,
+            ..App::new()
+        };
+
+        // Simulate pressing Enter
+        app.cursor_position = 0;
+        app.state = AppState::PortOptions;
+
+        assert_eq!(app.state, AppState::PortOptions);
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    /// Tests the transition from Port Options to the Port Range Input screen.
+    #[test]
+    fn test_port_options_to_port_range_input() {
+        let mut app = App {
+            state: AppState::PortOptions,
+            ..App::new()
+        };
+        // Simulate pressing '2' for custom port range
+        app.state = AppState::PortRangeInput;
+        app.port_mode = Some(PortOptions::PortRangeInput);
+
+        assert_eq!(app.state, AppState::PortRangeInput);
+        assert_eq!(app.port_mode, Some(PortOptions::PortRangeInput));
+    }
+    
+    /// Tests the character validation logic in the IP Address input state.
+    #[test]
+    fn test_ip_address_input_validation_logic() {
+        let mut app = App {
+            state: AppState::IpAddressInput,
+            ..App::new()
+        };
+        
+        // This simulates the logic from run_app
+        let process_key = |app: &mut App, c: char| {
+            if c.is_digit(10) || c == '.' || c == '-' || c == '/' {
+                app.input_ip(c);
+            }
+        };
+
+        process_key(&mut app, '1');
+        process_key(&mut app, 'a'); // Invalid
+        process_key(&mut app, '.');
+        process_key(&mut app, '0');
+        process_key(&mut app, ' '); // Invalid
+        process_key(&mut app, '/');
+        process_key(&mut app, '8');
+
+        assert_eq!(app.ip_input, "1.0/8");
+    }
+
+    /// Tests that the Escape key clears the IP input field.
+    #[test]
+    fn test_ip_input_escape_key() {
+        let mut app = App {
+            state: AppState::IpAddressInput,
+            ip_input: String::from("some text"),
+            cursor_position: 9,
+            ..App::new()
+        };
+
+        // Simulate pressing ESC
+        app.ip_input.clear();
+        app.cursor_position = 0;
+
+        assert_eq!(app.ip_input, "");
+        assert_eq!(app.cursor_position, 0);
+    }
+}

@@ -237,3 +237,22 @@ pub async fn run_syn_scan(
     // Return both result types
     Ok((single_results, all_result))
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_run_syn_scan_ip_error_handling() {
+        let ips = Err("Failed to resolve hostname".to_string());
+        let ports = vec![80];
+        let local_ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let result = run_syn_scan(ips, ports, local_ip).await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Failed to get IP addresses: Failed to resolve hostname");
+    }
+}

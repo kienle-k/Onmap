@@ -2,10 +2,10 @@ Oxidized nmap
 
 Todo:
 
-Reimplement CLI parsing
-Restructure and add lib.rs
+Reimplement CLI parsing (with clap)
+Restructure and add lib.rs (already added lib.rs but CLI parsing should be done in main.rs)
 
-Add unit tests (integration tests?)
+Add unit tests (Done for Kevin)
 Remove unwraps
 Remove copy / clones
 Revise error handling (also check if option or result is correctly used)

@@ -9,3 +9,6 @@ pub use port_scanning_results_original::print_port_scan_results_original;
 
 pub mod host_discovery_results_original;
 pub use host_discovery_results_original::print_host_discovery_results_original;
+
+pub mod format_duration;
+pub use format_duration::format_duration;
