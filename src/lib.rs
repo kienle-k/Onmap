@@ -7,11 +7,7 @@ pub mod printing;
 pub mod resolving;
 
 mod tui;
-mod models;
-
-
-
-use std::env; // Added to read command-line arguments
+pub mod models;
 use std::io;
 use std::io::{Write};
 use std::net::{IpAddr, Ipv4Addr};
@@ -37,21 +33,18 @@ use crate::port_scanning::run_udp_scan;
 use crate::service_detection::run_service_detection;
 use crate::tui::{run_app, App};
 use local_ip_address::local_ip;
+use models::{Cli, ScanCommand};
+
 
 // use utils::json_loader::{load_protocols, get_port_info};
 
 
 #[tokio::main]
-pub async fn run_onmap() -> Result<(), io::Error> {
+pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {    
     // Flush to enable TUI in docker
     // This is a workaround for the issue where the TUI doesn't show up in Docker
     io::stdout().flush()?;
 
-    let mut use_original_printing = false;
-
-    // Get command-line arguments
-    let args: Vec<String> = env::args().collect();
-    let run_tui_mode = args.contains(&String::from("-tui"));
 
     // Get the local source IP for proper checksum calculation
     // This might be needed for both TUI and non-TUI modes if you implement CLI scanning
@@ -76,7 +69,9 @@ pub async fn run_onmap() -> Result<(), io::Error> {
     let mut port_scan_result: (Vec<PortScanSingleResult>, PortScanAllResult) = (Vec::new(), PortScanAllResult::new());
     let mut host_discovery_result: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) = (Vec::new(), HostDiscoveryAllResult::new());
 
-    if run_tui_mode {
+
+
+    if cli.tui {
         // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -190,7 +185,8 @@ pub async fn run_onmap() -> Result<(), io::Error> {
                                     run_udp_scan();
                                 }
                             }
-                            if use_original_printing == false{
+                            // Pretty printing
+                            if cli.modern_printing == true {
                                 print_port_scan_results(port_scan_result);
                             } else {
                                 print_port_scan_results_original(port_scan_result).await;
@@ -219,108 +215,100 @@ pub async fn run_onmap() -> Result<(), io::Error> {
         // or if the user quits in a way that doesn't populate the selections.
 
     } else {
+        // Use the `modern_printing` flag from the parsed `cli` struct --> use different print styles based on user spec
+        let use_original_printing = !cli.modern_printing;
 
-        let mut arg_len = args.len();
-        if !args.is_empty() { 
-            if args[args.len() - 1] == "-pp" {
-                arg_len = arg_len - 1; // Remove the last arguments visibility for the parser
-                use_original_printing = false;
-            } else {
-                use_original_printing = true;
+        // Extract CLI specs --> build ip and port arrays
+
+        // Extract IP addresses arr only once (if applicable) to remove redundancy
+        let ip_addresses_arr = match &cli.command {
+            Some(ScanCommand::PingScan { ips })
+            | Some(ScanCommand::IcmpEcho { ips })
+            | Some(ScanCommand::SynScan { ips, .. })
+            | Some(ScanCommand::ConnectScan { ips, .. })
+            | Some(ScanCommand::AckScan { ips, .. }) => parsing::parse_ip_addresses(ips),
+            // Fix: Wrap Vec::new() in Ok() to match the Result type of other arms
+            None => Ok(Vec::new()),
+        };
+
+        // Extract ports only once (if applicable)
+        let ports_vec = match &cli.command {
+            Some(ScanCommand::SynScan { ports, .. })
+            | Some(ScanCommand::ConnectScan { ports, .. })
+            | Some(ScanCommand::AckScan { ports, .. }) => {
+                let ports_str = ports.as_ref().unwrap_or_else(|| {
+                    eprintln!("Ports must be provided");
+                    std::process::exit(1);
+                });
+                parsing::convert_ports(ports_str.to_string()).unwrap_or_else(|e| {
+                    eprintln!("Invalid port specification: {}", e);
+                    std::process::exit(1);
+                })
             }
-        }
+            _ => Vec::new(),
+        };
 
-        // Original startup message from nmap
+
+
+        // Print the original startup message from nmap
         let tz_str = get_timezone().expect("Failed to get system timezone");
         let tz: Tz = tz_str.parse().expect("Invalid timezone string");
         let now = Utc::now().with_timezone(&tz);
         let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
         println!("\nStarting Onmap 1.0 (https://github.com/kienle-k/Onmap) at {}", formatted_time);
-        
-        
-        match arg_len {
-            4 => {
-                let scan_method_arg = &args[1];
-                let port_arg = &args[2];
-                let ip_addresses_arg = &args[3];
 
-                let port_prefix = "-p";
+        // Execute the selected scan type
 
-                // Attempt to remove the prefix
-                if let Some(result_port_string) = port_arg.strip_prefix(port_prefix)  {
-                    let ip_addresses_arr = parsing::parse_ip_addresses(&ip_addresses_arg);
-                    let ports_arr = parsing::convert_port_range_to_arr(result_port_string.to_string());
-                    match scan_method_arg.as_ref() {
-                        "-sS" => {
-                                let scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_arr.expect("Ports array could not be set"), local_ip_address).await;
-                                match scan_result {
-                                    Ok(result) => port_scan_result = result,
-                                    Err(e) => eprintln!("SYN scan failed: {}", e),
-                                }
-                                if use_original_printing == false{
-                                    print_port_scan_results(port_scan_result);
-                                } else {
-                                    print_port_scan_results_original(port_scan_result).await;
-                                }
-                            },
-                        "-sT" => {
-                                let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_arr.expect("Ports array could not be set"), 300).await;
-                                match scan_result {
-                                    Ok(result) => port_scan_result = result,
-                                    Err(e) => eprintln!("SYN scan failed: {}", e),
-                                }
-                                if use_original_printing == false{
-                                    print_port_scan_results(port_scan_result);
-                                } else {
-                                    print_port_scan_results_original(port_scan_result).await;
-                                }
-                            },
-                        "-sA" => {
-                                // Call the new ACK scan function
-                                port_scanning::run_ack_scan(ip_addresses_arr, &ports_arr.expect("Ports array could not be set"), local_ip_address).await;
-                            },
-                        
-                        _ => println!("Scan method not implemented yet")
-                    }
-                } else {
-                    println!("Prefix '{}' not found in '{}'.", port_prefix, port_arg);
+        // Decide which scan to execute
+        match cli.command {
+            Some(ScanCommand::SynScan { ports: _, ips: _ }) => {   
+                let scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_vec, local_ip_address).await;
+                match scan_result {
+                    Ok(result) => port_scan_result = result,
+                    Err(e) => eprintln!("SYN scan failed: {}", e),
                 }
-
+                if use_original_printing {
+                    print_port_scan_results_original(port_scan_result).await;
+                } else {
+                    print_port_scan_results(port_scan_result);
+                }
             },
-
-        3 => {
-            let scan_method_arg = &args[1];
-            let ip_addresses_arg = &args[2];
-
-            let ip_addresses_arr = parsing::parse_ip_addresses(&ip_addresses_arg);
-
-            match scan_method_arg.as_ref() {
-                "-sn" => {
-                        let host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await;
-                        if use_original_printing == true {
-                            print_host_discovery_results_original(host_discovery_result);
-                        }else {
-                            print_host_discovery_results(host_discovery_result);
-                        }
-                    },
-                "-PE" => {
-                        let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
-                        if use_original_printing == true {
-                            print_host_discovery_results_original(host_discovery_result);
-                        }else {
-                            print_host_discovery_results(host_discovery_result);
-                        }                }
+            Some(ScanCommand::ConnectScan { ports: _, ips: _ }) => {
+                let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_vec, 300).await;
+                match scan_result {
+                    Ok(result) => port_scan_result = result,
+                    Err(e) => eprintln!("Connect scan failed: {}", e),
+                }
+                if use_original_printing {
+                    print_port_scan_results_original(port_scan_result).await;
+                } else {
+                    print_port_scan_results(port_scan_result);
+                }
+            },
+            Some(ScanCommand::AckScan { ports: _, ips: _ }) => {
+                port_scanning::run_ack_scan(ip_addresses_arr, &ports_vec, local_ip_address).await;
+            },
+            Some(ScanCommand::PingScan { ips: _ }) => {
                 
-                _ => println!("Scan method not implemented yet")
+                let host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await;
+                if use_original_printing {
+                    print_host_discovery_results_original(host_discovery_result);
+                } else {
+                    print_host_discovery_results(host_discovery_result);
+                }
+            },
+            Some(ScanCommand::IcmpEcho { ips: _ }) => {
+                let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
+                if use_original_printing {
+                    print_host_discovery_results_original(host_discovery_result);
+                } else {
+                    print_host_discovery_results(host_discovery_result);
+                }
+            },
+            None => {
+                println!("No scan method specified. Use `onmap --help` for usage information.");
             }
-
         }
-
-        _ => println!("Please select a valid amount of arguments")
-
-        }
-
     }
-
     Ok(())
 }

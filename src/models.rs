@@ -1,5 +1,71 @@
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
+use clap::{Parser, Subcommand, ArgAction};
+use crate::parsing;
+
+pub fn parse_ports_arg(s: &str) -> Result<Vec<u16>, String> {
+    parsing::convert_ports(s.to_string())
+        .map_err(|e| format!("Ungültiges Port-Format: {}", e))
+}
+
+#[derive(Parser, Debug)]
+#[command(author, version, about = "Onmap 1.0 - Network Mapper (nmap clone)", long_about = None)]
+pub struct Cli {
+    /// Run in Text User Interface (TUI) mode
+    #[arg(long)]
+    pub tui: bool,
+
+    #[command(subcommand)]
+    pub command: Option<ScanCommand>,
+
+    /// Disable original printing style, use modernized printing
+    #[arg(long = "pp",global = true, help = "Activate pretty printing", action = ArgAction::SetTrue)]
+    pub modern_printing: bool,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ScanCommand {
+    /// SYN stealth scan
+    #[command(name = "sS")]
+    SynScan {
+        /// Port specification (e.g., -p22,80, -p1-1024)
+        #[arg(short = 'p')]
+        ports: Option<String>,
+        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        ips: String,
+    },
+    /// TCP connect scan
+    #[command(name = "sT")]
+    ConnectScan {
+        /// Port specification (e.g., -p22,80, -p1-1024)
+        #[arg(short = 'p')]
+        ports: Option<String>,
+        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        ips: String,
+    },
+    /// ACK scan (for firewall rule discovery)
+    #[command(name = "sA")]
+    AckScan {
+        /// Port specification (e.g., -p22,80, -p1-1024)
+        #[arg(short = 'p')]
+        ports: Option<String>,
+        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        ips: String,
+    },
+    /// Ping scan (Host Discovery)
+    #[command(name = "sn")]
+    PingScan {
+        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        ips: String,
+    },
+    /// ICMP Echo scan (Host Discovery)
+    #[command(name = "PE")]
+    IcmpEcho {
+        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        ips: String,
+    },
+}
+
 
 /// Represents the current state or view of the application's user interface.
 #[derive(PartialEq, Debug, Clone, Copy)]
