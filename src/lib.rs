@@ -2,9 +2,9 @@ mod host_discovery;
 mod port_scanning;
 mod service_detection;
 mod os_detection;
-mod parsing;
-mod printing;
-mod resolving;
+pub mod parsing;
+pub mod printing;
+pub mod resolving;
 
 mod tui;
 mod models;

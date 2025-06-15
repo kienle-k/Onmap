@@ -1,3 +1,9 @@
+//! # Terminal User Interface (TUI) Module
+//!
+//! This module contains the core logic for the application's interactive terminal user interface,
+//! built with the `ratatui` and `crossterm` crates. It manages the application's state,
+//! handles user input through an event loop, and renders all the widgets to the terminal.
+
 use std::io;
 use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption, AppState, PortOptions};
 use crossterm::event::{self, Event, KeyCode};
@@ -10,15 +16,28 @@ use ratatui::{
     Frame, Terminal,
 };
 
+/// Represents the state and data of the interactive TUI application.
+///
+/// This struct holds all information necessary to render the UI and respond to user input,
+/// including the current view (`state`), user selections, and text input buffers.
 pub struct App {
+    /// The current active screen or view of the application.
     state: AppState,
+    /// The user's selection from the main menu.
     main_selected: Option<MainMenuItem>,
+    /// The user's selection from the host discovery sub-menu.
     host_discovery_selected: Option<HostDiscoveryOption>,
+    /// The user's selection from the port scan sub-menu.
     port_scan_selected: Option<PortScanOption>,
+    /// The string buffer for the IP address input field.
     ip_input: String,
+    /// A flag indicating if the current scan selection requires port information.
     port_needed: bool,
+    /// The user's selection from the port options menu.
     port_mode: Option<PortOptions>,
+    /// The string buffer for the port range input field.
     port_input: String,
+    /// The current character position of the cursor in an input field.
     cursor_position: usize,
 }
 
@@ -85,6 +104,24 @@ impl App {
     }
 }
 
+
+/// Runs the main event loop for the terminal user interface.
+///
+/// This function continuously draws the UI, waits for user keyboard events,
+/// and updates the application state accordingly. The loop terminates when the
+/// user quits ('q') or finalizes a scan configuration by pressing Enter on the
+/// relevant screen.
+///
+/// # Arguments
+///
+/// * `terminal` - A mutable reference to the `Terminal` backend.
+/// * `app` - A mutable reference to the `App` state.
+///
+/// # Returns
+///
+/// A `Result` containing the final user selections when the loop exits successfully,
+/// or an `io::Error` if there's a problem reading events. The tuple contains all
+/// the necessary information to configure and run the selected scan.
 pub fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
@@ -358,6 +395,13 @@ pub fn run_app<B: Backend>(
     }
 }
 
+
+
+/// Renders the user interface based on the current application state.
+///
+/// This function acts as the main drawing dispatcher. It checks the `app.state`
+/// and calls the appropriate rendering function for the current view, whether it's
+/// the main menu, a sub-menu, or an input screen.
 fn ui(f: &mut Frame, app: &App) {
     // Get full size of the frame
     let size = f.size();
