@@ -2,22 +2,20 @@
 
 ## Todo:
 
-## 1. Reimplement CLI parsing (with clap) (Done)
-## 2. Restructure and add lib.rs (added lib.rs --> Added new structure to hande CLI parsing) (Done)
-## 3. Add to README.md how to test the program with the docker containers (Done)
+- Reimplement CLI parsing (with clap) (Done)
+- Restructure and add lib.rs (added lib.rs --> Added new structure to hande CLI parsing) (Done)
+- Add to README.md how to test the program with the docker containers (Done)
 
-## 4. Everyone does this for the part he implemented
-### Add unit tests (Done for Kevin)
-### Remove unwraps (Done for Kevin)
-### Remove copy / clones
-### Revise error handling (also check if option or result is correctly used)
-### Add documentation in the code with doc-strings (Done for Kevin)
-### Add comments for grading (Done for Kevin)
-
-
-## 5. Write Documentation
+- Everyone does this for the part he implemented
+  - Add unit tests (Done for Kevin)
+  - Remove unwraps (Done for Kevin)
+  - Remove copy / clones
+  - Revise error handling (also check if option or result is correctly used)
+  - Add documentation in the code with doc-strings (Done for Kevin)
+  - Add comments for grading (Done for Kevin)
 
 
+## Documentation
 
 
 ## Docker Test environment
