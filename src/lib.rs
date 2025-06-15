@@ -217,64 +217,50 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
         // Use the `modern_printing` flag from the parsed `cli` struct --> use different print styles based on user spec
         let use_original_printing = !cli.modern_printing;
 
+        // Extract CLI specs --> build ip and port arrays
+
+        // Extract IP addresses arr only once (if applicable) to remove redundancy
+        let ip_addresses_arr = match &cli.command {
+            Some(ScanCommand::PingScan { ips })
+            | Some(ScanCommand::IcmpEcho { ips })
+            | Some(ScanCommand::SynScan { ips, .. })
+            | Some(ScanCommand::ConnectScan { ips, .. })
+            | Some(ScanCommand::AckScan { ips, .. }) => parsing::parse_ip_addresses(ips),
+            // Fix: Wrap Vec::new() in Ok() to match the Result type of other arms
+            None => Ok(Vec::new()),
+        };
+
+        // Extract ports only once (if applicable)
+        let ports_vec = match &cli.command {
+            Some(ScanCommand::SynScan { ports, .. })
+            | Some(ScanCommand::ConnectScan { ports, .. })
+            | Some(ScanCommand::AckScan { ports, .. }) => {
+                let ports_str = ports.as_ref().unwrap_or_else(|| {
+                    eprintln!("Ports must be provided");
+                    std::process::exit(1);
+                });
+                parsing::convert_ports(ports_str.to_string()).unwrap_or_else(|e| {
+                    eprintln!("Invalid port specification: {}", e);
+                    std::process::exit(1);
+                })
+            }
+            _ => Vec::new(),
+        };
 
 
-        // // Extract IP addresses once (if applicable)
-        // let ip_addresses_arr = match &cli.command {
-        //     Some(ScanCommand::PingScan { ips }) | Some(ScanCommand::IcmpEcho { ips }) => {
-        //         parsing::parse_ip_addresses(&ips)
-        //     },
-        //     Some(ScanCommand::SynScan { ips, .. }) | Some(ScanCommand::ConnectScan { ips, .. }) | Some(ScanCommand::AckScan { ips, .. }) => {
-        //         parsing::parse_ip_addresses(&ips)
-        //     },
-        //     None => Vec::new(),
-        // };
 
-        // // Extract ports once (if applicable)
-        // let ports_vec = match &cli.command {
-        //     Some(ScanCommand::SynScan { ports, .. }) 
-        //     | Some(ScanCommand::ConnectScan { ports, .. }) 
-        //     | Some(ScanCommand::AckScan { ports, .. }) => {
-        //         let ports_str = ports.as_ref().unwrap_or_else(|| {
-        //             eprintln!("Ports must be provided");
-        //             std::process::exit(1);
-        //         });
-        //         parsing::convert_ports(ports_str.to_string()).unwrap_or_else(|e| {
-        //             eprintln!("Invalid port specification: {}", e);
-        //             std::process::exit(1);
-        //         })
-        //     },
-        //     _ => Vec::new(),
-        // };
-
-
-        // Original startup message from nmap
+        // Print the original startup message from nmap
         let tz_str = get_timezone().expect("Failed to get system timezone");
         let tz: Tz = tz_str.parse().expect("Invalid timezone string");
         let now = Utc::now().with_timezone(&tz);
         let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
         println!("\nStarting Onmap 1.0 (https://github.com/kienle-k/Onmap) at {}", formatted_time);
 
+        // Execute the selected scan type
+
+        // Decide which scan to execute
         match cli.command {
-            Some(ScanCommand::SynScan { ports, ips }) => {
-                let ip_addresses_arr = parsing::parse_ip_addresses(&ips);
-
-                let ports_str = match ports {
-                    Some(ref s) => s,
-                    None => {
-                        eprintln!("Ports must be provided");
-                        std::process::exit(1);
-                    }
-                };
-
-                let ports_vec = match parsing::convert_ports(ports_str.to_string()) {
-                    Ok(vec) => vec,
-                    Err(e) => {
-                        eprintln!("Invalid port specification: {}", e);
-                        std::process::exit(1);
-                    }
-                };
-
+            Some(ScanCommand::SynScan { ports: _, ips: _ }) => {   
                 let scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_vec, local_ip_address).await;
                 match scan_result {
                     Ok(result) => port_scan_result = result,
@@ -286,25 +272,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     print_port_scan_results(port_scan_result);
                 }
             },
-            Some(ScanCommand::ConnectScan { ports, ips }) => {
-                let ip_addresses_arr = parsing::parse_ip_addresses(&ips);
-
-                let ports_str = match ports {
-                    Some(ref s) => s,
-                    None => {
-                        eprintln!("Ports must be provided");
-                        std::process::exit(1);
-                    }
-                };
-
-                let ports_vec = match parsing::convert_ports(ports_str.to_string()) {
-                    Ok(vec) => vec,
-                    Err(e) => {
-                        eprintln!("Invalid port specification: {}", e);
-                        std::process::exit(1);
-                    }
-                };
-
+            Some(ScanCommand::ConnectScan { ports: _, ips: _ }) => {
                 let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_vec, 300).await;
                 match scan_result {
                     Ok(result) => port_scan_result = result,
@@ -316,29 +284,11 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     print_port_scan_results(port_scan_result);
                 }
             },
-            Some(ScanCommand::AckScan { ports, ips }) => {
-                let ip_addresses_arr = parsing::parse_ip_addresses(&ips);
-                
-                let ports_str = match ports {
-                    Some(ref s) => s,
-                    None => {
-                        eprintln!("Ports must be provided");
-                        std::process::exit(1);
-                    }
-                };
-
-                let ports_vec = match parsing::convert_ports(ports_str.to_string()) {
-                    Ok(vec) => vec,
-                    Err(e) => {
-                        eprintln!("Invalid port specification: {}", e);
-                        std::process::exit(1);
-                    }
-                };
-
+            Some(ScanCommand::AckScan { ports: _, ips: _ }) => {
                 port_scanning::run_ack_scan(ip_addresses_arr, &ports_vec, local_ip_address).await;
             },
-            Some(ScanCommand::PingScan { ips }) => {
-                let ip_addresses_arr = parsing::parse_ip_addresses(&ips);
+            Some(ScanCommand::PingScan { ips: _ }) => {
+                
                 let host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await;
                 if use_original_printing {
                     print_host_discovery_results_original(host_discovery_result);
@@ -346,8 +296,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     print_host_discovery_results(host_discovery_result);
                 }
             },
-            Some(ScanCommand::IcmpEcho { ips }) => {
-                let ip_addresses_arr = parsing::parse_ip_addresses(&ips);
+            Some(ScanCommand::IcmpEcho { ips: _ }) => {
                 let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
                 if use_original_printing {
                     print_host_discovery_results_original(host_discovery_result);
@@ -360,5 +309,5 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
             }
         }
     }
-    Ok(()) // run_onmap now returns Result<(), io::Error>
+    Ok(())
 }
