@@ -58,6 +58,54 @@ pub fn convert_port_range_to_arr(port_input: String) -> Result<Vec<u16>, String>
     }
 }
 
+
+
+
+pub fn convert_ports(port_input: String) -> Result<Vec<u16>, String> {
+    let input = port_input.trim();
+
+    let most_used = vec![
+        1, 7, 9, 13, 21, 22, 23, 25, 26, 37, 
+        53, 67, 68, 69, 79, 80, 81, 82, 83, 84,
+        85, 88, 106, 110, 111, 113, 119, 123, 135, 137,
+        139, 143, 161, 179, 199, 389, 427, 443, 465, 513,
+        514, 515, 587, 631, 636, 873, 993, 995, 1024, 1025, 
+        1026, 1027, 1028, 1029, 1030, 1031, 1433, 1521, 1720, 1723, 
+        1900, 2121, 3128, 3306, 3389, 5432, 5900, 6000, 8000, 8008, 
+        8080, 8081, 8088, 8090, 8118, 8880, 8909, 9000, 9090, 9200, 
+        9300, 9999, 10000, 10001, 11211, 27017, 27018, 27019, 28017, 32400, 
+        32768, 32769, 49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159
+    ];
+
+    if input == "-" {
+        return Ok((0u16..=65535).collect());
+    } else if input == "F" {
+        return Ok(most_used);
+    }
+
+    // Jetzt splitte an ','
+    let mut result = Vec::new();
+    for part in input.split(',') {
+        let p = part.trim();
+        if let Some((start, end)) = p.split_once('-') {
+            let start: u16 = start.trim().parse().map_err(|_| format!("Invalid start: {}", start))?;
+            let end: u16 = end.trim().parse().map_err(|_| format!("Invalid end: {}", end))?;
+            if start > end {
+                return Err(format!("Start {} greater than end {}", start, end));
+            }
+            result.extend(start..=end);
+        } else {
+            let single: u16 = p.parse().map_err(|_| format!("Invalid port: {}", p))?;
+            result.push(single);
+        }
+    }
+
+    Ok(result)
+}
+
+
+
+
 pub fn set_ports_arr(port_option: PortOptions) -> Result<Vec<u16>, String> {
     match port_option {
         PortOptions::NormalMode => {
