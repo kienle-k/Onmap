@@ -1,59 +1,62 @@
+// --- Module declarations ---
 mod host_discovery;
 mod port_scanning;
 mod service_detection;
 mod os_detection;
+mod tui;
+
+// --- Public API modules ---
+pub mod models;
 pub mod parsing;
 pub mod printing;
 pub mod resolving;
 
-mod tui;
-pub mod models;
+// --- Standard library imports ---
 use std::io;
-use std::io::{Write};
 use std::net::{IpAddr, Ipv4Addr};
-use models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
-use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
-use ratatui::backend::CrosstermBackend;
-use ratatui::terminal::Terminal;
+use std::io::Write;
+
+// --- External crate imports ---
+use chrono::prelude::*;
+use chrono_tz::Tz;
 use crossterm::{
-    event::DisableMouseCapture,
-    event::EnableMouseCapture,
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use chrono::prelude::*; // For Utc::now(), .with_timezone() und .format()
-use chrono_tz::Tz;      // For Tz
 use iana_time_zone::get_timezone;
+use local_ip_address::local_ip;
+use ratatui::backend::CrosstermBackend;
+use ratatui::terminal::Terminal;
 
-use crate::host_discovery::run_icmp_netmask;
-use crate::host_discovery::run_icmp_timestamp;
-use crate::host_discovery::run_tcp_syn_discovery;
+// --- Internal imports (from this crate) ---
+use models::{Cli, ScanCommand, HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
+use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
+use crate::host_discovery::{run_icmp_netmask, run_icmp_timestamp, run_tcp_syn_discovery};
 use crate::os_detection::run_os_detection;
 use crate::port_scanning::run_udp_scan;
 use crate::service_detection::run_service_detection;
 use crate::tui::{run_app, App};
-use local_ip_address::local_ip;
-use models::{Cli, ScanCommand};
 
 
-// use utils::json_loader::{load_protocols, get_port_info};
-
+// --- Main public entry point ---
+/// Runs the Onmap application with the given CLI arguments.
+/// Handles both TUI and CLI modes.
 
 #[tokio::main]
 pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {    
-    // Flush to enable TUI in docker
-    // This is a workaround for the issue where the TUI doesn't show up in Docker
+    // Flush to enable TUI in docker (test environment)
+    // This is a quick fix for an issue where the TUI doesn't display inside the container
     io::stdout().flush()?;
 
 
     // Get the local source IP for proper checksum calculation
-    // This might be needed for both TUI and non-TUI modes if you implement CLI scanning
     let local_ip_address: Ipv4Addr = match local_ip() {
         Ok(ip) => match ip {
             IpAddr::V4(ipv4) => ipv4,
             IpAddr::V6(_) => {
                 println!("Got an IPv6 address, but need IPv4 for some operations. Defaulting to localhost.");
-                // Default to localhost when we get an IPv6
+                // Default to localhost the result is IPv6
                 Ipv4Addr::new(127, 0, 0, 1)
             }
         },
@@ -64,14 +67,22 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
         }
     };
 
-    // Initialize results variables specifically for TUI mode,
-    // as they are populated based on TUI interaction.
+    // Initialize results variables
+    // --> They are populated with data by the user-specified function that performs the scan
     let mut port_scan_result: (Vec<PortScanSingleResult>, PortScanAllResult) = (Vec::new(), PortScanAllResult::new());
     let mut host_discovery_result: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) = (Vec::new(), HostDiscoveryAllResult::new());
 
 
+    // Extract the `modern_printing` flag from the parsed `cli` struct --> use different print styles based on user spec
+    let use_original_printing = !cli.modern_printing;
 
-    if cli.tui {
+    // Extract tui argument --> decide whether to use CLI args or open TUI
+    let use_tui = cli.tui;
+
+    // MODE selection: Either TUI (Text-User-Interface) if specified, else use CLI-Arguments (Command-Line-Interface)
+
+    // TUI
+    if use_tui {
         // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -119,7 +130,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     if let Some(port_mode) = port_mode {
                         match port_mode {
                             PortOptions::NormalMode => parsing::set_ports_arr(PortOptions::NormalMode),
-                            PortOptions::PortRangeInput => parsing::convert_port_range_to_arr(port_input),
+                            PortOptions::PortRangeInput => parsing::convert_ports(port_input),
                             PortOptions::FastMode => parsing::set_ports_arr(PortOptions::FastMode),
                             PortOptions::SequentialMode => parsing::set_ports_arr(PortOptions::SequentialMode)
                         }
@@ -214,24 +225,21 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
         // This could happen if run_app returns Ok(()) without selections,
         // or if the user quits in a way that doesn't populate the selections.
 
+    // CLI Arguments
     } else {
-        // Use the `modern_printing` flag from the parsed `cli` struct --> use different print styles based on user spec
-        let use_original_printing = !cli.modern_printing;
+        // Extract CLI specs --> build ip and port range arrays
 
-        // Extract CLI specs --> build ip and port arrays
-
-        // Extract IP addresses arr only once (if applicable) to remove redundancy
+        // Extract IP addresses array only once (if applicable)
         let ip_addresses_arr = match &cli.command {
             Some(ScanCommand::PingScan { ips })
             | Some(ScanCommand::IcmpEcho { ips })
             | Some(ScanCommand::SynScan { ips, .. })
             | Some(ScanCommand::ConnectScan { ips, .. })
             | Some(ScanCommand::AckScan { ips, .. }) => parsing::parse_ip_addresses(ips),
-            // Fix: Wrap Vec::new() in Ok() to match the Result type of other arms
             None => Ok(Vec::new()),
         };
 
-        // Extract ports only once (if applicable)
+        // Extract ports only once (if applicable, some scans dont need ports specificed)
         let ports_vec = match &cli.command {
             Some(ScanCommand::SynScan { ports, .. })
             | Some(ScanCommand::ConnectScan { ports, .. })
@@ -250,16 +258,19 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
 
 
 
-        // Print the original startup message from nmap
+        // Print startup message (nmap-like)
+        // Use cargo env to gather version and package name
+        // Format time to fit the user settings
         let tz_str = get_timezone().expect("Failed to get system timezone");
         let tz: Tz = tz_str.parse().expect("Invalid timezone string");
         let now = Utc::now().with_timezone(&tz);
         let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
-        println!("\nStarting Onmap 1.0 (https://github.com/kienle-k/Onmap) at {}", formatted_time);
+        let version = env!("CARGO_PKG_VERSION");
+        let name = env!("CARGO_PKG_NAME");
+        println!("\nStarting {} {} (https://github.com/kienle-k/Onmap) at {}", name, version, formatted_time);
 
-        // Execute the selected scan type
 
-        // Decide which scan to execute
+        // Execute specific scan & print results
         match cli.command {
             Some(ScanCommand::SynScan { ports: _, ips: _ }) => {   
                 let scan_result = port_scanning::run_syn_scan(ip_addresses_arr, ports_vec, local_ip_address).await;

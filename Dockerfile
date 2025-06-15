@@ -26,10 +26,7 @@ RUN apt-get update && apt-get install -y \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy the release binary directly into /app
-COPY --from=builder /app/target/release/Onmap /app/Onmap
+COPY --from=builder /app/target/release/onmap /app/Onmap
 
-# Copy the data file into the /app directory
-COPY src/utils/port_service_mapping.json /app/src/utils/port_service_mapping.json
-
-# REMOVE or comment out any ENTRYPOINT or CMD lines here for the Onmap service!
-# ENTRYPOINT ["/usr/local/bin/Onmap"]
+# Copy the port service mapping json into the container
+COPY src/resolving/port_service_mapping.json /app/src/resolving/port_service_mapping.json

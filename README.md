@@ -2,9 +2,9 @@
 
 ## Todo:
 
-## 1. Reimplement CLI parsing (with clap)
-## 2. Restructure and add lib.rs (already added lib.rs but CLI parsing should be done in main.rs)
-## 3. Add to README.md how to test the program with the docker containers (should contain all functionality)
+## 1. Reimplement CLI parsing (with clap) (Done)
+## 2. Restructure and add lib.rs (added lib.rs --> Added new structure to hande CLI parsing) (Done)
+## 3. Add to README.md how to test the program with the docker containers (Done)
 
 ## 4. Everyone does this for the part he implemented
 ### Add unit tests (Done for Kevin)
@@ -16,3 +16,35 @@
 
 
 ## 5. Write Documentation
+
+
+
+
+## Docker Test environment
+This repo provides a docker container environment to perform tests of the functionalities.
+
+### Building the containers (2-phase)
+```bash
+docker compose build
+```
+
+### Deploying the containers
+```bash
+docker compose up -d
+```
+
+### Testing functionalities
+#### Logging into the container
+```bash
+docker exec -it onmap bash
+```
+#### Executing commands
+```bash
+./onmap -sT -pF 127.0.0.1
+```
+
+### Availible dummy hosts to scan
+- 172.28.0.11 host_1
+- 172.28.0.12 host_2
+- 172.28.30.45 host_3
+- 172.28.10.124 host_4
