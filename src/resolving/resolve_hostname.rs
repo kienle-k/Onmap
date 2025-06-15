@@ -52,6 +52,7 @@ pub async fn resolve_hostname(ip: &Ipv4Addr) -> Option<String> {
         config.add_name_server(ns);
     }
 
+    // Create the resolver with the config from above
     let resolver = TokioAsyncResolver::tokio(
         config,
         ResolverOpts::default()

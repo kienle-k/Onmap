@@ -26,8 +26,10 @@ use super::super::models::PortOptions;
 /// assert_eq!(convert_port_range_to_arr("-".to_string()).expect("All ports could not be parsed").len(), 65536);
 /// ```
 pub fn convert_port_range_to_arr(port_input: String) -> Result<Vec<u16>, String> {
+    // Trim whitespace from the input string to handle user input gracefully.
     let input = port_input.trim();
 
+    // A pre-defined list of the 100 most commonly used ports for the "Fast" scan option.
     let most_used = vec![
         1, 7, 9, 13, 21, 22, 23, 25, 26, 37, 53, 67, 68, 69, 79, 80, 81, 82, 83, 84, 85,
         88, 106, 110, 111, 113, 119, 123, 135, 137, 139, 143, 161, 179, 199, 389, 427,
@@ -38,43 +40,55 @@ pub fn convert_port_range_to_arr(port_input: String) -> Result<Vec<u16>, String>
         32768, 32769, 49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159,
     ];
 
-    // Handle full range case
+    // --- Handle special shortcuts before attempting to parse numbers. ---
+
+    // "-" is a shortcut for the entire valid port range (0-65535).
     if input == "-" {
         let ports: Vec<u16> = (0u16..=65535).collect();
         return Ok(ports);
+    // "F" is a shortcut for the "Fast" scan list of common ports.
     } else if input == "F" {
         return Ok(most_used);
     }
 
-    // Handle single port case
+    // --- Handle a single port number. ---
+
+    // If the input doesn't contain a hyphen, it must be a single port.
     if !input.contains('-') {
         return match input.parse::<u16>() {
             Ok(port) => Ok(vec![port]),
-            Err(_) => Err("Input must contain -".to_string()),
+            // If parsing fails here, it's an invalid single port format.
+            Err(_) => Err(format!("Invalid port number: '{}'", input)),
         };
     }
 
-    // Handle range case
+    // --- Handle a hyphenated range (e.g., "80-1024"). ---
+
+    // Split the string into two parts at the hyphen.
     let parts: Vec<&str> = input.split('-').collect();
+    // Ensure the format is exactly "start-end" and not something like "80-90-100".
     if parts.len() != 2 {
-        return Err("Input must contain 2 port numbers".to_string());
+        return Err(format!("Invalid range format: '{}'. Expected format like '80-100'.", input));
     }
 
+    // Parse the start part of the range, providing a specific error if it fails.
     let start = parts[0]
         .trim()
         .parse::<u16>()
         .map_err(|_| format!("Invalid start port number: '{}'", parts[0]))?;
 
+    // Parse the end part of the range, providing a specific error if it fails.
     let end = parts[1]
         .trim()
         .parse::<u16>()
         .map_err(|_| format!("Invalid end port number: '{}'", parts[1]))?;
 
+    // Validate that the start of the range is not greater than the end.
     if start <= end {
-        // Wrap the successful result in Ok()
+        // If the range is valid, collect all numbers from start to end into a vector.
         Ok((start..=end).collect())
     } else {
-        // Return a specific error for an invalid range
+        // Return a specific error for an inverted range.
         Err(format!(
             "Invalid range: start port {} is greater than end port {}",
             start, end
@@ -100,10 +114,11 @@ pub fn convert_port_range_to_arr(port_input: String) -> Result<Vec<u16>, String>
 /// * `Err(String)` if the provided `PortOptions` variant is not supported.
 pub fn set_ports_arr(port_option: PortOptions) -> Result<Vec<u16>, String> {
     match port_option {
+        // "Normal" mode provides a list of the 1000 most common ports.
         PortOptions::NormalMode => Ok((1..=1000).collect()),
 
         PortOptions::FastMode => {
-            // Return the 100 most common ports
+            // "Fast" mode returns a curated list of the top 100 most common ports.
             Ok(vec![
                 1, 7, 9, 13, 21, 22, 23, 25, 26, 37, 53, 67, 68, 69, 79, 80, 81, 82, 83,
                 84, 85, 88, 106, 110, 111, 113, 119, 123, 135, 137, 139, 143, 161, 179,
@@ -116,8 +131,11 @@ pub fn set_ports_arr(port_option: PortOptions) -> Result<Vec<u16>, String> {
             ])
         }
 
+        // "Sequential" mode scans the entire range of valid port numbers.
         PortOptions::SequentialMode => Ok((1..=65535).collect()),
 
+        // This function only handles predefined sets. Options like `PortRangeInput`
+        // are handled elsewhere and are considered an invalid input here.
         _ => Err("Ports array could not be set".to_string()),
     }
 }
@@ -174,7 +192,7 @@ mod tests {
             .expect_err("A non-numeric single port should produce an error");
         assert_eq!(
             err_message,
-            "Input must contain 2 port numbers".to_string()
+            "Invalid range format: 'not-a-port'. Expected format like '80-100'.".to_string()
         );
     }
 
@@ -202,7 +220,7 @@ mod tests {
     fn test_convert_port_range_invalid_format_too_many_parts() {
         let err_message = convert_port_range_to_arr("80-90-100".to_string())
             .expect_err("A range with more than two parts should fail");
-        assert_eq!(err_message, "Input must contain 2 port numbers");
+        assert_eq!(err_message, "Invalid range format: '80-90-100'. Expected format like '80-100'.");
     }
 
     /// Verifies that a range with a non-numeric start port fails.

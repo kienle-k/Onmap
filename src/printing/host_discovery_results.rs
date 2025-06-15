@@ -31,6 +31,7 @@ pub fn print_host_discovery_results(results: (Vec<HostDiscoverySingleResult>, Ho
     let mut summary_table = Table::new();
     summary_table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
 
+    // Print different rows for every field in the HostDiscoveryAllResult struct
     summary_table.add_row(Row::new(vec![
         Cell::new("Hosts scanned"),
         Cell::new(&all_results.scanned_addresses.len().to_string())
@@ -97,6 +98,7 @@ pub fn print_host_discovery_results(results: (Vec<HostDiscoverySingleResult>, Ho
             };
             let hostname = host.dns_resolve.as_deref().unwrap_or("-");
 
+            // Add a single host as a row
             host_table.add_row(Row::new(vec![
                 Cell::new(&host.ip_address.to_string()),
                 Cell::new(status),

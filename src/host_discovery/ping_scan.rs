@@ -32,6 +32,7 @@ pub async fn run_ping_scan(
     // Start timing the operation
     let start_time = SystemTime::now();
     
+    // Ensure IP addresses were parsed correctly before proceeding with the scan.
     let ips = match ip_addresses {
         Ok(addresses) => addresses,
         Err(error) => {
@@ -67,6 +68,7 @@ pub async fn run_ping_scan(
                 dns_resolve = resolve_hostname(&ip).await;
             }
             
+            // Assemble the raw probe data into a structured result for this host.
             HostDiscoverySingleResult {
                 ip_address: IpAddr::V4(ip),
                 latency,
@@ -123,6 +125,7 @@ async fn ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, Optio
     
     // Use spawn_blocking for the synchronous `Command::output` call.
     let result = task::spawn_blocking(move || {
+
         let start = Instant::now();
         
         // Use different arguments for the ping command based on the target OS.

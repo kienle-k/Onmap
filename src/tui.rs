@@ -42,6 +42,7 @@ pub struct App {
 }
 
 impl App {
+    /// Creates a new `App` instance in its initial state.
     pub fn new() -> App {
         App { 
             state: AppState::MainMenu,
@@ -56,27 +57,34 @@ impl App {
         }
     }
 
+    /// Sets the selected main menu item.
     fn select(&mut self, item: MainMenuItem) {
         self.main_selected = Some(item);
     }
 
+    /// Sets the selected host discovery option.
     fn select_host_discovery(&mut self, item: HostDiscoveryOption) {
         self.host_discovery_selected = Some(item);
     }
     
+    /// Sets the selected port scan option.
     fn select_port_scan(&mut self, item: PortScanOption) {
         self.port_scan_selected = Some(item);
     }
+
+    /// Inserts a character into the IP input string at the cursor's position.
     fn input_ip(&mut self, c: char) {
         self.ip_input.insert(self.cursor_position, c);
         self.cursor_position += 1;
     }
 
+    /// Inserts a character into the port input string at the cursor's position.
     fn input_port(&mut self, c: char) {
         self.port_input.insert(self.cursor_position, c);
         self.cursor_position += 1;
     }
 
+    /// Deletes a character from the IP input string at the cursor's position.
     fn delete_char_ip_input(&mut self) {
         if self.cursor_position > 0 {
             self.cursor_position -= 1;
@@ -84,6 +92,7 @@ impl App {
         }
     }
 
+    /// Deletes a character from the port range input string at the cursor's position.
     fn delete_char_port_range_input(&mut self) {
         if self.cursor_position > 0 {
             self.cursor_position -= 1;
@@ -91,14 +100,17 @@ impl App {
         }
     }
 
+    /// Moves the cursor one position to the left in the current input field.
     fn move_cursor_left(&mut self) {
         if self.cursor_position > 0 {
             self.cursor_position -= 1;
         }
     }
 
+    /// Moves the cursor one position to the right in the current input field.
     fn move_cursor_right(&mut self) {
-        if self.cursor_position < self.ip_input.len() {
+        // The condition should check against the length of the relevant input field.
+        if self.cursor_position < self.ip_input.len() || self.cursor_position < self.port_input.len() {
             self.cursor_position += 1;
         }
     }
@@ -132,11 +144,17 @@ pub fn run_app<B: Backend>(
                 bool,
                 Option<PortOptions>,
                 String)> {
+    //Loop that has the main functionality of the tui
+    //Depending on the options selected the App struct is set
+    //And returned if all options are set
     loop {
         terminal.draw(|f| ui(f, app))?;
 
         if let Event::Key(key) = event::read()? {
             match app.state {
+
+                //Options that can be selected in the main menu,
+                //can either quit with q or go to a submenu
                 AppState::MainMenu => {
                     match key.code {
                         KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
@@ -159,13 +177,18 @@ pub fn run_app<B: Backend>(
                         _ => {}
                     }
                 }
+                //Options that can be selected in the submenu for host discovery
+                //Menu will continue with ip address input after
                 AppState::SubMenuHostDiscovery => {
                     match key.code {
+                        //b to go back to the main menu
                         KeyCode::Char('b') => {
                             app.state = AppState::MainMenu;
                             app.host_discovery_selected = None;
                         }
+                        //q to quit
                         KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
+                        //The following options select the host discovery method
                         KeyCode::Char('1') => {
                             app.select_host_discovery(HostDiscoveryOption::ListScan);
                             app.state = AppState::IpAddressInput;
@@ -209,13 +232,18 @@ pub fn run_app<B: Backend>(
                         _ => {}
                     }
                 }
+                //Options that can be selected in the submenu for port scans
+                //Menu will continue with ip address input after
                 AppState::SubMenuPortScan => {
                     match key.code {
+                        //b to go back to the main menu
                         KeyCode::Char('b') => {
                             app.state = AppState::MainMenu;
                             app.port_scan_selected = None;
                         }
+                        //q to quit
                         KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
+                        //The following options select the scan method
                         KeyCode::Char('1') => {
                             app.select_port_scan(PortScanOption::SynScan);
                             app.state = AppState::IpAddressInput;
@@ -265,8 +293,12 @@ pub fn run_app<B: Backend>(
                     }
                 }
 
+                //Logic for the input of ip addresses
                 AppState::IpAddressInput => {
                     match key.code {
+                        //Submit the input
+                        //When doing port scans also a port is needed
+                        //When port is needed continue to port input else quit TUI and run host discovery
                         KeyCode::Enter => {
                             app.cursor_position = 0;
                             if app.port_needed {
@@ -290,15 +322,18 @@ pub fn run_app<B: Backend>(
                                 app.input_ip(c);
                             }
                         }
+                        //Normal deletion with backspace
                         KeyCode::Backspace => {
                             app.delete_char_ip_input();
                         }
+                        //Move the cursor left or right
                         KeyCode::Left => {
                             app.move_cursor_left();
                         }
                         KeyCode::Right => {
                             app.move_cursor_right();
                         }
+                        //Clear the whole input
                         KeyCode::Esc => {
                             app.ip_input.clear();
                             app.cursor_position = 0;
@@ -307,13 +342,17 @@ pub fn run_app<B: Backend>(
                     }
                 }
 
+                //Logic for the port options submenu
                 AppState::PortOptions => {
                     match key.code {
+                        //b to go back to main menu
                         KeyCode::Char('b') => {
                             app.state = AppState::MainMenu;
                             app.port_scan_selected = None;
                         }
+                        //q to quit
                         KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
+                        //Ports: 1-1000 are selected for the scan
                         KeyCode::Char('1') => {
                             app.port_mode = Some(PortOptions::NormalMode);
                             return Ok((
@@ -326,10 +365,12 @@ pub fn run_app<B: Backend>(
                                 app.port_input.clone(),
                             ));
                         }
+                        //Go to the port input view and input a port range
                         KeyCode::Char('2') => {
                             app.state = AppState::PortRangeInput;
                             app.port_mode = Some(PortOptions::PortRangeInput)
                         }
+                        //100 most used ports are selected for the scan
                         KeyCode::Char('3') => {
                             app.port_mode = Some(PortOptions::FastMode);
                             return Ok((
@@ -343,6 +384,7 @@ pub fn run_app<B: Backend>(
                             ));
 
                         }
+                        //All 65535 ports starting from 1 are selected for the scans
                         KeyCode::Char('4') => {
                             app.port_mode = Some(PortOptions::SequentialMode);
                             return Ok((
@@ -358,8 +400,10 @@ pub fn run_app<B: Backend>(
                         _ => {}
                     }
                 }
+                //Logic for port range input
                 AppState::PortRangeInput => {
                     match key.code {
+                        //Submit with enter
                         KeyCode::Enter => {
                                 app.cursor_position = 0;
                                 return Ok((
@@ -372,19 +416,24 @@ pub fn run_app<B: Backend>(
                                     app.port_input.clone(),
                                 ));
                         }
-                        
+                        //Only allow characters for valid port ranges
                         KeyCode::Char(c) => {
+                        if c.is_digit(10) || c == '-' {
                             app.input_port(c);
                         }
+                        }
+                        //Normal backspace behaviour
                         KeyCode::Backspace => {
                             app.delete_char_port_range_input();
                         }
+                        //Move the cursor left or right
                         KeyCode::Left => {
                             app.move_cursor_left();
                         }
                         KeyCode::Right => {
                             app.move_cursor_right();
                         }
+                        //Clear the whole input
                         KeyCode::Esc => {
                             app.port_input.clear();
                             app.cursor_position = 0;
@@ -406,7 +455,8 @@ fn ui(f: &mut Frame, app: &App) {
     // Get full size of the frame
     let size = f.size();
     
-    // First create a horizontal layout to center all elements at 25% width
+    // Create the horizontal layout, make margins left and right 0
+    // so the TUI is on the left of the screen
     let horizontal_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(
@@ -422,7 +472,7 @@ fn ui(f: &mut Frame, app: &App) {
     // Now create a vertical layout within the center horizontal section
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(1) // Small margin within the 25% horizontal space
+        .margin(1) 
         .constraints(
             [
                 Constraint::Length(3),       // Title
@@ -435,8 +485,11 @@ fn ui(f: &mut Frame, app: &App) {
     
     // Center section for content
     let content_area = vertical_chunks[1];
-    
+
+    // The following code defines how the graphics are displayed
+    // This should always match the logic defined above for every menu
     match app.state {
+        // --- Render Main Menu ---
         AppState::MainMenu => {
             // Create title
             let title = Block::default()
@@ -511,6 +564,7 @@ fn ui(f: &mut Frame, app: &App) {
                 vertical_chunks[2],
             );
         }
+        // --- Render Host Discovery Sub-Menu ---
         AppState::SubMenuHostDiscovery => {
             // Create title
             let title = Block::default()
@@ -625,6 +679,7 @@ fn ui(f: &mut Frame, app: &App) {
                 vertical_chunks[2],
             );
         }
+        // --- Render Port Scan Sub-Menu ---
         AppState::SubMenuPortScan => {
             // Create title
             let title = Block::default()
@@ -739,6 +794,7 @@ fn ui(f: &mut Frame, app: &App) {
                 vertical_chunks[2],
             );
         }
+        // --- Render Ip Address Input ---
         AppState::IpAddressInput => {
             // Create title
             let title = Block::default()
@@ -782,6 +838,7 @@ fn ui(f: &mut Frame, app: &App) {
             );
         }
 
+        // --- Render Port Options Sub-Menu ---
         AppState::PortOptions => {
             // Create title
             let title = Block::default()
@@ -857,6 +914,7 @@ fn ui(f: &mut Frame, app: &App) {
             );
         }
 
+        // --- Render Port Range Input ---
         AppState::PortRangeInput => {
             // Create title
             let title = Block::default()

@@ -62,34 +62,44 @@ pub fn parse_ip_addresses(ip_str: &str) -> Result<Vec<Ipv4Addr>, String> {
 /// This is a helper function that takes a string representing an inclusive range of IP addresses,
 /// validates the format and the IPs, and generates a vector containing every IP address in that range.
 fn parse_ip_range(range_str: &str) -> Result<Vec<Ipv4Addr>, String> {
+    // Split the input string by the hyphen and trim whitespace from each part.
     let parts: Vec<&str> = range_str.split('-').map(|s| s.trim()).collect();
 
+    // Ensure the input is in the format "start - end" by checking for exactly two parts.
     if parts.len() != 2 {
         return Err(format!("Invalid IP range format: {}", range_str));
     }
 
+    // Parse the first part as the starting IP address, returning an error if it's invalid.
     let start_ip = match Ipv4Addr::from_str(parts[0]) {
         Ok(ip) => ip,
         Err(_) => return Err(format!("Invalid starting IP address: {}", parts[0])),
     };
 
+    // Parse the second part as the ending IP address, returning an error if it's invalid.
     let end_ip = match Ipv4Addr::from_str(parts[1]) {
         Ok(ip) => ip,
         Err(_) => return Err(format!("Invalid ending IP address: {}", parts[1])),
     };
 
+    // Convert IP addresses to their u32 integer representations to allow for easy iteration.
     let start_u32: u32 = u32::from(start_ip);
     let end_u32: u32 = u32::from(end_ip);
 
+    // Check that the start of the range is not after the end.
     if start_u32 > end_u32 {
         return Err("Starting IP address must be less than or equal to ending IP address".to_string());
     }
 
+    // Create a vector to hold the generated IP addresses.
     let mut result = Vec::new();
+    // Iterate from the start number to the end number (inclusive).
     for i in start_u32..=end_u32 {
+        // Convert each number back to an Ipv4Addr and add it to our list.
         result.push(Ipv4Addr::from(i));
     }
 
+    // Return the complete list of IP addresses.
     Ok(result)
 }
 
@@ -98,31 +108,44 @@ fn parse_ip_range(range_str: &str) -> Result<Vec<Ipv4Addr>, String> {
 /// This helper function calculates the network address and the broadcast address for the
 /// given CIDR block and generates a complete list of all host IP addresses within that block.
 fn parse_cidr(cidr_str: &str) -> Result<Vec<Ipv4Addr>, String> {
+    // Split the string into the IP part and the prefix length part.
     let parts: Vec<&str> = cidr_str.split('/').collect();
 
+    // A valid CIDR string must have exactly two parts separated by a '/'.
     if parts.len() != 2 {
         return Err(format!("Invalid CIDR format: {}", cidr_str));
     }
 
+    // Parse the IP address part of the CIDR string.
     let base_ip = match Ipv4Addr::from_str(parts[0]) {
         Ok(ip) => ip,
         Err(_) => return Err(format!("Invalid IP address in CIDR: {}", parts[0])),
     };
 
+    // Parse the prefix length, ensuring it's a valid number between 0 and 32.
     let prefix_len = match parts[1].parse::<u8>() {
         Ok(len) if len <= 32 => len,
         _ => return Err(format!("Invalid prefix length in CIDR: {}", parts[1])),
     };
 
-    // Calculate the network address (first IP in the range)
+    // --- Perform bitwise calculations to determine the exact IP range ---
+
+    // Create a subnet mask from the prefix length. For a /24, this would be
+    // `u32::MAX << (32 - 24)`, resulting in `0xFFFFFF00`.
     let mask = u32::MAX << (32 - prefix_len);
+    // Apply the mask to the base IP's integer value to find the true network
+    // address (the first IP in the subnet).
     let network_addr = u32::from(base_ip) & mask;
-    
-    // Calculate number of IPs in this subnet
+
+    // Calculate the total number of IP addresses in the subnet (2^(32-prefix)).
+    // The `1 << n` is an efficient way to calculate 2^n.
     let num_hosts = 1u32 << (32 - prefix_len);
 
+    // Create a vector to hold the generated IP addresses.
     let mut result = Vec::new();
+    // Iterate through all possible addresses in the subnet.
     for i in 0..num_hosts {
+        // Add the offset `i` to the network address to get each sequential IP.
         result.push(Ipv4Addr::from(network_addr + i));
     }
 

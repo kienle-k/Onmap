@@ -34,6 +34,7 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
     let mut summary_table = Table::new();
     summary_table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
 
+    // Print different rows for every field in the PortScanAllResult struct
     summary_table.add_row(Row::new(vec![
         Cell::new("Ports scanned per host"),
         Cell::new(&all_results.ports_scanned.to_string())
@@ -111,6 +112,7 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
                     PortStateReasons::Timeout => "Timeout",
                 };
 
+                // Add a single result as a row
                 open_port_table.add_row(Row::new(vec![
                     Cell::new(&port_result.port.to_string()),
                     Cell::new(protocol_str),

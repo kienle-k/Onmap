@@ -36,22 +36,31 @@ use trust_dns_resolver::config::{NameServerConfig, Protocol};
 /// assert_eq!(nameservers.len(), 2);
 /// ```
 pub fn parse_resolv_conf<R: BufRead>(reader: R) -> Vec<NameServerConfig> {
+    // This vector will store the successfully parsed nameserver configurations.
     let mut nameservers = Vec::new();
 
+    // Process the input one line at a time.
     for line in reader.lines() {
+        // `reader.lines()` returns a Result for each line to handle potential I/O errors.
+        // We use `if let Ok(line)` to gracefully skip any line that couldn't be read.
         if let Ok(line) = line {
+            // Remove leading/trailing whitespace from the line.
             let line = line.trim();
 
-            // Skip comments and empty lines
+            // Ignore lines that are designated as comments or are empty.
             if line.starts_with('#') || line.is_empty() {
-                continue;
+                continue; // Skip to the next line.
             }
 
-            // Parse "nameserver" entries
+            // `strip_prefix` is an efficient way to check if the line starts with "nameserver "
+            // and get the remainder of the line (the IP address part) in one step.
             if let Some(ip_str) = line.strip_prefix("nameserver ") {
+                // Trim whitespace from the IP string itself, e.g., " nameserver   8.8.8.8  ".
                 let ip_str = ip_str.trim();
-                // Try to parse as IPv4 or IPv6
+                
+                // First, try to parse the string as an IPv4 address.
                 if let Ok(ipv4) = ip_str.parse::<Ipv4Addr>() {
+                    // If successful, create a standard UDP nameserver configuration on port 53.
                     nameservers.push(NameServerConfig {
                         socket_addr: SocketAddr::new(IpAddr::V4(ipv4), 53),
                         protocol: Protocol::Udp,
@@ -59,7 +68,9 @@ pub fn parse_resolv_conf<R: BufRead>(reader: R) -> Vec<NameServerConfig> {
                         trust_negative_responses: true,
                         bind_addr: None
                     });
+                // If it's not IPv4, try parsing it as an IPv6 address.
                 } else if let Ok(ipv6) = ip_str.parse::<Ipv6Addr>() {
+                    // If successful, create a standard UDP nameserver configuration for IPv6.
                     nameservers.push(NameServerConfig {
                         socket_addr: SocketAddr::new(IpAddr::V6(ipv6), 53),
                         protocol: Protocol::Udp,
@@ -68,11 +79,13 @@ pub fn parse_resolv_conf<R: BufRead>(reader: R) -> Vec<NameServerConfig> {
                         bind_addr: None
                     });
                 }
+                // If the string after "nameserver " is not a valid IPv4 or IPv6, it's ignored.
             }
         }
     }
 
-    // If no nameservers were found in the provided source, add a fallback.
+    // If, after checking all lines, no valid nameservers were found, a fallback
+    // is necessary for the DNS resolver to have a server to query.
     if nameservers.is_empty() {
         println!("No nameservers found, using fallback (Google DNS)");
         nameservers.push(NameServerConfig {
@@ -84,6 +97,7 @@ pub fn parse_resolv_conf<R: BufRead>(reader: R) -> Vec<NameServerConfig> {
         });
     }
 
+    // Return the final list of nameservers.
     nameservers
 }
 

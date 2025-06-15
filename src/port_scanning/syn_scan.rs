@@ -87,7 +87,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
                     if packet.get_destination() == source_port && addr == ip_address && packet.get_source() == port {
                         let flags = packet.get_flags();
                         if (flags & TcpFlags::SYN != 0) && (flags & TcpFlags::ACK != 0) {
-                            let ttl = 63; // Placeholder, real TTL extraction is more complex
+                            let ttl = 63; // Placeholder, real TTL extraction is not implemented yet
                             return Ok(PortScanSingleResult {
                                 ip_address, port, protocol: Protocols::TCP,
                                 port_state: PortStates::Open, ttl,
@@ -95,7 +95,7 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
                             });
                         }
                         if flags & TcpFlags::RST != 0 {
-                            let ttl = 63; // Placeholder
+                            let ttl = 63; // Placeholder, real TTL extractions is not implemented yet
                             return Ok(PortScanSingleResult {
                                 ip_address, port, protocol: Protocols::TCP,
                                 port_state: PortStates::Closed, ttl,
@@ -161,10 +161,17 @@ pub async fn run_syn_scan(
         Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
     };
 
+    // Load the protocol/service data from the json file
     let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json").expect("Failed to load protocol map"));
 
+    // Record the start time to calculate total scan duration later.
     let start_time = SystemTime::now();
+
+    // Create a vector to hold the handles for all the asynchronous tasks we're about to spawn.
+    // We'll need this to wait for all of them to complete at the end.
     let mut tasks = Vec::new();
+
+    // Create thread-safe, shared containers for the results.
     let single_results = Arc::new(Mutex::new(Vec::<PortScanSingleResult>::new()));
     let open_ports = Arc::new(Mutex::new(Vec::<u16>::new()));
     let packets_sent = Arc::new(Mutex::new(0u32));
