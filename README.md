@@ -1,6 +1,6 @@
 # Oxidized nmap
 
-## Todo:
+## Todo
 
 - Reimplement CLI parsing (with clap) (Done)
 - Restructure and add lib.rs (added lib.rs --> Added new structure to hande CLI parsing) (Done)
