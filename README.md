@@ -11,7 +11,7 @@
 ### Remove unwraps (Done for Kevin)
 ### Remove copy / clones
 ### Revise error handling (also check if option or result is correctly used)
-### Add documentation in the code with doc-strings
+### Add documentation in the code with doc-strings (Done for Kevin)
 ### Add comments for grading
 
 
