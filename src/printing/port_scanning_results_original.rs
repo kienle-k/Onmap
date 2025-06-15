@@ -19,6 +19,7 @@ pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult
     }
 
     for (ip_address, host_results) in results_by_ip.iter() {
+        
         let mut hostname = String::from("-");
         if let IpAddr::V4(ipv4_addr) = ip_address {
             if let Some(resolved_hostname) = resolve_hostname(&ipv4_addr).await {
