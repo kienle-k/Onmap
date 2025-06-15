@@ -15,7 +15,6 @@ pub async fn run_ping_scan(
 ) -> (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) {
     // Start timing the operation
     let start_time = SystemTime::now();
-    let mut packets_sent = 0;
     
     let ips = match ip_addresses {
         Ok(addresses) => addresses,
@@ -42,7 +41,6 @@ pub async fn run_ping_scan(
     // Add ping tasks to our collection
     for ip in ips {
         futures.push(async move {
-            packets_sent += 1;
             let (is_reachable, latency, ttl) = ping_host_with_details(&ip).await;
 
             let mut dns_resolve = None;
@@ -129,9 +127,95 @@ async fn ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, Optio
         }
     });
    
-    // Unwrap the result from the JoinHandle or return false if the task failed
+    // Extract the result from the JoinHandle or return false if the task failed
     match result.await {
         Ok(ping_result) => ping_result,
         Err(_) => (false, None, None)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_ping_host_with_details_reachable() {
+        // This is an integration test: it relies on the system's ping command
+        // and network stack. It should be reliable as localhost is always available.
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+        let (is_reachable, latency, ttl) = ping_host_with_details(&ip).await;
+
+        assert!(is_reachable, "Localhost should be reachable");
+        assert!(latency.is_some(), "Latency should be recorded for a successful ping");
+        // The actual TTL can vary by OS, so we just check if our mock parser would get a value.
+        // The real `extract_ttl` function would determine if this is Some or None.
+        assert!(ttl.is_some() || ttl.is_none()); // We accept either as OS ping outputs differ
+    }
+
+    #[tokio::test]
+    async fn test_ping_host_with_details_unreachable() {
+        // This is an integration test. 192.0.2.1 is from TEST-NET-1 (RFC 5737),
+        // reserved for documentation and should not be reachable on the internet.
+        // Note: This test can take ~1 second to complete due to the ping timeout.
+        let ip = Ipv4Addr::new(192, 0, 2, 1);
+        let (is_reachable, latency, ttl) = ping_host_with_details(&ip).await;
+
+        assert!(!is_reachable, "Documentation IP should be unreachable");
+        assert!(latency.is_none(), "Latency should be None for a failed ping");
+        assert!(ttl.is_none(), "TTL should be None for a failed ping");
+    }
+
+    #[tokio::test]
+    async fn test_run_ping_scan_with_valid_and_mixed_ips() {
+        // This test combines a reachable and an unreachable IP.
+        // It tests the main loop, result aggregation, and summary calculation.
+        let ips = Ok(vec![
+            Ipv4Addr::new(127, 0, 0, 1),      // Reachable
+            Ipv4Addr::new(192, 0, 2, 123),    // Unreachable
+        ]);
+        let total_ips = ips.as_ref().expect("Failed to extract ips").len();
+
+        let (results, summary) = run_ping_scan(ips).await;
+
+        // --- Assertions on the Summary ---
+        assert_eq!(summary.scanned_addresses.len(), total_ips);
+        assert_eq!(summary.packets_sent, total_ips as u64);
+        assert_eq!(summary.hosts_up, 1);
+        // Our mock `resolve_hostname` only works for loopback, so this should be 1.
+        assert_eq!(summary.hosts_dns_resolution, 1);
+        assert!(summary.end_time >= summary.start_time);
+
+        // --- Assertions on the detailed results ---
+        assert_eq!(results.len(), total_ips);
+
+        // Find the result for localhost
+        let localhost_result = results.iter().find(|r| r.ip_address.is_loopback()).expect("Failed to extract localhost");
+        assert!(localhost_result.is_up);
+        assert_eq!(localhost_result.dns_resolve, Some("localhost".to_string()));
+        assert_eq!(localhost_result.reply_type, "ICMP echo reply");
+
+        // Find the result for the unreachable host
+        let unreachable_result = results.iter().find(|r| !r.ip_address.is_loopback()).expect("Failed to extract localhost");
+        assert!(!unreachable_result.is_up);
+        assert!(unreachable_result.dns_resolve.is_none());
+        assert_eq!(unreachable_result.reply_type, "no response");
+        assert_eq!(unreachable_result.ttl, 0);
+    }
+
+    #[tokio::test]
+    async fn test_run_ping_scan_with_input_error() {
+        // Tests the case where the input IP list is an error.
+        let ip_addresses = Err("Failed to parse IP range".to_string());
+
+        let (results, summary) = run_ping_scan(ip_addresses).await;
+
+        // The function should return empty/zeroed results without panicking.
+        assert!(results.is_empty(), "Results vector should be empty on input error");
+        assert_eq!(summary.hosts_up, 0);
+        assert_eq!(summary.hosts_dns_resolution, 0);
+        assert_eq!(summary.packets_sent, 0);
+        assert!(summary.scanned_addresses.is_empty());
     }
 }

@@ -1,8 +1,7 @@
-use std::alloc::System;
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
 
-#[derive(Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum AppState {
     MainMenu,
     SubMenuHostDiscovery,
@@ -12,7 +11,7 @@ pub enum AppState {
     PortRangeInput
 }
 
-#[derive(Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum MainMenuItem {
     SubMenuHostDiscovery,
     SubMenuPortScan,
@@ -50,7 +49,7 @@ pub enum AllMenuItem {
 }
 */
 
-#[derive(Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum HostDiscoveryOption {
     ListScan,
     PingScan,
@@ -63,7 +62,7 @@ pub enum HostDiscoveryOption {
     IcmpNetmask,
 }
 
-#[derive(Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum PortScanOption {
     SynScan,
     ConnectScan,
@@ -76,7 +75,7 @@ pub enum PortScanOption {
     UdpScan,
 }
 
-#[derive(Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum PortOptions {
     NormalMode,
     PortRangeInput,
@@ -88,7 +87,6 @@ pub enum PortOptions {
 pub enum PortStates {
     Open,
     Closed,
-    Unfiltered,
     Filtered
 }
 
@@ -96,15 +94,12 @@ pub enum PortStates {
 pub enum PortStateReasons {
     SynAck,
     Reset,
-    NoResponse,
     Timeout
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Protocols {
-    TCP,
-    UDP,
-    ICMP
+    TCP
 }
 
 #[derive(Debug, Clone)]

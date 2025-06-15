@@ -1,5 +1,5 @@
 use pnet::packet::icmp::{
-    echo_request::MutableEchoRequestPacket, echo_reply::EchoReplyPacket, IcmpCode, IcmpPacket,
+    echo_request::MutableEchoRequestPacket, echo_reply::EchoReplyPacket, IcmpPacket,
     IcmpTypes,
 };
 use pnet::packet::ip::IpNextHeaderProtocols;
@@ -12,14 +12,13 @@ use tokio::time::timeout;
 use futures::stream::{FuturesUnordered, StreamExt};
 
 use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
-use crate::resolving::{resolve_hostname, extract_ttl};
+use crate::resolving::{resolve_hostname};
 
 pub async fn run_icmp_echo(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
 ) -> (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) {
     // Start timing the operation
     let start_time = SystemTime::now();
-    let mut packets_sent = 0;
     
     let ips = match ip_addresses {
         Ok(addresses) => addresses,
@@ -46,7 +45,6 @@ pub async fn run_icmp_echo(
     // Add ping tasks to our collection
     for ip in ips {
         futures.push(async move {
-            packets_sent += 1;
             let (is_reachable, latency, ttl) = icmp_ping_host_with_details(&ip).await;
 
             let mut dns_resolve = None;

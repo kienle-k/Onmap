@@ -9,7 +9,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use std::result::Result;
 
-use crate::utils::get_service_name::{ProtocolMap, load_protocol_map, get_service_name};
+use crate::resolving::get_service_name::{ProtocolMap, load_protocol_map, get_service_name};
 use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResult, PortScanAllResult};
 
 
@@ -97,7 +97,7 @@ pub async fn run_connect_scan(
         Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
     };
 
-    let protocols = Arc::new(load_protocol_map("src/utils/port_service_mapping.json").expect("Failed to load service names"));
+    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json").expect("Failed to load service names"));
 
     //println!("Starting scan of {} IPs across {} ports", ip_addresses.len(), ports_arr.len());
     
