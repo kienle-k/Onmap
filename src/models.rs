@@ -1,20 +1,17 @@
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
 use clap::{Parser, Subcommand, ArgAction};
-use crate::parsing;
 
-pub fn parse_ports_arg(s: &str) -> Result<Vec<u16>, String> {
-    parsing::convert_ports(s.to_string())
-        .map_err(|e| format!("Ungültiges Port-Format: {}", e))
-}
+
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Onmap 1.0 - Network Mapper (nmap clone)", long_about = None)]
+#[command(author, version, about = "Onmap 1.0 - A fast and memory-safe network scanning tool.", long_about = None)]
 pub struct Cli {
     /// Run in Text User Interface (TUI) mode
     #[arg(long)]
     pub tui: bool,
 
+    /// Specify the scan type and its arguments
     #[command(subcommand)]
     pub command: Option<ScanCommand>,
 
