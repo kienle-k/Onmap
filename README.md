@@ -16,3 +16,4 @@
 
 
 ## 5. Write Documentation
+### Add Docker Setup to Architektur 1. Allgemein (Assigned to: Jonas)
