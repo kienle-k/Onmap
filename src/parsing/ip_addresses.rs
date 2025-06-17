@@ -76,11 +76,26 @@ fn parse_ip_range(range_str: &str) -> Result<Vec<Ipv4Addr>, String> {
         Err(_) => return Err(format!("Invalid starting IP address: {}", parts[0])),
     };
 
-    // Parse the second part as the ending IP address, returning an error if it's invalid.
-    let end_ip = match Ipv4Addr::from_str(parts[1]) {
-        Ok(ip) => ip,
-        Err(_) => return Err(format!("Invalid ending IP address: {}", parts[1])),
-    };
+    // Parse the second part as the ending IP address (either full address or last octet), returning an error if it's invalid.
+    let end_ip;
+
+    if parts[1].contains('.') {
+        end_ip = match Ipv4Addr::from_str(parts[1]) {
+            Ok(ip) => ip,
+            Err(_) => return Err(format!("Invalid ending IP address: {}", parts[1])),
+        };
+    } else {
+        let end_octet: u8 = match parts[1].parse() {
+            Ok(o) => o,
+            Err(_) => return Err(format!("Invalid ending octet: {}", parts[1])),
+        };
+        let start_ip = match Ipv4Addr::from_str(parts[0]) {
+            Ok(ip) => ip,
+            Err(_) => return Err(format!("Invalid starting IP address: {}", parts[0])),
+        };
+        let octets = start_ip.octets();
+        end_ip = Ipv4Addr::new(octets[0], octets[1], octets[2], end_octet);
+    }
 
     // Convert IP addresses to their u32 integer representations to allow for easy iteration.
     let start_u32: u32 = u32::from(start_ip);
