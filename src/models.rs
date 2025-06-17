@@ -63,7 +63,6 @@ pub enum ScanCommand {
     },
 }
 
-
 /// Represents the current state or view of the application's user interface.
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum AppState {

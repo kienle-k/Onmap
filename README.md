@@ -16,7 +16,7 @@
 
 
 ## Documentation
-- Add Docker Setup to Architektur 1. Allgemein (Assigned to: Jonas)
+- Add Docker Setup to Architektur (Assigned to: Jonas)
 
 
 ## Docker Test environment

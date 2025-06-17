@@ -115,16 +115,17 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
             port_mode,
             port_input)) = res {
             
-            // Original startup message from nmap
-            let tz_str = get_timezone().expect("Failed to get system timezone");
-            let tz: Tz = tz_str.parse().expect("Invalid timezone string");
-            let now = Utc::now().with_timezone(&tz);
-            let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
-            println!("\nStarting Onmap 1.0 (https://github.com/kienle-k/Onmap) at {}", formatted_time);
+            print_startup_message();
 
             if let Some(main_selected) = main_selected {
                 // This parsing is specific to how the TUI collects input
-                let ip_addresses_arr = parsing::parse_ip_addresses(&ip_input).expect("Failed to parse Ip addresses");
+                let ip_addresses_arr = match parsing::parse_ip_addresses(&ip_input) {
+                    Ok(addresses) => addresses,
+                    Err(e) => {
+                        eprintln!("Error parsing IP addresses: {}", e);
+                        std::process::exit(1);
+                    }
+                };
 
                 let ports_arr: Result<Vec<u16>, String> = if port_needed {
                     if let Some(port_mode) = port_mode {
@@ -145,15 +146,15 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     MainMenuItem::SubMenuHostDiscovery => {
                         if let Some(host_discovery_selected) = host_discovery_selected {
                             match host_discovery_selected {
-                                HostDiscoveryOption::ListScan => println!("Doing ListScan (Output results or integrate further)"), // Placeholder
+                                HostDiscoveryOption::ListScan => println!("Doing ListScan (Implementation coming soon)"),
                                 HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(Ok(ip_addresses_arr)).await,
                                 HostDiscoveryOption::TcpSynDiscovery => {
                                     run_tcp_syn_discovery();
                                     // Not implemented yet
                                 },
-                                HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery (Placeholder)"),
-                                HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery (Placeholder)"),
-                                HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery (Placeholder)"),
+                                HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery (Implementation coming soon)"),
+                                HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery (Implementation coming soon)"),
+                                HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery (Implementation coming soon)"),
                                 HostDiscoveryOption::IcmpEcho => host_discovery_result = host_discovery::run_icmp_echo(Ok(ip_addresses_arr)).await,
                                 HostDiscoveryOption::IcmpTimestamp => {
                                     run_icmp_timestamp();
@@ -164,7 +165,13 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                     // Not implemented yet
                                 }
                             }
-                            print_host_discovery_results(host_discovery_result);
+                            
+                            // Use modern printing
+                            if cli.modern_printing == true {
+                                print_host_discovery_results(host_discovery_result);
+                            } else {
+                                print_host_discovery_results_original(host_discovery_result);
+                            }
                         } else {
                             println!("No host discovery option selected or an error occurred.");
                         }
@@ -187,16 +194,16 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                 PortScanOption::AckScan => {
                                     port_scanning::run_ack_scan(Ok(ip_addresses_arr), &ports_arr.expect("Ports array could not be set"), local_ip_address).await;
                                 },
-                                PortScanOption::WindowScan => println!("Doing WindowScan (Placeholder)"),
-                                PortScanOption::MaimonScan => println!("Doing MaimonScan (Placeholder)"),
-                                PortScanOption::NullScan => println!("Doing NullScan (Placeholder)"),
-                                PortScanOption::FinScan => println!("Doing FinScan (Placeholder)"),
-                                PortScanOption::XmasScan => println!("Doing XmasScan (Placeholder)"),
+                                PortScanOption::WindowScan => println!("Doing WindowScan (Implementation coming soon)"),
+                                PortScanOption::MaimonScan => println!("Doing MaimonScan (Implementation coming soon)"),
+                                PortScanOption::NullScan => println!("Doing NullScan (Implementation coming soon)"),
+                                PortScanOption::FinScan => println!("Doing FinScan (Implementation coming soon)"),
+                                PortScanOption::XmasScan => println!("Doing XmasScan (Implementation coming soon)"),
                                 PortScanOption::UdpScan => {
                                     run_udp_scan();
                                 }
                             }
-                            // Pretty printing
+                            // Use modern printing
                             if cli.modern_printing == true {
                                 print_port_scan_results(port_scan_result);
                             } else {
@@ -258,16 +265,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
 
 
 
-        // Print startup message (nmap-like)
-        // Use cargo env to gather version and package name
-        // Format time to fit the user settings
-        let tz_str = get_timezone().expect("Failed to get system timezone");
-        let tz: Tz = tz_str.parse().expect("Invalid timezone string");
-        let now = Utc::now().with_timezone(&tz);
-        let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
-        let version = env!("CARGO_PKG_VERSION");
-        let name = env!("CARGO_PKG_NAME");
-        println!("\nStarting {} {} (https://github.com/kienle-k/Onmap) at {}", name, version, formatted_time);
+        print_startup_message();
 
 
         // Execute specific scan & print results
@@ -323,3 +321,22 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
     }
     Ok(())
 }
+
+
+
+/// Print startup message
+fn print_startup_message(){
+    // Use cargo env to gather version and package name
+    // Format time to fit the user settings
+    let tz_str = get_timezone().expect("Failed to get system timezone");
+    let tz: Tz = tz_str.parse().expect("Invalid timezone string");
+    let now = Utc::now().with_timezone(&tz);
+    let formatted_time = now.format("%Y-%m-%d %H:%M %Z").to_string();
+    let version = env!("CARGO_PKG_VERSION");
+    let name = env!("CARGO_PKG_NAME");
+    println!("\nStarting {} {} (https://github.com/kienle-k/Onmap) at {}", name, version, formatted_time);
+}
+
+
+
+
