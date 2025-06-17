@@ -39,7 +39,15 @@ docker exec -it onmap bash
 ```
 #### Executing commands
 ```bash
-./onmap -sT -pF 127.0.0.1
+
+./onmap PE 172.28.0.0/24
+
+./onmap sT -pf 172.28.0.24
+
+./onmap sS -pF 172.28.0.22
+
+./onmap sA -pF 172.28.0.23
+
 ```
 
 ### Availible dummy hosts to scan
