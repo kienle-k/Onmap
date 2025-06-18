@@ -12,7 +12,7 @@ use tokio::sync::Semaphore;
 use tokio::time::timeout;
 use tokio::task;
 
-use crate::resolving::get_service_name::{ProtocolMap, load_protocol_map, get_service_name};
+use crate::resolving::get_service_name::{load_protocol_map, get_service_name};
 use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols, PortStateReasons};
 
 /// Sends a single TCP ACK packet using a Layer 4 channel and returns its status.
@@ -22,7 +22,7 @@ use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protoco
 /// A placeholder TTL of 0 will be used for unfiltered ports.
 ///
 /// Returns a tuple: `(is_unfiltered, optional_ttl)`.
-pub async fn port_ack_scan(ip_address: Ipv4Addr, port: u16, local_ip: Ipv4Addr, protocols: &ProtocolMap) -> (bool, Option<u8>) {
+pub async fn port_ack_scan(ip_address: Ipv4Addr, port: u16, local_ip: Ipv4Addr) -> (bool, Option<u8>) {
     let target_ip = IpAddr::V4(ip_address);
 
     let send_and_recv = task::spawn_blocking(move || {
@@ -91,34 +91,37 @@ pub async fn run_ack_scan(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
     ports: &[u16],
     local_ip: Ipv4Addr,
-) -> (Vec<PortScanSingleResult>, PortScanAllResult) {
+) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     let ips = match ip_addresses {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("Failed to parse IP list: {}", e);
-            return (Vec::new(), PortScanAllResult::new());
-        }
+        Ok(ips) => ips,
+        Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
     };
 
-    let protocols = load_protocol_map("src/resolving/port_service_mapping.json")
-        .map_err(|e| format!("Failed to load service names: {}", e));
+    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json")
+        .map_err(|e| format!("Failed to load service names: {}", e))?);
+
 
     let start_time = SystemTime::now();
     let semaphore = Arc::new(Semaphore::new(200));
     let mut futs = FuturesUnordered::new();
 
+
+
     for &ip in &ips {
         for &port in ports {
             let sem_clone = semaphore.clone();
+            let protocols_clone = Arc::clone(&protocols);
+
+
             let source_ip = if ip.is_loopback() {
                 Ipv4Addr::new(127, 0, 0, 1)
             } else {
                 local_ip
             };
-            
+   
             futs.push(async move {
                 let _permit = sem_clone.acquire().await.unwrap();
-                let (is_unfiltered, ttl_option) = port_ack_scan(ip, port, source_ip, protocols).await;
+                let (is_unfiltered, ttl_option) = port_ack_scan(ip, port, source_ip).await;
                 
                 PortScanSingleResult {
                     ip_address: IpAddr::V4(ip),
@@ -127,7 +130,7 @@ pub async fn run_ack_scan(
                     port_state: if is_unfiltered { PortStates::Unfiltered } else { PortStates::Filtered },
                     ttl: ttl_option.unwrap_or(0),
                     reason: if is_unfiltered { PortStateReasons::Unfiltered } else { PortStateReasons::Timeout },
-                    service: get_service_name(protocols, "tcp", port),
+                    service: get_service_name(&protocols_clone, "tcp", port),
                 }
             });
         }
@@ -146,5 +149,5 @@ pub async fn run_ack_scan(
         end_time: SystemTime::now(),
     };
 
-    (single_results, all_results)
+    Ok((single_results, all_results))
 }

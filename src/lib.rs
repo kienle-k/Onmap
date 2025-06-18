@@ -51,7 +51,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
 
 
     // for tcp connect scan
-    let connect_timeout = 250;
+    let connect_timeout = 300;
 
     // Get the local source IP for proper checksum calculation
     let local_ip_address: Ipv4Addr = match local_ip() {
@@ -195,7 +195,11 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                     }
                                 },
                                 PortScanOption::AckScan => {
-                                    port_scan_result = port_scanning::run_ack_scan(Ok(ip_addresses_arr), &ports_arr.expect("Ports array could not be set"), local_ip_address).await;
+                                    match port_scanning::run_ack_scan(Ok(ip_addresses_arr), &ports_arr.expect("Ports array could not be set"), local_ip_address).await { // Assuming 300ms timeout
+                                        Ok(result) => port_scan_result = result,
+                                        Err(e) => eprintln!("ACK scan failed: {}", e),
+                                    }
+                                    // port_scan_result = port_scanning::run_ack_scan(Ok(ip_addresses_arr), &ports_arr.expect("Ports array could not be set"), local_ip_address).await;
                                 },
                                 PortScanOption::WindowScan => println!("Doing WindowScan (Implementation coming soon)"),
                                 PortScanOption::MaimonScan => println!("Doing MaimonScan (Implementation coming soon)"),
@@ -299,11 +303,15 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
             },
             Some(ScanCommand::AckScan { ports: _, ips: _ }) => {
                 let scan_result = port_scanning::run_ack_scan(ip_addresses_arr, &ports_vec, local_ip_address).await;
-                
+                match scan_result {
+                    Ok(result) => port_scan_result = result,
+                    Err(e) => eprintln!("ACK scan failed: {}", e),
+                }
+
                 if use_original_printing {
-                    print_port_scan_results_original(scan_result).await;
+                    print_port_scan_results_original(port_scan_result).await;
                 } else {
-                    print_port_scan_results(scan_result);
+                    print_port_scan_results(port_scan_result);
                 }
             },
             Some(ScanCommand::PingScan { ips: _ }) => {

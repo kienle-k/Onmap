@@ -35,20 +35,55 @@ pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult
             .cloned()
             .collect(); 
 
-        let closed_ports: Vec<&PortScanSingleResult> = host_results.iter()
+        // let closed_ports: Vec<&PortScanSingleResult> = host_results.iter()
+        //     .filter(|r| r.port_state == PortStates::Closed)
+        //     .cloned()
+        //     .collect();
+        // let closed_port_num = closed_ports.len();
+        
+
+        // Count closed and filtered ports
+        let closed_port_num = host_results
+            .iter()
             .filter(|r| r.port_state == PortStates::Closed)
-            .cloned()
-            .collect();
+            .count();
+
+        let filtered_port_num = host_results
+            .iter()
+            .filter(|r| r.port_state == PortStates::Filtered)
+            .count();
 
         let unfiltered_ports: Vec<&PortScanSingleResult> = host_results.iter()
             .filter(|r| r.port_state == PortStates::Unfiltered)
             .copied()
             .collect();
 
-        let closed_port_num = closed_ports.len();
+
+        // Debug to show filtered ports
+        // let filtered_ports: Vec<&PortScanSingleResult> = host_results.iter()
+        //     .filter(|r| r.port_state == PortStates::Filtered)
+        //     .copied()
+        //     .collect();
+        // 
+        // for port in filtered_ports {
+        //     let protocol_str = match port_result.protocol {
+        //         Protocols::TCP => "tcp"
+        //     };
+        //     println!("{:<7}/{}  open     {}", &port_result.port.to_string(), protocol_str, &port_result.service);  
+        // }
         
-        if closed_port_num > 0 {
-            println!("Not shown: {} closed ports", closed_port_num);
+        // Show either closed port num, filtered port num or both
+        if closed_port_num > 0 || filtered_port_num > 0 {
+            print!("Not shown: ");
+            if closed_port_num > 0 {
+                println!("{} closed ports", closed_port_num);
+            }
+            if filtered_port_num > 0 {
+                if closed_port_num > 0 {
+                    print!("           ");
+                }
+                println!("{} filtered ports", filtered_port_num);
+            }
         }
         
         if !open_ports.is_empty() {
@@ -94,23 +129,10 @@ pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult
 
     let num_hosts_scanned = results_by_ip.len();
 
-    if num_hosts_scanned == 0{
-        println!(
-            "Onmap done: 0 IP addresses (0 hosts up) scanned in {} seconds",
-            elapsed_time
-        );        
-    }else if num_hosts_scanned == 1{
-        println!(
-            "Onmap done: 1 IP address (1 host up) scanned in {} seconds",
-            elapsed_time
-        );
-    }else {
-        println!(
-            "Onmap done: {} IP addresses ({} hosts up) scanned in {} seconds",
-            num_hosts_scanned, num_hosts_scanned, elapsed_time
-        );
+    match num_hosts_scanned {
+        0 => println!("Onmap done: 0 IP addresses (0 hosts up) scanned in {} seconds", elapsed_time),    
+        1 => println!("Onmap done: 1 IP address (1 host up) scanned in {} seconds", elapsed_time),
+        _ => println!("Onmap done: {} IP addresses ({} hosts up) scanned in {} seconds", num_hosts_scanned, num_hosts_scanned, elapsed_time)
     }
-    println!("");
-
-    
+    println!(); 
 }

@@ -1,61 +1,92 @@
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 
-/// Parses a string representation of IP addresses into a vector of `Ipv4Addr`.
+/// Parses a string representation of one or more IPv4 addresses into a vector of `Ipv4Addr`.
 ///
-/// This function serves as a flexible parser that can handle three common formats:
-/// 1.  A single IP address (e.g., `"192.168.1.1"`).
-/// 2.  A CIDR block notation (e.g., `"192.168.1.0/24"`).
-/// 3.  An inclusive IP address range separated by a hyphen (e.g., `"192.168.1.10 - 192.168.1.20"`).
+/// This function supports multiple flexible formats, including comma-separated combinations
+/// of single IPs, CIDR blocks, and IP ranges. It detects the format of each segment
+/// automatically based on the presence of `'/'` (CIDR) or `'-'` (range).
 ///
-/// The function automatically detects the format based on the presence of `'/'` or `'-'` characters.
+/// ## Supported formats:
+/// - Single IP: `"192.168.1.1"`
+/// - CIDR notation: `"192.168.1.0/24"`
+/// - IP range (inclusive): `"192.168.1.10 - 192.168.1.20"` or `"192.168.1.10-20"`
+/// - Comma-separated combinations:  
+///   `"192.168.1.1, 192.168.1.5-8, 192.168.1.0/30"`
 ///
 /// # Arguments
 ///
-/// * `ip_str` - A string slice containing the IP addresses to parse.
+/// * `ip_str` - A string slice containing one or more IP definitions, separated by commas.
 ///
 /// # Returns
 ///
-/// * `Ok(Vec<Ipv4Addr>)` - A vector of all the IP addresses derived from the input string.
-/// * `Err(String)` - An error message if the input string is malformed or represents an invalid range.
+/// * `Ok(Vec<Ipv4Addr>)` - A vector of all parsed IP addresses.
+/// * `Err(String)` - An error message if any segment is malformed or invalid.
 ///
 /// # Examples
 ///
 /// ```
 /// use std::net::Ipv4Addr;
-/// use onmap::parsing::ip_addresses::parse_ip_addresses;
+/// use your_crate::parsing::ip_addresses::parse_ip_list;
 ///
-/// //Single IP
-/// let ips = parse_ip_addresses("127.0.0.1").expect("Could not parse localhost");
+/// // Single IP
+/// let ips = parse_ip_list("127.0.0.1").unwrap();
 /// assert_eq!(ips, vec![Ipv4Addr::new(127, 0, 0, 1)]);
 ///
-/// //IP Range
-/// let ips = parse_ip_addresses("10.0.0.1 - 10.0.0.3").expect("Could not parse ip address range");
+/// // IP Range
+/// let ips = parse_ip_list("10.0.0.1 - 10.0.0.3").unwrap();
 /// assert_eq!(ips.len(), 3);
 ///
-/// //CIDR Notation
-/// let ips = parse_ip_addresses("192.168.1.0/30").expect("Could not parse ip address with CIDR notation");
+/// // CIDR Notation
+/// let ips = parse_ip_list("192.168.1.0/30").unwrap();
 /// assert_eq!(ips.len(), 4);
+///
+/// // Mixed comma-separated list
+/// let ips = parse_ip_list("10.0.0.1,10.0.0.3-4,10.0.0.10/31").unwrap();
+/// assert_eq!(ips.len(), 5);
 /// ```
-pub fn parse_ip_addresses(ip_str: &str) -> Result<Vec<Ipv4Addr>, String> {
-    let ip_str = ip_str.trim();
+pub fn parse_ip_addresses(input: &str) -> Result<Vec<Ipv4Addr>, String> {
+    let mut result = Vec::new();
 
-    // Case 1: Check if it's a CIDR notation
-    if ip_str.contains('/') {
-        return parse_cidr(ip_str);
+    for part in input.split(',') {
+        let trimmed = part.trim();
+        let mut parsed_ips = if trimmed.contains('/') {
+            parse_cidr(trimmed)
+        } else if trimmed.contains('-') {
+            parse_ip_range(trimmed)
+        } else {
+            match Ipv4Addr::from_str(trimmed) {
+                Ok(ip) => Ok(vec![ip]),
+                Err(_) => Err(format!("Invalid IP address: {}", trimmed)),
+            }
+        }?;
+
+        result.append(&mut parsed_ips);
     }
-    // Case 2: Check if it's an IP range
-    else if ip_str.contains('-') {
-        return parse_ip_range(ip_str);
-    }
-    // Case 3: Single IP address
-    else {
-        match Ipv4Addr::from_str(ip_str) {
-            Ok(ip) => Ok(vec![ip]),
-            Err(_) => Err(format!("Invalid IP address: {}", ip_str)),
-        }
-    }
+
+    Ok(result)
 }
+
+
+// pub fn parse_ip_addresses(ip_str: &str) -> Result<Vec<Ipv4Addr>, String> {
+//     let ip_str = ip_str.trim();
+
+//     // Case 1: Check if it's a CIDR notation
+//     if ip_str.contains('/') {
+//         return parse_cidr(ip_str);
+//     }
+//     // Case 2: Check if it's an IP range
+//     else if ip_str.contains('-') {
+//         return parse_ip_range(ip_str);
+//     }
+//     // Case 3: Single IP address
+//     else {
+//         match Ipv4Addr::from_str(ip_str) {
+//             Ok(ip) => Ok(vec![ip]),
+//             Err(_) => Err(format!("Invalid IP address: {}", ip_str)),
+//         }
+//     }
+// }
 
 /// Parses an IP address range from a string in the format "start_ip - end_ip".
 ///

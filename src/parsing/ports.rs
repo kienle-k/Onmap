@@ -76,7 +76,6 @@ pub fn convert_ports(port_input: String) -> Result<Vec<u16>, String> {
             result.push(single);
         }
     }
-
     Ok(result)
 }
 
