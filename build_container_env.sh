@@ -10,7 +10,9 @@ else
     exit 1
 fi
 
+echo ""
 echo "Making sure previous containers are down..."
+echo ""
 $COMPOSE_CMD down
 
 echo "Triggering build of the containers..."
@@ -19,5 +21,7 @@ if ! $COMPOSE_CMD build; then
     exit 1
 fi
 
+echo ""
 echo "Build completed successfully."
+echo ""
 exit 0
