@@ -2,7 +2,7 @@
 A fast, minimal Rust-based port scanner — inspired by Nmap, reimagined in Rust.
 
 
-## 🔧 Build
+## Build
 ```bash
 cargo build --release
 ```
@@ -21,9 +21,15 @@ sudo ./target/release/onmap PE --help
 This repo also provides a docker container environment to perform tests of the functionalities.
 
 ### Fast startup
-Use the two bash files "run_container_env.sh" and "build_container_env.sh" to run the program in the docker container setup
 
-### Alternative
+```bash
+build_container_env.sh
+```
+```bash
+run_container_env.sh
+```
+
+### Alternative (Manual)
 #### Building the containers (2-phase)
 ```bash
 docker compose build
