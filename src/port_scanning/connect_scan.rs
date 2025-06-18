@@ -3,7 +3,6 @@ use tokio::time::timeout;
 use std::time::{Duration, SystemTime};
 
 use std::net::SocketAddr;
-// use std::net::ToSocketAddrs;
 use std::io::ErrorKind;
 
 use std::net::{IpAddr, Ipv4Addr};
@@ -22,40 +21,9 @@ pub async fn port_tcp_connect_scan(
     protocols: &ProtocolMap
 ) -> Result<PortScanSingleResult, String> {
     
-    // This is not needed at the moment, as hostnames are not permitted as input -> no DNS needed
-    // If needed, it might be moved somewhere outside of this function
-
-    // let addr = format!("{}:{}", ip_address, port);
-    // Hostname -> resolve SocketAddr
-    // let socket_addr = match addr.to_socket_addrs() {
-    //     Ok(mut addrs) => match addrs.next() {
-    //         Some(sa) => sa,
-    //         None => return Ok(PortScanSingleResult {
-    //             ip_address,
-    //             port,
-    //             protocol: Protocols::TCP,
-    //             port_state: PortStates::Filtered,
-    //             ttl: 63,
-    //             reason: PortStateReasons::SynAck,
-    //             service: get_service_name(protocols, "tcp", port),
-    //         }),
-    //     },
-    //     Err(_) => return Ok(PortScanSingleResult {
-    //         ip_address,
-    //         port,
-    //         protocol: Protocols::TCP,
-    //         port_state: PortStates::Filtered,
-    //         ttl: 63,
-    //         reason: PortStateReasons::SynAck,
-    //         service: get_service_name(protocols, "tcp", port),
-    //     }),
-    // };
-
-    // Simpler pproach, does the same
-    let socket_addr = SocketAddr::new(ip_address, port);
 
 
-    // Function to automatically create the struct
+// Function to automatically create the struct
     let make_result = |state, reason| PortScanSingleResult {
         ip_address,
         port,
@@ -66,17 +34,16 @@ pub async fn port_tcp_connect_scan(
         service: get_service_name(protocols, "tcp", port),
     };
 
-
-    // println!("{}", socket_addr);
+    let socket_addr = SocketAddr::new(ip_address, port);
 
     // Optimized to remove redundancy (using the function above)
     match timeout(timeout_duration, TcpStream::connect(socket_addr)).await {
         Ok(Ok(_)) => Ok(make_result(PortStates::Open, PortStateReasons::SynAck)),
         Ok(Err(e)) => match e.kind() {
-            ErrorKind::ConnectionRefused => Ok(make_result(PortStates::Closed, PortStateReasons::SynAck)),
+            ErrorKind::ConnectionRefused => Ok(make_result(PortStates::Closed, PortStateReasons::Reset)),
             _ => Err(format!("Error connecting to {}:{}: {:?}", ip_address, port, e.kind())),
         },
-        Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::SynAck)), // timeout
+        Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::Timeout)), // timeout
     }
 }
 
@@ -106,7 +73,7 @@ pub async fn run_connect_scan(
     let packets_sent = Arc::new(Mutex::new(0u32));
 
     // Avoid overwhelming the network --> limit concurrent scans
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
 
     // Create a task for each IP/port combination
     for ip in ip_addresses {

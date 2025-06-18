@@ -50,6 +50,9 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
     io::stdout().flush()?;
 
 
+    // for tcp connect scan
+    let connect_timeout = 250;
+
     // Get the local source IP for proper checksum calculation
     let local_ip_address: Ipv4Addr = match local_ip() {
         Ok(ip) => match ip {
@@ -186,7 +189,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                     }
                                 },
                                 PortScanOption::ConnectScan => {
-                                    match port_scanning::run_connect_scan(Ok(ip_addresses_arr), ports_arr.expect("Ports array could not be set"), 300).await { // Assuming 300ms timeout
+                                    match port_scanning::run_connect_scan(Ok(ip_addresses_arr), ports_arr.expect("Ports array could not be set"), connect_timeout).await { // Assuming 300ms timeout
                                         Ok(result) => port_scan_result = result,
                                         Err(e) => eprintln!("TCP-Connect scan failed: {}", e),
                                     }
@@ -283,7 +286,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                 }
             },
             Some(ScanCommand::ConnectScan { ports: _, ips: _ }) => {
-                let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_vec, 300).await;
+                let scan_result = port_scanning::run_connect_scan(ip_addresses_arr, ports_vec, connect_timeout).await;
                 match scan_result {
                     Ok(result) => port_scan_result = result,
                     Err(e) => eprintln!("Connect scan failed: {}", e),

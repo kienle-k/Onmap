@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand, ArgAction};
 
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Onmap 1.0 - A fast and memory-safe network scanning tool.", long_about = None)]
+#[command(author, version, about = "Onmap - A fast and memory-safe network scanning tool built in Rust.", long_about = None)]
 pub struct Cli {
     /// Run in Text User Interface (TUI) mode
     #[arg(long)]
@@ -23,7 +23,7 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum ScanCommand {
     /// SYN stealth scan
-    #[command(name = "sS")]
+    #[command(name = "sS", aliases = ["-sS"])]
     SynScan {
         /// Port specification (e.g., -p22,80, -p1-1024)
         #[arg(short = 'p')]
@@ -32,7 +32,7 @@ pub enum ScanCommand {
         ips: String,
     },
     /// TCP connect scan
-    #[command(name = "sT")]
+    #[command(name = "sT", aliases = ["-sT"])]
     ConnectScan {
         /// Port specification (e.g., -p22,80, -p1-1024)
         #[arg(short = 'p')]
@@ -41,7 +41,7 @@ pub enum ScanCommand {
         ips: String,
     },
     /// ACK scan (for firewall rule discovery)
-    #[command(name = "sA")]
+    #[command(name = "sA", aliases = ["-sA"])]
     AckScan {
         /// Port specification (e.g., -p22,80, -p1-1024)
         #[arg(short = 'p')]
@@ -50,13 +50,13 @@ pub enum ScanCommand {
         ips: String,
     },
     /// Ping scan (Host Discovery)
-    #[command(name = "sn")]
+    #[command(name = "sn", aliases = ["-sn"])]
     PingScan {
         /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
         ips: String,
     },
     /// ICMP Echo scan (Host Discovery)
-    #[command(name = "PE")]
+    #[command(name = "PE", aliases = ["-PE"])]
     IcmpEcho {
         /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
         ips: String,
