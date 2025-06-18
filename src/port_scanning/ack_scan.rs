@@ -17,7 +17,7 @@ use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protoco
 
 /// Sends a single TCP ACK packet using a Layer 4 channel and returns its status.
 ///
-/// NOTE: This implementation uses a Layer 4 channel, similar to the working SYN scan.
+/// NOTE: This implementation uses a Layer 4 channel.
 /// As a result, it cannot extract the real TTL from the reply packet's IP header.
 /// A placeholder TTL of 0 will be used for unfiltered ports.
 ///
@@ -33,7 +33,6 @@ pub async fn port_ack_scan(ip_address: Ipv4Addr, port: u16, local_ip: Ipv4Addr) 
             Err(_) => return (false, None),
         };
 
-        // We no longer build an IP header. The OS will do it for us.
         let mut tcp_buffer = [0u8; 66];
         let mut tcp_packet = MutableTcpPacket::new(&mut tcp_buffer).unwrap();
         
@@ -63,10 +62,10 @@ pub async fn port_ack_scan(ip_address: Ipv4Addr, port: u16, local_ip: Ipv4Addr) 
         while start_time.elapsed() < timeout_duration {
             match iter.next() {
                 Ok((packet, addr)) => {
-                    // Check if the reply is from the target and is for our probe
+                    
                     if packet.get_destination() == source_port && addr == target_ip {
                         if packet.get_flags() & TcpFlags::RST != 0 {
-                            // Success! We can't get real TTL, so return a placeholder.
+                            
                             return (true, Some(0));
                         }
                     }
