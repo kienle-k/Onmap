@@ -65,6 +65,7 @@ docker exec -it onmap bash
 ```bash
 cargo build --release
 sudo ./target/release/onmap --help
+sudo ./target/release/onmap sT --help
+sudo ./target/release/onmap PE --help
 ```
-#### Hint: For the syntax of ip adresses / ports refer to the examples above
 
