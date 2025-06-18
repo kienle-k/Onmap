@@ -25,40 +25,40 @@ pub enum ScanCommand {
     /// SYN stealth scan
     #[command(name = "sS", aliases = ["-sS"])]
     SynScan {
-        /// Port specification (e.g., -p22,80, -p1-1024)
+        /// Port specification (e.g. -p1, -p1-1024, -p-, -pF)
         #[arg(short = 'p')]
         ports: Option<String>,
-        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
         ips: String,
     },
     /// TCP connect scan
     #[command(name = "sT", aliases = ["-sT"])]
     ConnectScan {
-        /// Port specification (e.g., -p22,80, -p1-1024)
+        /// Port specification (e.g. -p1, -p1-1024, -p-, -pF)
         #[arg(short = 'p')]
         ports: Option<String>,
-        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
         ips: String,
     },
     /// ACK scan (for firewall rule discovery)
     #[command(name = "sA", aliases = ["-sA"])]
     AckScan {
-        /// Port specification (e.g., -p22,80, -p1-1024)
+        /// Port specification (e.g. -p1, -p1-1024, -p-, -pF)
         #[arg(short = 'p')]
         ports: Option<String>,
-        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
         ips: String,
     },
     /// Ping scan (Host Discovery)
     #[command(name = "sn", aliases = ["-sn"])]
     PingScan {
-        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
         ips: String,
     },
     /// ICMP Echo scan (Host Discovery)
     #[command(name = "PE", aliases = ["-PE"])]
     IcmpEcho {
-        /// Target IP addresses or CIDR (e.g., 192.168.1.1, 192.168.1.0/24)
+        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
         ips: String,
     },
 }
