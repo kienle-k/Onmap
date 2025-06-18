@@ -21,6 +21,9 @@ services:
   host_1:
     container_name: host_1
     build: ./dummy_hosts/dummy_random_ports
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     networks:
       testnet:
         ipv4_address: 172.28.0.20
@@ -28,6 +31,9 @@ services:
   host_2:
     container_name: host_2
     build: ./dummy_hosts/dummy_random_ports
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     networks:
       testnet:
         ipv4_address: 172.28.0.21
@@ -35,6 +41,9 @@ services:
   host_3:
     container_name: host_3
     build: ./dummy_hosts/dummy_random_ports
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     networks:
       testnet:
         ipv4_address: 172.28.0.22
@@ -42,6 +51,9 @@ services:
   host_4:
     container_name: host_4
     build: ./dummy_hosts/dummy_random_ports
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     networks:
       testnet:
         ipv4_address: 172.28.0.23  
