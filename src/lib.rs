@@ -121,7 +121,8 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
             print_startup_message();
 
             if let Some(main_selected) = main_selected {
-                // This parsing is specific to how the TUI collects input
+                
+                // Parsing of ip addresses
                 let ip_addresses_arr = match parsing::parse_ip_addresses(&ip_input) {
                     Ok(addresses) => addresses,
                     Err(e) => {
@@ -130,6 +131,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     }
                 };
 
+                // Parsing of ports
                 let ports_arr: Result<Vec<u16>, String> = if port_needed {
                     if let Some(port_mode) = port_mode {
                         match port_mode {
@@ -145,9 +147,14 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     Err("Ports array could not be set".to_string())
                 };
 
+                // Depending on what options are selected in the TUI the fitting scan will be executed
                 match main_selected {
+
+                    // When host discovery is selected in the tui
                     MainMenuItem::SubMenuHostDiscovery => {
                         if let Some(host_discovery_selected) = host_discovery_selected {
+
+                            // Depending on what host discovery method is selected in the TUI
                             match host_discovery_selected {
                                 HostDiscoveryOption::ListScan => println!("Doing ListScan (Implementation coming soon)"),
                                 HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(Ok(ip_addresses_arr)).await,
@@ -179,8 +186,11 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                             println!("No host discovery option selected or an error occurred.");
                         }
                     }
+                    // When port scan is selected as an option in the TUI
                     MainMenuItem::SubMenuPortScan => {
                         if let Some(port_scan_selected) = port_scan_selected {
+
+                            // Depending on what port scan is selected in the TUI
                             match port_scan_selected {
                                 PortScanOption::SynScan => {
                                     match port_scanning::run_syn_scan(Ok(ip_addresses_arr), ports_arr.expect("Ports array not be set"), local_ip_address).await {
@@ -208,6 +218,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                 PortScanOption::XmasScan => println!("Doing XmasScan (Implementation coming soon)"),
                                 PortScanOption::UdpScan => {
                                     run_udp_scan();
+                                    // Not implemented yet
                                 }
                             }
                             // Use modern printing
@@ -220,12 +231,15 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                             println!("No port scan option selected or an error occurred.");
                         }
                     }
+                    // When service detection is selected as an option in the TUI
                     MainMenuItem::SubMenuServiceDetection => {
                         run_service_detection();
                         // Not implemented yet
                     },
+                    // When os detection is selected as an option in the TUI
                     MainMenuItem::SubMenuOperatingSystemDetection => {
                         run_os_detection();
+                        // Not implemented yet
                     },
                 }
             } else {
