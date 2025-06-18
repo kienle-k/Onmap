@@ -13,7 +13,26 @@ use crate::resolving::get_service_name::{ProtocolMap, load_protocol_map, get_ser
 use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResult, PortScanAllResult};
 
 
-
+/// Performs a TCP connect scan on a single IP address and port.
+///
+/// This scan uses the operating system's TCP stack to attempt a full connection,
+/// which will complete if the port is open. If the connection is refused, it is considered closed.
+/// If a timeout occurs, the port is assumed to be filtered (e.g., dropped by a firewall).
+///
+/// # Arguments
+/// * `ip_address` - The target IP address.
+/// * `port` - The target port to scan.
+/// * `timeout_duration` - The maximum duration to wait for a connection attempt.
+/// * `protocols` - A reference to a map of protocol numbers to service names.
+///
+/// # Returns
+/// * `Ok(PortScanSingleResult)` if the scan completes successfully.
+/// * `Err(String)` in case of unexpected I/O errors or issues.
+///
+/// # Port States
+/// * `Open` - Connection succeeded (SYN-ACK).
+/// * `Closed` - Connection refused (RST).
+/// * `Filtered` - Timed out or dropped by a firewall.
 pub async fn port_tcp_connect_scan(
     ip_address: IpAddr, 
     port: u16, 
@@ -48,7 +67,24 @@ pub async fn port_tcp_connect_scan(
 }
 
 
-// Hauptfunktion zum Ausführen des Connect-Scans
+/// Runs a full TCP connect scan on multiple IP addresses and ports concurrently.
+///
+/// This function performs concurrent scanning with a semaphore to limit active tasks.
+/// It collects results for each IP/port combination and aggregates them into summary statistics.
+///
+/// # Arguments
+/// * `ip_address_arr` - A `Result` wrapping a list of IPv4 addresses to scan.
+/// * `ports_arr` - A list of TCP ports to scan on each IP.
+/// * `timeout_ms` - Timeout per scan attempt, in milliseconds.
+///
+/// # Returns
+/// * `Ok((Vec<PortScanSingleResult>, PortScanAllResult))` if all scans complete without critical error.
+/// * `Err(String)` if IP resolution or protocol map loading fails.
+///
+/// # Notes
+/// * Limits concurrent tasks using a semaphore (max 100).
+/// * Uses `Arc<Mutex<...>>` to collect shared scan results safely across tasks.
+/// * Accurately counts packets sent (connect + response for open ports).
 pub async fn run_connect_scan(
     ip_address_arr: Result<Vec<Ipv4Addr>, String>, 
     ports_arr: Vec<u16>,
