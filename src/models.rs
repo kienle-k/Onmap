@@ -25,7 +25,7 @@ pub enum ScanCommand {
     /// SYN stealth scan
     #[command(name = "sS", aliases = ["-sS"])]
     SynScan {
-        /// Port specification (e.g. -p1, -p1-1024, -p-, -pF)
+        /// Port specification (e.g. -p1, -p20,22, -p1-1024, -p-, -pF)
         #[arg(short = 'p')]
         ports: Option<String>,
         /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
@@ -34,7 +34,7 @@ pub enum ScanCommand {
     /// TCP connect scan
     #[command(name = "sT", aliases = ["-sT"])]
     ConnectScan {
-        /// Port specification (e.g. -p1, -p1-1024, -p-, -pF)
+        /// Port specification (e.g. -p1, -p20,22, -p1-1024, -p-, -pF)
         #[arg(short = 'p')]
         ports: Option<String>,
         /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
@@ -43,7 +43,7 @@ pub enum ScanCommand {
     /// ACK scan (for firewall rule discovery)
     #[command(name = "sA", aliases = ["-sA"])]
     AckScan {
-        /// Port specification (e.g. -p1, -p1-1024, -p-, -pF)
+        /// Port specification (e.g. -p1, -p20,22, -p1-1024, -p-, -pF)
         #[arg(short = 'p')]
         ports: Option<String>,
         /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
