@@ -2,8 +2,7 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 use std::time::{Duration, SystemTime};
 
-// use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
+use std::net::SocketAddr;
 use std::io::ErrorKind;
 
 use std::net::{IpAddr, Ipv4Addr};
@@ -35,30 +34,16 @@ pub async fn port_tcp_connect_scan(
         service: get_service_name(protocols, "tcp", port),
     };
 
-    
-    let addr = format!("{}:{}", ip_address, port);
-    // Hostname -> resolve SocketAddr
-    let socket_addr = match addr.to_socket_addrs() {
-        Ok(mut addrs) => match addrs.next() {
-            Some(sa) => sa,
-            None => return Ok(make_result(PortStates::Filtered, PortStateReasons::SynAck)),
-        },
-        Err(_) => return Ok(make_result(PortStates::Filtered, PortStateReasons::SynAck)),
-    };
-
-    // Simpler approach, does the same
-    // let socket_addr = SocketAddr::new(ip_address, port);
-
-    // println!("{}", socket_addr);
+    let socket_addr = SocketAddr::new(ip_address, port);
 
     // Optimized to remove redundancy (using the function above)
     match timeout(timeout_duration, TcpStream::connect(socket_addr)).await {
         Ok(Ok(_)) => Ok(make_result(PortStates::Open, PortStateReasons::SynAck)),
         Ok(Err(e)) => match e.kind() {
-            ErrorKind::ConnectionRefused => Ok(make_result(PortStates::Closed, PortStateReasons::SynAck)),
+            ErrorKind::ConnectionRefused => Ok(make_result(PortStates::Closed, PortStateReasons::Reset)),
             _ => Err(format!("Error connecting to {}:{}: {:?}", ip_address, port, e.kind())),
         },
-        Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::SynAck)), // timeout
+        Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::Timeout)), // timeout
     }
 }
 
@@ -88,7 +73,7 @@ pub async fn run_connect_scan(
     let packets_sent = Arc::new(Mutex::new(0u32));
 
     // Avoid overwhelming the network --> limit concurrent scans
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
 
     // Create a task for each IP/port combination
     for ip in ip_addresses {
