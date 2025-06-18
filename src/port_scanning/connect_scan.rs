@@ -2,8 +2,8 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 use std::time::{Duration, SystemTime};
 
-use std::net::SocketAddr;
-// use std::net::ToSocketAddrs;
+// use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::io::ErrorKind;
 
 use std::net::{IpAddr, Ipv4Addr};
@@ -22,40 +22,9 @@ pub async fn port_tcp_connect_scan(
     protocols: &ProtocolMap
 ) -> Result<PortScanSingleResult, String> {
     
-    // This is not needed at the moment, as hostnames are not permitted as input -> no DNS needed
-    // If needed, it might be moved somewhere outside of this function
-
-    // let addr = format!("{}:{}", ip_address, port);
-    // Hostname -> resolve SocketAddr
-    // let socket_addr = match addr.to_socket_addrs() {
-    //     Ok(mut addrs) => match addrs.next() {
-    //         Some(sa) => sa,
-    //         None => return Ok(PortScanSingleResult {
-    //             ip_address,
-    //             port,
-    //             protocol: Protocols::TCP,
-    //             port_state: PortStates::Filtered,
-    //             ttl: 63,
-    //             reason: PortStateReasons::SynAck,
-    //             service: get_service_name(protocols, "tcp", port),
-    //         }),
-    //     },
-    //     Err(_) => return Ok(PortScanSingleResult {
-    //         ip_address,
-    //         port,
-    //         protocol: Protocols::TCP,
-    //         port_state: PortStates::Filtered,
-    //         ttl: 63,
-    //         reason: PortStateReasons::SynAck,
-    //         service: get_service_name(protocols, "tcp", port),
-    //     }),
-    // };
-
-    // Simpler pproach, does the same
-    let socket_addr = SocketAddr::new(ip_address, port);
 
 
-    // Function to automatically create the struct
+// Function to automatically create the struct
     let make_result = |state, reason| PortScanSingleResult {
         ip_address,
         port,
@@ -66,6 +35,19 @@ pub async fn port_tcp_connect_scan(
         service: get_service_name(protocols, "tcp", port),
     };
 
+    
+    let addr = format!("{}:{}", ip_address, port);
+    // Hostname -> resolve SocketAddr
+    let socket_addr = match addr.to_socket_addrs() {
+        Ok(mut addrs) => match addrs.next() {
+            Some(sa) => sa,
+            None => return Ok(make_result(PortStates::Filtered, PortStateReasons::SynAck)),
+        },
+        Err(_) => return Ok(make_result(PortStates::Filtered, PortStateReasons::SynAck)),
+    };
+
+    // Simpler approach, does the same
+    // let socket_addr = SocketAddr::new(ip_address, port);
 
     // println!("{}", socket_addr);
 
