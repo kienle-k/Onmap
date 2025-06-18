@@ -19,7 +19,7 @@ use crate::resolving::{resolve_hostname, extract_ttl};
 /// * `ip_addresses` - A `Result` containing either a `Vec<Ipv4Addr>` of target IPs
 ///   or an error string if the IP list could not be generated.
 ///
-/// # Returns
+/// # Returns (should return Result)
 ///
 /// A tuple containing:
 /// * A `Vec<HostDiscoverySingleResult>` where each element represents the outcome
@@ -115,7 +115,7 @@ pub async fn run_ping_scan(
 /// # Arguments
 /// * `ip` - A reference to the `Ipv4Addr` to be pinged.
 ///
-/// # Returns
+/// # Returns (should return Result)
 /// A tuple `(bool, Option<Duration>, Option<u8>)` representing:
 /// * `is_reachable`: True if the ping was successful.
 /// * `latency`: The round-trip time of the ping if successful.

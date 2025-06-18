@@ -20,6 +20,7 @@ use crate::resolving::{resolve_hostname};
 /// This function takes a list of IPv4 addresses, sends a single ICMP echo request
 /// to each one concurrently, and collects the results. It returns a tuple containing
 /// a vector of detailed results for each host and a summary of the entire scan.
+/// Should return Result
 pub async fn run_icmp_echo(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
 ) -> (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) {
@@ -100,7 +101,7 @@ pub async fn run_icmp_echo(
 /// This function performs the low-level work of creating a raw socket,
 /// constructing an ICMP packet, sending it, and listening for a valid reply.
 ///
-/// # Returns
+/// # Returns (Should return result)
 /// A tuple: `(is_reachable, latency, ttl)`.
 async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, Option<u8>) {
     let ip = *ip;
