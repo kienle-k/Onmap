@@ -168,7 +168,6 @@ pub async fn run_syn_scan(
     let start_time = SystemTime::now();
 
     // Create a vector to hold the handles for all the asynchronous tasks we're about to spawn.
-    // We'll need this to wait for all of them to complete at the end.
     let mut tasks = Vec::new();
 
     // Create thread-safe, shared containers for the results.
