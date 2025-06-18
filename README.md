@@ -1,43 +1,45 @@
-# Oxidized nmap
-
-## Todo
-
-- Reimplement CLI parsing (with clap) (Done)
-- Restructure and add lib.rs (added lib.rs --> Added new structure to hande CLI parsing) (Done)
-- Add to README.md how to test the program with the docker containers (Done)
-
-- Everyone does this for the part he implemented
-  - Add unit tests (Done for Kevin)
-  - Remove unwraps (Done for Kevin)
-  - Remove copy / clones
-  - Revise error handling (also check if option or result is correctly used)
-  - Add documentation in the code with doc-strings (Done for Kevin)
-  - Add comments for grading (Done for Kevin)
+# Oxidized Nmap (`onmap`)
+A fast, minimal Rust-based port scanner — inspired by Nmap, reimagined in Rust.
 
 
-## Documentation
-- Add Docker Setup to Architektur (Assigned to: Jonas)
+## 🔧 Build
+```bash
+cargo build --release
+```
+
+## Example usages
+```bash
+cargo build --release
+sudo ./target/release/onmap --help
+sudo ./target/release/onmap sT --help
+sudo ./target/release/onmap PE --help
+```
+
 
 
 ## Docker Test environment
-This repo provides a docker container environment to perform tests of the functionalities.
+This repo also provides a docker container environment to perform tests of the functionalities.
 
-### Building the containers (2-phase)
+### Fast startup
+Use the two bash files "run_container_env.sh" and "build_container_env.sh" to run the program in the docker container setup
+
+### Alternative
+#### Building the containers (2-phase)
 ```bash
 docker compose build
 ```
 
-### Deploying the containers
+#### Deploying the containers
 ```bash
 docker compose up -d
 ```
 
-### Testing functionalities
-#### Logging into the container
+#### Testing functionalities
+##### Logging into the container
 ```bash
 docker exec -it onmap bash
 ```
-#### Executing commands
+##### Executing commands
 ```bash
 
 ./onmap PE 172.28.0.0/24
@@ -54,18 +56,10 @@ docker exec -it onmap bash
 
 ```
 
-### Availible dummy hosts to scan
+#### Availible dummy hosts to scan
 - 172.28.0.20 host_1
 - 172.28.0.21 host_2
 - 172.28.0.22 host_3
 - 172.28.0.23 host_4
 - 172.28.0.24 host_5
-
-### Or just try it in your own network with
-```bash
-cargo build --release
-sudo ./target/release/onmap --help
-sudo ./target/release/onmap sT --help
-sudo ./target/release/onmap PE --help
-```
 

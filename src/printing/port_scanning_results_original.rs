@@ -76,14 +76,15 @@ pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult
         if closed_port_num > 0 || filtered_port_num > 0 {
             print!("Not shown: ");
             if closed_port_num > 0 {
-                println!("{} closed ports", closed_port_num);
+                print!("{} closed ports", closed_port_num);
             }
             if filtered_port_num > 0 {
                 if closed_port_num > 0 {
-                    print!("           ");
+                    print!(" and ");
                 }
-                println!("{} filtered ports", filtered_port_num);
+                print!("{} filtered ports", filtered_port_num);
             }
+            println!();
         }
         
         if !open_ports.is_empty() {
