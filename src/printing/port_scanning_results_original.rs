@@ -39,17 +39,19 @@ pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult
             .filter(|r| r.port_state == PortStates::Closed)
             .cloned()
             .collect();
-        
+
+        let unfiltered_ports: Vec<&PortScanSingleResult> = host_results.iter()
+            .filter(|r| r.port_state == PortStates::Unfiltered)
+            .copied()
+            .collect();
+
         let closed_port_num = closed_ports.len();
         
         if closed_port_num > 0 {
             println!("Not shown: {} closed ports", closed_port_num);
         }
         
-        if open_ports.is_empty() {
-            //println!("No open ports discovered.");
-        } else {
-
+        if !open_ports.is_empty() {
 
             let mut sorted_open_ports = open_ports.clone();
             sorted_open_ports.sort_by_key(|r| r.port);
@@ -62,6 +64,24 @@ pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult
                     Protocols::TCP => "tcp"
                 };
                 println!("{:<7}/{}  open     {}", &port_result.port.to_string(), protocol_str, &port_result.service);  
+            }
+        } else if !unfiltered_ports.is_empty() {
+
+            let mut sorted_unfiltered_ports = unfiltered_ports.clone();
+            sorted_unfiltered_ports.sort_by_key(|r| r.port);
+
+            println!("{:<7}      STATE       SERVICE", "PORT");
+
+            for port_result in sorted_unfiltered_ports {
+                let protocol_str = match port_result.protocol {
+                    Protocols::TCP => "tcp"
+                };
+                
+                println!("{:<7}/{}  unfiltered  {}", &port_result.port.to_string(), protocol_str, &port_result.service);
+            }
+        } else {
+            if !host_results.is_empty() {
+                println!("Host is up, but all {} scanned ports are in a 'closed' or 'filtered' state.", host_results.len());
             }
         }
         println!("");

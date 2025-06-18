@@ -195,7 +195,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                     }
                                 },
                                 PortScanOption::AckScan => {
-                                    port_scanning::run_ack_scan(Ok(ip_addresses_arr), &ports_arr.expect("Ports array could not be set"), local_ip_address).await;
+                                    port_scan_result = port_scanning::run_ack_scan(Ok(ip_addresses_arr), &ports_arr.expect("Ports array could not be set"), local_ip_address).await;
                                 },
                                 PortScanOption::WindowScan => println!("Doing WindowScan (Implementation coming soon)"),
                                 PortScanOption::MaimonScan => println!("Doing MaimonScan (Implementation coming soon)"),
@@ -298,7 +298,13 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                 }
             },
             Some(ScanCommand::AckScan { ports: _, ips: _ }) => {
-                port_scanning::run_ack_scan(ip_addresses_arr, &ports_vec, local_ip_address).await;
+                let scan_result = port_scanning::run_ack_scan(ip_addresses_arr, &ports_vec, local_ip_address).await;
+                
+                if use_original_printing {
+                    print_port_scan_results_original(scan_result).await;
+                } else {
+                    print_port_scan_results(scan_result);
+                }
             },
             Some(ScanCommand::PingScan { ips: _ }) => {
                 

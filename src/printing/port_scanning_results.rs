@@ -75,7 +75,7 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
 
         // Filter for only open ports to display them
         let open_ports: Vec<&PortScanSingleResult> = host_results.iter()
-            .filter(|r| r.port_state == PortStates::Open)
+            .filter(|r| r.port_state == PortStates::Open || r.port_state == PortStates::Unfiltered)
             .copied()
             .collect();
 
@@ -90,6 +90,7 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
             // Add header row
             open_port_table.set_titles(Row::new(vec![
                 Cell::new("Port"),
+                Cell::new("State"),
                 Cell::new("Protocol"),
                 Cell::new("Service"),
                 Cell::new("TTL"),
@@ -101,6 +102,14 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
             sorted_open_ports.sort_by_key(|r| r.port);
 
             for port_result in sorted_open_ports {
+
+                let state_str = match port_result.port_state {
+                PortStates::Open => "open",
+                PortStates::Unfiltered => "unfiltered",
+                PortStates::Closed => "closed",
+                PortStates::Filtered => "filtered",
+                };
+
                 // Convert enum values to strings for display
                 let protocol_str = match port_result.protocol {
                     Protocols::TCP => "TCP",
@@ -109,12 +118,14 @@ pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllR
                 let reason_str = match port_result.reason {
                     PortStateReasons::SynAck => "SYN-ACK",
                     PortStateReasons::Reset => "RST",
+                    PortStateReasons::Unfiltered => "Unfiltered",
                     PortStateReasons::Timeout => "Timeout",
                 };
 
                 // Add a single result as a row
                 open_port_table.add_row(Row::new(vec![
                     Cell::new(&port_result.port.to_string()),
+                    Cell::new(state_str),
                     Cell::new(protocol_str),
                     Cell::new(&port_result.service),
                     Cell::new(&port_result.ttl.to_string()),

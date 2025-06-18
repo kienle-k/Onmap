@@ -160,7 +160,9 @@ pub enum PortStates {
     /// The port is closed and actively refusing connections.
     Closed,
     /// The port's state cannot be determined, likely due to a firewall.
-    Filtered
+    Filtered,
+    /// The port is not blocked by a stateful firewall (RST received).
+    Unfiltered
 }
 
 /// The reason for a port's determined state, based on the network response.
@@ -170,9 +172,13 @@ pub enum PortStateReasons {
     SynAck,
     /// A RST (reset) packet was received, indicating a closed port.
     Reset,
+    /// A RST-ACK packet was received from an ACK scan, indicating an unfiltered port.
+    Unfiltered,
     /// No response was received, indicating a filtered port or dropped packet.
     Timeout
 }
+
+
 
 /// The network protocol used for a scan.
 #[derive(Clone, Copy, Debug)]
