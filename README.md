@@ -42,17 +42,29 @@ docker exec -it onmap bash
 
 ./onmap PE 172.28.0.0/24
 
-./onmap sT -pf 172.28.0.24
+./onmap PE 172.28.0.24
+
+./onmap PE 172.28.0.20-172.28.0.24
+
+./onmap sT -p- 172.28.0.24
 
 ./onmap sS -pF 172.28.0.22
 
-./onmap sA -pF 172.28.0.23
+./onmap sA -p1-1000 172.28.0.23
 
 ```
 
 ### Availible dummy hosts to scan
-- 172.28.0.11 host_1
-- 172.28.0.12 host_2
-- 172.28.30.45 host_3
-- 172.28.10.124 host_4
+- 172.28.0.20 host_1
+- 172.28.0.21 host_2
+- 172.28.0.22 host_3
+- 172.28.0.23 host_4
+- 172.28.0.24 host_5
+
+### Or just try it in your own network with
+```bash
+cargo build --release
+sudo ./target/release/onmap --help
+```
+#### Hint: For the syntax of ip adresses / ports refer to the examples above
 
