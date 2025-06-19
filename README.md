@@ -71,6 +71,28 @@ docker compose up -d
 ```bash
 docker exec -it onmap bash
 ```
+##### Executing commands
+```bash
+
+./onmap PE 172.28.0.0/24
+
+./onmap PE 172.28.0.22
+
+./onmap PE 172.28.0.20-172.28.0.24
+
+./onmap sT -pF 172.28.0.20
+
+./onmap sT -p- 172.28.0.22
+
+./onmap sS -pF 172.28.0.23
+
+./onmap sS -p- 172.28.0.21
+
+./onmap sS -p22,21,80,3306,8080 172.28.0.21
+
+./onmap sA -p1-1000 172.28.0.24
+
+```
 
 #### Availible dummy hosts to scan
 - 172.28.0.20 host_1
