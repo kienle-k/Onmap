@@ -142,7 +142,7 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> Result<(bool, Option<Dura
         echo_packet.set_checksum(checksum);
 
         let destination = IpAddr::V4(ip);
-        let start_time = Instant::now();
+        let start_time = Instant::now(); // Timer is for total latency.
 
         if let Err(e) = tx.send_to(echo_packet, destination) {
             let error_msg = format!("Failed to send echo request to {}: {}", ip, e);
@@ -152,32 +152,41 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> Result<(bool, Option<Dura
 
         // Create an iterator to process incoming ICMP packets.
         let mut iter = icmp_packet_iter(&mut rx);
+        let receive_start_time = Instant::now();
         let timeout_duration = Duration::from_secs(2);
 
-        match iter.next_with_timeout(timeout_duration) {
-            Ok(Some((packet, addr))) => {
-                if addr == destination && packet.get_icmp_type() == IcmpTypes::EchoReply {
-                    if let Some(reply) = EchoReplyPacket::new(packet.packet()) {
-                        if reply.get_identifier() == identifier {
-                            let latency = start_time.elapsed();
-                            let ttl = Ipv4Packet::new(packet.packet()).map(|p| p.get_ttl());
-                            return Ok((true, Some(latency), ttl));
+        while receive_start_time.elapsed() < timeout_duration {
+
+            let remaining_time = timeout_duration.saturating_sub(receive_start_time.elapsed());
+            if remaining_time.is_zero() {
+                break;
+            }
+
+            match iter.next_with_timeout(remaining_time) {
+                Ok(Some((packet, addr))) => {
+                    if addr == destination && packet.get_icmp_type() == IcmpTypes::EchoReply {
+                        if let Some(reply) = EchoReplyPacket::new(packet.packet()) {
+                            if reply.get_identifier() == identifier {
+                                let latency = start_time.elapsed(); // Calculate latency from the original send time.
+                                let ttl = Ipv4Packet::new(packet.packet()).map(|p| p.get_ttl());
+                                return Ok((true, Some(latency), ttl));
+                            }
                         }
                     }
+                    // If packet is not the expected packet -> let the loop continue to listen for more.
                 }
-                // If it's a reply but not matching destination/type/identifier
-                Err(format!("Received unexpected ICMP reply from {}.", addr))
-            }
-            Ok(None) => {
-                // Timeout occurred, host is considered down
-                Ok((false, None, None))
-            }
-            Err(e) => {
-                let error_msg = format!("Error receiving packet from {}: {:?}", ip, e);
-                eprintln!("{}", error_msg);
-                Err(error_msg)
+                Ok(None) => {
+                    continue;
+                }
+                Err(_) => {
+                    continue;
+                }
             }
         }
+
+        // This means the 2-second window passed without receiving
+        // the specific reply. This is a true timeout.
+        Ok((false, None, None))
     });
 
     // A secondary, hard timeout on the entire task.
@@ -190,7 +199,7 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> Result<(bool, Option<Dura
             Err(error_msg)
         }
         Err(_) => {
-            // This triggers if spawn_blocking itself times out.
+            // Triggers if spawn_blocking itself times out.
             let error_msg = format!("ICMP ping task timed out for {}", ip);
             eprintln!("{}", error_msg);
             Err(error_msg)
