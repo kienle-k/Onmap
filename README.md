@@ -23,6 +23,12 @@ sudo ./target/release/onmap -PE --help
 #### Example usages
 ```bash
 
+./onmap sn scanme.nmap.org
+
+./onmap sn google.com
+
+./onmap -PE scanme.nmap.org
+
 ./onmap -PE 192.168.178.0/24
 
 ./onmap -sT -p- 192.168.178.50
