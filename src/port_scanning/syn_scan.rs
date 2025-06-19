@@ -35,7 +35,7 @@ use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResul
 ///
 /// This function will return an `Err` if it fails to create the transport channel,
 /// which typically requires administrator/root privileges. It also returns an error for IPv6 addresses.
-pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4Addr, protocols: &ProtocolMap) -> Result<PortScanSingleResult, String> {
+pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4Addr, protocols: Arc<ProtocolMap>) -> Result<PortScanSingleResult, String> {
     // Only IPv4 is supported for this implementation
     let ipv4 = match ip_address {
         IpAddr::V4(ipv4) => ipv4,
@@ -44,13 +44,13 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
 
     // Create a raw transport channel for sending and receiving TCP packets
     let protocol = TransportProtocol::Ipv4(IpNextHeaderProtocols::Tcp);
-    let (mut tx, mut rx) = match transport_channel(4096, TransportChannelType::Layer4(protocol)) {
+    let (mut tx, rx) = match transport_channel(4096, TransportChannelType::Layer4(protocol)) {
         Ok((tx, rx)) => (tx, rx),
         Err(e) => return Err(format!("Error creating transport channel: {}. Try running with sudo.", e)),
     };
 
-    // Create an iterator to receive packets on the channel
-    let mut iter = tcp_packet_iter(&mut rx);
+    // Create an Arc<Mutex<...>> for the receiver so it can be moved into the blocking task
+    let rx = Arc::new(Mutex::new(rx));
 
     // Generate a random source port from the ephemeral range
     let source_port = rand::thread_rng().gen_range(49152..65535);
@@ -78,52 +78,61 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
         return Err(format!("Failed to send packet: {}", e));
     };
 
-    // Asynchronously wait for a matching response
-    let response_future = async {
-        loop {
-            match iter.next() {
-                Ok((packet, addr)) => {
-                    // Check if the response is from the target host and for our source port
-                    if packet.get_destination() == source_port && addr == ip_address && packet.get_source() == port {
-                        let flags = packet.get_flags();
-                        if (flags & TcpFlags::SYN != 0) && (flags & TcpFlags::ACK != 0) {
-                            let ttl = 63; // Placeholder, real TTL extraction is not implemented yet
-                            return Ok(PortScanSingleResult {
-                                ip_address, port, protocol: Protocols::TCP,
-                                port_state: PortStates::Open, ttl,
-                                reason: PortStateReasons::SynAck, service: get_service_name(protocols, "tcp", port),
-                            });
-                        }
-                        if flags & TcpFlags::RST != 0 {
-                            let ttl = 63; // Placeholder, real TTL extractions is not implemented yet
-                            return Ok(PortScanSingleResult {
-                                ip_address, port, protocol: Protocols::TCP,
-                                port_state: PortStates::Closed, ttl,
-                                reason: PortStateReasons::Reset, service: get_service_name(protocols, "tcp", port),
-                            });
+    // Clone protocols here to move into the async block
+    let protocols_clone_for_response = Arc::clone(&protocols);
+
+    // Asynchronously wait for a matching response, offloading blocking `iter.next()` to a blocking task
+    let response_future = async move { // Add `move` here to take ownership of protocols_clone_for_response
+        let rx_clone = Arc::clone(&rx);
+        tokio::task::spawn_blocking(move || { // Add `move` here to take ownership of protocol_clone_for_response
+            let mut rx_guard = rx_clone.lock().expect("Mutex was poisoned");
+            let mut iter = tcp_packet_iter(&mut *rx_guard); // Dereference the MutexGuard to get the TransportReceiver
+
+            loop {
+                match iter.next() {
+                    Ok((packet, addr)) => {
+                        // Check if the response is from the target host and for our source port
+                        if packet.get_destination() == source_port && addr == ip_address && packet.get_source() == port {
+                            let flags = packet.get_flags();
+                            if (flags & TcpFlags::SYN != 0) && (flags & TcpFlags::ACK != 0) {
+                                let ttl = 63; // Placeholder, real TTL extraction is not implemented yet
+                                return Ok(PortScanSingleResult {
+                                    ip_address, port, protocol: Protocols::TCP,
+                                    port_state: PortStates::Open, ttl,
+                                    reason: PortStateReasons::SynAck, service: get_service_name(&protocols_clone_for_response, "tcp", port),
+                                });
+                            }
+                            if flags & TcpFlags::RST != 0 {
+                                let ttl = 63; // Placeholder, real TTL extractions is not implemented yet
+                                return Ok(PortScanSingleResult {
+                                    ip_address, port, protocol: Protocols::TCP,
+                                    port_state: PortStates::Closed, ttl,
+                                    reason: PortStateReasons::Reset, service: get_service_name(&protocols_clone_for_response, "tcp", port),
+                                });
+                            }
                         }
                     }
-                }
-                Err(_e) => {
-                    // Short delay to prevent fast spinning on I/O errors
-                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    Err(e) => {
+                        // Log or handle the error from iter.next()
+                        eprintln!("Error receiving packet: {}", e);
+                        // A short delay to prevent fast spinning on I/O errors (still good practice)
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
                 }
             }
-            // Yield control to the Tokio scheduler to allow other tasks to run
-            tokio::task::yield_now().await;
-        }
+        }).await.expect("Blocking task panicked") // Await the result of the blocking task
     };
 
     // Wait for the response with an 800ms timeout
     match tokio::time::timeout(Duration::from_millis(800), response_future).await {
         Ok(Ok(result)) => Ok(result), // Response received and processed successfully
-        Ok(Err(e)) => Err(e),         // Internal error from the response logic
+        Ok(Err(e)) => Err(e),         // Internal error from the response logic (e.g., blocking task failed)
         Err(_) => { // Timeout occurred, port is considered filtered
             Ok(PortScanSingleResult {
                 ip_address, port, protocol: Protocols::TCP,
                 port_state: PortStates::Filtered, ttl: 0,
                 reason: PortStateReasons::Timeout,
-                service: get_service_name(protocols, "tcp", port),
+                service: get_service_name(&protocols, "tcp", port), // Use the original protocols here if needed
             })
         }
     }
@@ -195,7 +204,7 @@ pub async fn run_syn_scan(
                 // Increment packets sent counter safely
                 *packets_sent_clone.lock().expect("Mutex was poisoned") += 1;
                 
-                match port_syn_scan(IpAddr::V4(ip), port, local_ip_address, &protocols_clone).await {
+                match port_syn_scan(IpAddr::V4(ip), port, local_ip_address, protocols_clone).await {
                     Ok(result) => {
                         // If port is open, add it to the shared list of open ports
                         if result.port_state == PortStates::Open {
