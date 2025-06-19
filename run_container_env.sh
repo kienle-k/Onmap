@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # Determine which docker version -> "docker-compose" or "docker compose"
 if docker compose version >/dev/null 2>&1; then
     COMPOSE_CMD="docker compose"
@@ -10,12 +11,14 @@ else
     exit 1
 fi
 
-# Stop containers (if previously running)
-echo ""
-echo "Making sure previous containers are down..."
-echo ""
-$COMPOSE_CMD down
-
+# If not run with "-f" in CLI
+if [[ "$1" != "-f" ]]; then
+    # Stop containers (if previously running)
+    echo ""
+    echo "Making sure previous containers are down..."
+    echo ""
+    $COMPOSE_CMD down
+fi
 
 # Start containers
 echo ""
