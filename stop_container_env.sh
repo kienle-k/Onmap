@@ -12,18 +12,6 @@ fi
 
 # Stop containers
 echo ""
-echo "Making sure previous containers are down..."
+echo "Stopping docker containers..."
 echo ""
 $COMPOSE_CMD down
-
-# Build containers
-echo "Triggering build of the containers..."
-if ! $COMPOSE_CMD build; then
-    echo "Build failed. Check Dockerfile or docker-compose.yml for issues."
-    exit 1
-fi
-
-echo ""
-echo "Build completed successfully."
-echo ""
-exit 0

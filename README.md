@@ -1,36 +1,63 @@
 # Oxidized Nmap (`onmap`)
 A fast, minimal Rust-based port scanner — inspired by nmap, reimagined in Rust.
 
-
 ## Build
 ```bash
 cargo build --release
 ```
 
-## Example usages
+## Help
 ```bash
 cargo build --release
 sudo ./target/release/onmap --help
-sudo ./target/release/onmap sT --help
-sudo ./target/release/onmap PE --help
+sudo ./target/release/onmap -sT --help
+sudo ./target/release/onmap -PE --help
+```
+
+
+#### Example usages
+```bash
+./onmap -PE 192.168.178.0/24
+./onmap -PE scanme.nmap.org
+./onmap -sT -p 22,80,443 scanme.nmap.org
+./onmap -sT -p- 192.168.178.50
+./onmap -sS -p1-1024 192.168.1.100
+./onmap -sS -p443 github.com
+./onmap -sF -p80,443 192.168.1.101
+./onmap -sA -p80,443 192.168.1.1
+./onmap -PE 192.168.0.10-20
+./onmap -sS -p22 10.0.0.1-10
 ```
 
 
 
 ## Docker Test environment
 This repo also provides a docker container environment to perform tests of the functionalities.
+The environment deploys several dummy hosts inside the network, with certain ports exposed via simple http servers and some blocked by a semi-firewall.
+This provides an environment where open (server runnig), closed (no server) and filtered (firewall) ports are present.
+Note that due to docker-specific limitiations in terms of network emulation, some scan types do not perform as expected in this setup.
+Updates that will provide test cases for these scan types (if possible to implement in docker) will be added in the following releases.
 
 ### Fast startup
 
+#### Build containers
 ```bash
 build_container_env.sh
 ```
+
+#### Run containers & Log into onmap container
 ```bash
 run_container_env.sh
 ```
 
+#### Stopping containers 
+```bash
+stop_container_env.sh
+```
+
 ### Alternative (Manual)
-#### Building the containers (2-phase)
+
+#### Building the containers
 ```bash
 docker compose build
 ```
@@ -40,26 +67,9 @@ docker compose build
 docker compose up -d
 ```
 
-#### Testing functionalities
-##### Logging into the container
+#### Logging into onmap container
 ```bash
 docker exec -it onmap bash
-```
-##### Executing commands
-```bash
-
-./onmap PE 172.28.0.0/24
-
-./onmap PE 172.28.0.22
-
-./onmap PE 172.28.0.20-172.28.0.24
-
-./onmap sT -p- 172.28.0.22
-
-./onmap sS -pF 172.28.0.23
-
-./onmap sA -p1-1000 172.28.0.24
-
 ```
 
 #### Availible dummy hosts to scan
@@ -69,4 +79,22 @@ docker exec -it onmap bash
 - 172.28.0.23 host_4
 - 172.28.0.24 host_5 (ACK scans only work on this host)
 - (ping scan does not work in docker container)
+
+
+#### Example usages
+```bash
+
+./onmap -PE 172.28.0.0/24
+
+./onmap -PE 172.28.0.24
+
+./onmap -PE 172.28.0.20-26
+
+./onmap -sT -p- 172.28.0.24
+
+./onmap -sS -pF 172.28.0.22
+
+./onmap -sA -p1-1000 172.28.0.23
+```
+
 
