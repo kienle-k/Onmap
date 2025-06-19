@@ -33,7 +33,7 @@ use super::get_resolv_conf_nameservers;
 /// # use onmap::resolving::resolve_hostname;
 ///
 /// # fn main() {
-/// #     let rt = Runtime::new().unwrap();
+/// #     let rt = Runtime::new().expect("Runtime could not be created");
 /// #     rt.block_on(async {
 /// // Resolve a well-known public IP address.
 /// let ip = Ipv4Addr::new(8, 8, 8, 8);

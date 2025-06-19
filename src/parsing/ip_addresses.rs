@@ -27,22 +27,22 @@ use std::str::FromStr;
 ///
 /// ```
 /// use std::net::Ipv4Addr;
-/// use onmap::parsing::ip_addresses::parse_ip_list;
+/// use onmap::parsing::ip_addresses::parse_ip_addresses;
 ///
 /// // Single IP
-/// let ips = parse_ip_list("127.0.0.1").unwrap();
+/// let ips = parse_ip_addresses("127.0.0.1").expect("Could not parse localhost");
 /// assert_eq!(ips, vec![Ipv4Addr::new(127, 0, 0, 1)]);
 ///
 /// // IP Range
-/// let ips = parse_ip_list("10.0.0.1 - 10.0.0.3").unwrap();
+/// let ips = parse_ip_addresses("10.0.0.1 - 10.0.0.3").expect("Could not parse ip addresses");
 /// assert_eq!(ips.len(), 3);
 ///
 /// // CIDR Notation
-/// let ips = parse_ip_list("192.168.1.0/30").unwrap();
+/// let ips = parse_ip_addresses("192.168.1.0/30").expect("Could not parse ip addresses with CIDR notation");
 /// assert_eq!(ips.len(), 4);
 ///
 /// // Mixed comma-separated list
-/// let ips = parse_ip_list("10.0.0.1,10.0.0.3-4,10.0.0.10/31").unwrap();
+/// let ips = parse_ip_addresses("10.0.0.1,10.0.0.3-4,10.0.0.10/31").expect("Could not parse ip addresses with mixed notation");
 /// assert_eq!(ips.len(), 5);
 /// ```
 pub fn parse_ip_addresses(input: &str) -> Result<Vec<Ipv4Addr>, String> {

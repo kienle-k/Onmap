@@ -188,7 +188,7 @@ mod tests {
         let result = ping_host_with_details(&ip).await;
 
         assert!(result.is_ok(), "Ping to localhost should succeed, but got error: {:?}", result.err());
-        let (is_reachable, latency, ttl) = result.unwrap();
+        let (is_reachable, latency, ttl) = result.expect("Ping result could not be resolved");
 
         assert!(is_reachable, "Localhost should be reachable");
         assert!(latency.is_some(), "Latency should be recorded for a successful ping");
@@ -227,11 +227,11 @@ mod tests {
             Ipv4Addr::new(127, 0, 0, 1),   // Reachable
             Ipv4Addr::new(192, 0, 2, 123), // Unreachable (likely to cause an error from ping_host_with_details)
         ]);
-        let total_ips = ips.as_ref().unwrap().len();
+        let total_ips = ips.as_ref().expect("Ips could not be resolved").len();
 
         let scan_result = run_ping_scan(ips).await;
         assert!(scan_result.is_ok(), "Ping scan should succeed, but got error: {:?}", scan_result.err());
-        let (results, summary) = scan_result.unwrap();
+        let (results, summary) = scan_result.expect("Scan result could not be resolved");
 
         // --- Assertions on the Summary ---
         assert_eq!(summary.scanned_addresses.len(), total_ips);
