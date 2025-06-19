@@ -166,8 +166,6 @@ mod tests {
                 if let ResolveErrorKind::NoRecordsFound { .. } = e.kind() {
                     None
                 } else {
-                    // In a real test, we might log this, but for this helper,
-                    // simply returning None is sufficient to test the failure path.
                     eprintln!("[Warning: DNS lookup for {} failed: {}]", ip, e);
                     None
                 }

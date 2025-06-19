@@ -1,5 +1,7 @@
 use std::net::Ipv4Addr;
+use std::net::IpAddr;
 use std::str::FromStr;
+use dns_lookup::lookup_host; // For DNS resolution
 
 /// Parses a string representation of one or more IPv4 addresses into a vector of `Ipv4Addr`.
 ///
@@ -45,26 +47,53 @@ use std::str::FromStr;
 /// let ips = parse_ip_addresses("10.0.0.1,10.0.0.3-4,10.0.0.10/31").expect("Could not parse ip addresses with mixed notation");
 /// assert_eq!(ips.len(), 5);
 /// ```
+// --- parse_ip_addresses (main function) ---
 pub fn parse_ip_addresses(input: &str) -> Result<Vec<Ipv4Addr>, String> {
     let mut result = Vec::new();
 
     for part in input.split(',') {
         let trimmed = part.trim();
-        let mut parsed_ips = if trimmed.contains('/') {
+
+        // Check if it's potentially a hostname (not containing '/' or '-')
+        // and doesn't look like a direct IP address.
+        let parsed_ips = if trimmed.contains('/') {
             parse_cidr(trimmed)
         } else if trimmed.contains('-') {
             parse_ip_range(trimmed)
+        } else if let Ok(ip) = Ipv4Addr::from_str(trimmed) {
+            // It's a direct IP address
+            Ok(vec![ip])
         } else {
-            match Ipv4Addr::from_str(trimmed) {
-                Ok(ip) => Ok(vec![ip]),
-                Err(_) => Err(format!("Invalid IP address: {}", trimmed)),
-            }
+            // If it's not a CIDR, range, or direct IP, try DNS resolution
+            resolve_hostname_to_ipv4(trimmed)
         }?;
 
-        result.append(&mut parsed_ips);
+        result.extend(parsed_ips); // Use extend instead of append for Vec<T>
     }
 
     Ok(result)
+}
+
+/// Resolves a hostname to a list of IPv4 addresses.
+fn resolve_hostname_to_ipv4(hostname: &str) -> Result<Vec<Ipv4Addr>, String> {
+    match lookup_host(hostname) {
+        Ok(ips) => {
+            let ipv4_ips: Vec<Ipv4Addr> = ips.into_iter()
+                .filter_map(|ip| {
+                    match ip {
+                        IpAddr::V4(ipv4) => Some(ipv4), // Correctly extract Ipv4Addr
+                        _ => None, // Discard IPv6 or other variants
+                    }
+                })
+                .collect();
+            if ipv4_ips.is_empty() {
+                Err(format!("No IPv4 addresses found for hostname: {}", hostname))
+            } else {
+                Ok(ipv4_ips)
+            }
+        },
+        Err(e) => Err(format!("DNS resolution failed for {}: {}", hostname, e)),
+    }
 }
 
 
