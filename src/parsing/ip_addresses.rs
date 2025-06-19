@@ -1,5 +1,4 @@
-use std::net::Ipv4Addr;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use dns_lookup::lookup_host; // For DNS resolution
 
@@ -28,7 +27,7 @@ use dns_lookup::lookup_host; // For DNS resolution
 /// # Examples
 ///
 /// ```
-/// use std::net::Ipv4Addr;
+/// use std::net::{Ipv4Addr, ToSocketAddrs};
 /// use onmap::parsing::ip_addresses::parse_ip_addresses;
 ///
 /// // Single IP
@@ -64,14 +63,29 @@ pub fn parse_ip_addresses(input: &str) -> Result<Vec<Ipv4Addr>, String> {
             // It's a direct IP address
             Ok(vec![ip])
         } else {
-            // If it's not a CIDR, range, or direct IP, try DNS resolution
-            resolve_hostname_to_ipv4(trimmed)
+            match Ipv4Addr::from_str(trimmed) {
+                Ok(ip) => Ok(vec![ip]),
+                Err(_) => {
+                    if is_potential_hostname(trimmed) {
+                        resolve_hostname_to_ipv4(trimmed)
+                    } else {
+                        Err(format!("Invalid IP address or hostname: {}", trimmed))
+                    }
+                }
+            }
         }?;
 
         result.extend(parsed_ips); // Use extend instead of append for Vec<T>
     }
 
     Ok(result)
+}
+
+
+
+fn is_potential_hostname(s: &str) -> bool {
+    let re = regex::Regex::new(r"^[a-zA-Z0-9.-]+$").unwrap();
+    re.is_match(s)
 }
 
 /// Resolves a hostname to a list of IPv4 addresses.
@@ -96,26 +110,6 @@ fn resolve_hostname_to_ipv4(hostname: &str) -> Result<Vec<Ipv4Addr>, String> {
     }
 }
 
-
-// pub fn parse_ip_addresses(ip_str: &str) -> Result<Vec<Ipv4Addr>, String> {
-//     let ip_str = ip_str.trim();
-
-//     // Case 1: Check if it's a CIDR notation
-//     if ip_str.contains('/') {
-//         return parse_cidr(ip_str);
-//     }
-//     // Case 2: Check if it's an IP range
-//     else if ip_str.contains('-') {
-//         return parse_ip_range(ip_str);
-//     }
-//     // Case 3: Single IP address
-//     else {
-//         match Ipv4Addr::from_str(ip_str) {
-//             Ok(ip) => Ok(vec![ip]),
-//             Err(_) => Err(format!("Invalid IP address: {}", ip_str)),
-//         }
-//     }
-// }
 
 /// Parses an IP address range from a string in the format "start_ip - end_ip".
 ///

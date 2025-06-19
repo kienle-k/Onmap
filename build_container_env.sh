@@ -18,6 +18,7 @@ $COMPOSE_CMD down
 
 # Build containers
 echo "Triggering build of the containers..."
+echo ""
 if ! $COMPOSE_CMD build; then
     echo "Build failed. Check Dockerfile or docker-compose.yml for issues."
     exit 1

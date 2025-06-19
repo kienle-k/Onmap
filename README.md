@@ -66,6 +66,12 @@ build_container_env.sh
 run_container_env.sh
 ```
 
+#### Re-log into running onmap container (without stopping previously started ones)
+```bash
+run_container_env.sh -f
+```
+
+
 #### Stopping containers 
 ```bash
 stop_container_env.sh

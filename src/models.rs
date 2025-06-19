@@ -16,49 +16,54 @@ pub struct Cli {
     pub command: Option<ScanCommand>,
 
     /// Disable original printing style, use modernized printing
-    #[arg(long = "pp",global = true, help = "Activate pretty printing", action = ArgAction::SetTrue)]
+    #[arg(short = 'm', long = "modern-print", global = true, help = "Use modern result printing", action = ArgAction::SetTrue)]
     pub modern_printing: bool,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum ScanCommand {
     /// SYN stealth scan
-    #[command(name = "sS", aliases = ["-sS"])]
+    #[command(name = "-sS", aliases = ["sS"])]
     SynScan {
-        /// Port specification (e.g. -p1, -p20,22, -p1-1024, -p-, -pF)
-        #[arg(short = 'p')]
+        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
+        #[arg(short = 'p', long="ports")]
         ports: Option<String>,
-        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "Targets")]
         ips: String,
     },
     /// TCP connect scan
-    #[command(name = "sT", aliases = ["-sT"])]
+    #[command(name = "-sT", aliases = ["sT"])]
     ConnectScan {
-        /// Port specification (e.g. -p1, -p20,22, -p1-1024, -p-, -pF)
-        #[arg(short = 'p')]
+        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
+        #[arg(short = 'p', long="ports")]
         ports: Option<String>,
-        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
         ips: String,
     },
-    /// ACK scan (for firewall rule discovery)
-    #[command(name = "sA", aliases = ["-sA"])]
+    /// ACK scan (firewall rule discovery)
+    #[command(name = "-sA", aliases = ["sA"])]
     AckScan {
-        /// Port specification (e.g. -p1, -p20,22, -p1-1024, -p-, -pF)
-        #[arg(short = 'p')]
+        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
+        #[arg(short = 'p', long="ports")]
         ports: Option<String>,
-        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
         ips: String,
     },
     /// Ping scan (Host Discovery)
-    #[command(name = "sn", aliases = ["-sn"])]
+    #[command(name = "-sn", aliases = ["sn"])]
     PingScan {
-        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
         ips: String,
     },
     /// ICMP Echo scan (Host Discovery)
-    #[command(name = "PE", aliases = ["-PE"])]
+    #[command(name = "-PE", aliases = ["PE"])]
     IcmpEcho {
-        /// Target IP addresses or CIDR (e.g. 192.168.1.1, 192.168.1.1-192.168.1.10, 192.168.1.0/24)
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
         ips: String,
     },
 }
