@@ -10,18 +10,30 @@ else
     exit 1
 fi
 
-echo "Making sure previous containers are down..."
+echo ""
+echo "Making sure previous containers are down..."#
+echo ""
 $COMPOSE_CMD down
 
+echo ""
 echo "Starting docker containers in detached mode..."
+echo ""
+
 if ! $COMPOSE_CMD up -d; then
     echo "Failed to start Docker containers. Check logs and configuration."
     exit 1
 fi
 
+echo ""
 echo "Docker containers started successfully in detached mode."
+echo ""
 echo "Entering onmap container..."
-echo "use onmap via ./onmap [options] [hosts]"
+echo ""
+echo "💡 Usage:"
+echo "    ./onmap [options] [hosts]"
+echo "    ./onmap [options] --help"
+echo "    ./onmap --help"
+echo ""
 docker exec -it onmap bash
 
 exit 0
