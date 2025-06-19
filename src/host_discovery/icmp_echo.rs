@@ -23,26 +23,11 @@ use crate::resolving::{resolve_hostname};
 /// Should return Result
 pub async fn run_icmp_echo(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
-) -> (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) {
+) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     // Start timing the entire scan operation.
     let start_time = SystemTime::now();
 
-    let ips = match ip_addresses {
-        Ok(addresses) => addresses,
-        Err(error) => {
-            // If the initial IP address processing failed, return early.
-            println!("Failed to process IP addresses: {}", error);
-            return (Vec::new(), HostDiscoveryAllResult {
-                scanned_addresses: Vec::new(),
-                ports_per_host: 0,
-                hosts_up: 0,
-                hosts_dns_resolution: 0,
-                start_time,
-                end_time: SystemTime::now(),
-                packets_sent: 0
-            });
-        }
-    };
+    let ips = ip_addresses?; // Propagate the error if initial IP address processing failed.
 
     // Use of FuturesUnordered to manage multiple concurrent ping tasks.
     let mut futures = FuturesUnordered::new();
@@ -53,12 +38,31 @@ pub async fn run_icmp_echo(
     // Create and spawn a ping task for each IP address.
     for ip in ips {
         futures.push(async move {
-            let (is_reachable, latency, ttl) = icmp_ping_host_with_details(&ip).await;
+            let icmp_result = icmp_ping_host_with_details(&ip).await;
 
             let mut dns_resolve = None;
-            // Only attempt DNS resolution for hosts that responded.
-            if is_reachable {
-                dns_resolve = resolve_hostname(&ip).await;
+            let mut is_reachable = false;
+            let mut latency = None;
+            let mut ttl = 0;
+            let mut reply_type = "no response".to_string();
+
+            match icmp_result {
+                Ok((reachable, lat, received_ttl)) => {
+                    is_reachable = reachable;
+                    latency = lat;
+                    ttl = received_ttl.unwrap_or(0);
+                    if is_reachable {
+                        reply_type = "ICMP echo reply".to_string();
+                        // Only attempt DNS resolution for hosts that responded.
+                        dns_resolve = resolve_hostname(&ip).await;
+                    }
+                }
+                Err(e) => {
+                    // An error occurred during the ICMP ping (e.g., permission denied, socket error).
+                    // This host is considered not up due to the error.
+                    reply_type = format!("Error: {}", e);
+                    // is_reachable remains false, latency and ttl remain None/0
+                }
             }
 
             HostDiscoverySingleResult {
@@ -66,8 +70,8 @@ pub async fn run_icmp_echo(
                 latency,
                 dns_resolve,
                 is_up: is_reachable,
-                reply_type: if is_reachable { "ICMP echo reply".to_string() } else { "no response".to_string() },
-                ttl: ttl.unwrap_or(0),
+                reply_type,
+                ttl,
             }
         });
     }
@@ -90,10 +94,10 @@ pub async fn run_icmp_echo(
         hosts_dns_resolution,
         start_time,
         end_time,
-        packets_sent: host_results.len() as u64
+        packets_sent: host_results.len() as u64,
     };
 
-    (host_results, summary)
+    Ok((host_results, summary))
 }
 
 /// Sends a single ICMP echo request to a host and waits for a reply.
@@ -103,7 +107,7 @@ pub async fn run_icmp_echo(
 ///
 /// # Returns (Should return result)
 /// A tuple: `(is_reachable, latency, ttl)`.
-async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, Option<u8>) {
+async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> Result<(bool, Option<Duration>, Option<u8>), String> {
     let ip = *ip;
 
     let task = task::spawn_blocking(move || {
@@ -113,15 +117,15 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, 
             Ok(channels) => channels,
             Err(e) => {
                 // For Permissions errors.
-                eprintln!("Failed to create transport channel for {}: {}. Try running with sudo.", ip, e);
-                return (false, None, None);
+                let error_msg = format!("Failed to create transport channel for {}: {}. Try running with sudo.", ip, e);
+                eprintln!("{}", error_msg);
+                return Err(error_msg);
             }
         };
 
-
         let mut packet_buffer = [0u8; 64];
         let mut echo_packet = MutableEchoRequestPacket::new(&mut packet_buffer)
-            .expect("Failed to create mutable echo request packet. The buffer might be too small.");
+            .ok_or_else(|| "Failed to create mutable echo request packet. The buffer might be too small.".to_string())?;
 
         // Manually construct the ICMP Echo Request packet.
         echo_packet.set_icmp_type(IcmpTypes::EchoRequest);
@@ -134,15 +138,16 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, 
 
         // ICMP checksum is mandatory.
         let checksum = pnet::packet::icmp::checksum(&IcmpPacket::new(echo_packet.packet())
-            .expect("Failed to create an immutable ICMP packet view for checksum calculation."));
+            .ok_or_else(|| "Failed to create an immutable ICMP packet view for checksum calculation.".to_string())?);
         echo_packet.set_checksum(checksum);
 
         let destination = IpAddr::V4(ip);
         let start_time = Instant::now();
 
         if let Err(e) = tx.send_to(echo_packet, destination) {
-            eprintln!("Failed to send echo request to {}: {}", ip, e);
-            return (false, None, None);
+            let error_msg = format!("Failed to send echo request to {}: {}", ip, e);
+            eprintln!("{}", error_msg);
+            return Err(error_msg);
         }
 
         // Create an iterator to process incoming ICMP packets.
@@ -156,30 +161,39 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, 
                         if reply.get_identifier() == identifier {
                             let latency = start_time.elapsed();
                             let ttl = Ipv4Packet::new(packet.packet()).map(|p| p.get_ttl());
-                            return (true, Some(latency), ttl);
+                            return Ok((true, Some(latency), ttl));
                         }
                     }
                 }
+                // If it's a reply but not matching destination/type/identifier
+                Err(format!("Received unexpected ICMP reply from {}.", addr))
             }
-            Ok(None) => { /* Timeout occurred, host is considered down */ },
+            Ok(None) => {
+                // Timeout occurred, host is considered down
+                Ok((false, None, None))
+            }
             Err(e) => {
-                eprintln!("Error receiving packet from {}: {:?}", ip, e);
+                let error_msg = format!("Error receiving packet from {}: {:?}", ip, e);
+                eprintln!("{}", error_msg);
+                Err(error_msg)
             }
         }
-
-        (false, None, None)
     });
 
     // A secondary, hard timeout on the entire task.
     match timeout(Duration::from_secs(3), task).await {
-        Ok(Ok(result)) => result,
+        Ok(Ok(result)) => result, // This is the Result<(bool, Option<Duration>, Option<u8>), String> from the spawned_blocking task
         Ok(Err(e)) => {
-            eprintln!("Join error in ICMP task for {}: {:?}", ip, e);
-            (false, None, None)
+            // Error originated from the spawned_blocking task itself
+            let error_msg = format!("ICMP task failed for {}: {}", ip, e);
+            eprintln!("{}", error_msg);
+            Err(error_msg)
         }
         Err(_) => {
             // This triggers if spawn_blocking itself times out.
-            (false, None, None)
+            let error_msg = format!("ICMP ping task timed out for {}", ip);
+            eprintln!("{}", error_msg);
+            Err(error_msg)
         }
     }
 }

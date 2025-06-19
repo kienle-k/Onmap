@@ -27,7 +27,7 @@ use std::str::FromStr;
 ///
 /// ```
 /// use std::net::Ipv4Addr;
-/// use your_crate::parsing::ip_addresses::parse_ip_list;
+/// use onmap::parsing::ip_addresses::parse_ip_list;
 ///
 /// // Single IP
 /// let ips = parse_ip_list("127.0.0.1").unwrap();

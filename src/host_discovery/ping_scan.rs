@@ -19,79 +19,85 @@ use crate::resolving::{resolve_hostname, extract_ttl};
 /// * `ip_addresses` - A `Result` containing either a `Vec<Ipv4Addr>` of target IPs
 ///   or an error string if the IP list could not be generated.
 ///
-/// # Returns (should return Result)
+/// # Returns
 ///
-/// A tuple containing:
+/// A `Result` which, on success, contains a tuple:
 /// * A `Vec<HostDiscoverySingleResult>` where each element represents the outcome
 ///   of a ping attempt on a single host.
 /// * A `HostDiscoveryAllResult` struct that summarizes the entire scan operation,
 ///   including total hosts up, timing information, and other statistics.
+/// On failure, it returns a `String` error.
 pub async fn run_ping_scan(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
-) -> (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult) {
+) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     // Start timing the operation
     let start_time = SystemTime::now();
-    
+
     // Ensure IP addresses were parsed correctly before proceeding with the scan.
-    let ips = match ip_addresses {
-        Ok(addresses) => addresses,
-        Err(error) => {
-            // If the input is an error, print it and return empty results immediately.
-            println!("Failed to process IP addresses: {}", error);
-            return (Vec::new(), HostDiscoveryAllResult {
-                scanned_addresses: Vec::new(),
-                ports_per_host: 0,
-                hosts_up: 0,
-                hosts_dns_resolution: 0,
-                start_time,
-                end_time: SystemTime::now(),
-                packets_sent: 0
-            });
-        }
-    };
-    
+    let ips = ip_addresses?; // Propagate the error if parsing failed.
+
     // Create a collection to hold all the asynchronous ping tasks.
     let mut futures = FuturesUnordered::new();
-    
+
     // Convert IPs to the general IpAddr type for use in the results struct.
     let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
-    
+
     // Add ping tasks to our collection. Each task is an async block.
     for ip in ips {
         futures.push(async move {
-            let (is_reachable, latency, ttl) = ping_host_with_details(&ip).await;
+            let ping_result = ping_host_with_details(&ip).await;
 
             let mut dns_resolve = None;
+            let mut is_reachable = false;
+            let mut latency = None;
+            let mut ttl = 0;
+            let mut reply_type = "no response".to_string();
 
-            if is_reachable {
-                // Only attempt to resolve hostname if the host is up.
-                dns_resolve = resolve_hostname(&ip).await;
+            match ping_result {
+                Ok((reachable, lat, received_ttl)) => {
+                    is_reachable = reachable;
+                    latency = lat;
+                    ttl = received_ttl.unwrap_or(0);
+                    if is_reachable {
+                        reply_type = "ICMP echo reply".to_string();
+                        // Only attempt to resolve hostname if the host is up.
+                        dns_resolve = resolve_hostname(&ip).await;
+                    }
+                }
+                Err(e) => {
+                    reply_type = format!("Error: {}", e);
+                    // Host is not reachable due to an error in the ping command
+                    // is_reachable remains false, latency and ttl remain None/0
+                }
             }
-            
+
             // Assemble the raw probe data into a structured result for this host.
             HostDiscoverySingleResult {
                 ip_address: IpAddr::V4(ip),
                 latency,
                 dns_resolve,
                 is_up: is_reachable,
-                reply_type: if is_reachable { "ICMP echo reply".to_string() } else { "no response".to_string() },
-                ttl: ttl.unwrap_or(0)
+                reply_type,
+                ttl,
             }
         });
     }
-    
+
     // Process the futures as they complete.
     let mut host_results = Vec::new();
     while let Some(result) = futures.next().await {
         host_results.push(result);
     }
-    
+
     // Calculate stats for the final summary.
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
-    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
-    
+    let hosts_dns_resolution = host_results
+        .iter()
+        .filter(|r| r.dns_resolve.is_some())
+        .count() as u64;
+
     let end_time = SystemTime::now();
-    
+
     // Create the summary result.
     let summary = HostDiscoveryAllResult {
         scanned_addresses: all_ips,
@@ -100,10 +106,10 @@ pub async fn run_ping_scan(
         hosts_dns_resolution,
         start_time,
         end_time,
-        packets_sent: host_results.len() as u64
+        packets_sent: host_results.len() as u64,
     };
-    
-    (host_results, summary)
+
+    Ok((host_results, summary))
 }
 
 /// Pings a single host using the OS's native `ping` command and returns reachability, latency, and TTL.
@@ -115,53 +121,51 @@ pub async fn run_ping_scan(
 /// # Arguments
 /// * `ip` - A reference to the `Ipv4Addr` to be pinged.
 ///
-/// # Returns (should return Result)
-/// A tuple `(bool, Option<Duration>, Option<u8>)` representing:
+/// # Returns
+/// A `Result` which, on success, contains a tuple `(bool, Option<Duration>, Option<u8>)` representing:
 /// * `is_reachable`: True if the ping was successful.
 /// * `latency`: The round-trip time of the ping if successful.
 /// * `ttl`: The Time-To-Live value extracted from the ping output if successful.
-async fn ping_host_with_details(ip: &Ipv4Addr) -> (bool, Option<Duration>, Option<u8>) {
+/// On failure, it returns a `String` error.
+pub async fn ping_host_with_details(
+    ip: &Ipv4Addr,
+) -> Result<(bool, Option<Duration>, Option<u8>), String> {
     let ip_string = ip.to_string();
-    
-    // Use spawn_blocking for the synchronous `Command::output` call.
-    let result = task::spawn_blocking(move || {
 
+    let result = task::spawn_blocking(move || {
         let start = Instant::now();
-        
-        // Use different arguments for the ping command based on the target OS.
+
         let output = if cfg!(target_os = "windows") {
             Command::new("ping")
-                .args(["-n", "1", "-w", "1000", &ip_string]) // 1 attempt, 1000ms timeout
+                .args(["-n", "1", "-w", "1000", &ip_string])
                 .output()
         } else {
             Command::new("ping")
-                .args(["-c", "1", "-W", "1", &ip_string]) // 1 attempt, 1s timeout
+                .args(["-c", "1", "-W", "1", &ip_string])
                 .output()
         };
-        
+
         let elapsed = start.elapsed();
-        
+
         match output {
             Ok(output) => {
                 if output.status.success() {
-                    // If the command succeeded, parse stdout to find the TTL.
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let ttl = extract_ttl(&stdout);
-                    
-                    (true, Some(elapsed), ttl)
+                    Ok((true, Some(elapsed), ttl))
                 } else {
-                    (false, None, None)
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Err(format!("Ping command failed with status: {}. Stderr: {}", output.status, stderr))
                 }
-            },
-            Err(_) => (false, None, None) // Command failed to execute.
+            }
+            Err(e) => Err(format!("Failed to execute ping command: {}", e)),
         }
-    });
-    
-    // Await the result of the spawned task.
-    // If the task panicked or was cancelled, treat it as a failed ping.
-    match result.await {
-        Ok(ping_result) => ping_result,
-        Err(_) => (false, None, None)
+    })
+    .await;
+
+    match result {
+        Ok(inner_result) => inner_result,
+        Err(join_error) => Err(format!("Ping task failed: {}", join_error)),
     }
 }
 
@@ -172,6 +176,7 @@ mod tests {
     //! These tests rely on the system's `ping` command and network stack.
 
     use super::*;
+    use std::net::Ipv4Addr;
 
     /// Tests the ping functionality against a known reachable address (localhost).
     ///
@@ -180,7 +185,10 @@ mod tests {
     #[tokio::test]
     async fn test_ping_host_with_details_reachable() {
         let ip = Ipv4Addr::new(127, 0, 0, 1);
-        let (is_reachable, latency, ttl) = ping_host_with_details(&ip).await;
+        let result = ping_host_with_details(&ip).await;
+
+        assert!(result.is_ok(), "Ping to localhost should succeed, but got error: {:?}", result.err());
+        let (is_reachable, latency, ttl) = result.unwrap();
 
         assert!(is_reachable, "Localhost should be reachable");
         assert!(latency.is_some(), "Latency should be recorded for a successful ping");
@@ -198,11 +206,15 @@ mod tests {
     #[tokio::test]
     async fn test_ping_host_with_details_unreachable() {
         let ip = Ipv4Addr::new(192, 0, 2, 1);
-        let (is_reachable, latency, ttl) = ping_host_with_details(&ip).await;
+        let result = ping_host_with_details(&ip).await;
 
-        assert!(!is_reachable, "Documentation IP should be unreachable");
-        assert!(latency.is_none(), "Latency should be None for a failed ping");
-        assert!(ttl.is_none(), "TTL should be None for a failed ping");
+        assert!(result.is_err(), "Ping to unreachable IP should fail");
+        let error_message = result.unwrap_err();
+        // Check for expected error messages depending on OS and ping command behavior
+        assert!(
+            error_message.contains("Ping command failed") || error_message.contains("Failed to execute ping command"),
+            "Error message should indicate ping failure, got: {}", error_message
+        );
     }
 
     /// Tests the main `run_ping_scan` function with a mix of reachable and unreachable IPs.
@@ -212,12 +224,14 @@ mod tests {
     #[tokio::test]
     async fn test_run_ping_scan_with_valid_and_mixed_ips() {
         let ips = Ok(vec![
-            Ipv4Addr::new(127, 0, 0, 1),      // Reachable
-            Ipv4Addr::new(192, 0, 2, 123),   // Unreachable
+            Ipv4Addr::new(127, 0, 0, 1),   // Reachable
+            Ipv4Addr::new(192, 0, 2, 123), // Unreachable (likely to cause an error from ping_host_with_details)
         ]);
         let total_ips = ips.as_ref().unwrap().len();
 
-        let (results, summary) = run_ping_scan(ips).await;
+        let scan_result = run_ping_scan(ips).await;
+        assert!(scan_result.is_ok(), "Ping scan should succeed, but got error: {:?}", scan_result.err());
+        let (results, summary) = scan_result.unwrap();
 
         // --- Assertions on the Summary ---
         assert_eq!(summary.scanned_addresses.len(), total_ips);
@@ -229,18 +243,29 @@ mod tests {
         // --- Assertions on the detailed results ---
         assert_eq!(results.len(), total_ips);
 
-        // Check the result for localhost
-        let localhost_result = results.iter().find(|r| r.ip_address.is_loopback()).expect("Localhost result not found");
+        // Check the result for localhost (127.0.0.1)
+        let localhost_result = results
+            .iter()
+            .find(|r| r.ip_address == IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
+            .expect("Localhost result not found");
         assert!(localhost_result.is_up);
-        assert_eq!(localhost_result.dns_resolve, Some("localhost".to_string()));
+        assert!(localhost_result.latency.is_some());
+        assert_eq!(
+            localhost_result.dns_resolve,
+            Some("localhost".to_string()) // CHANGED: Expected "localhost" based on the panic output
+        );
         assert_eq!(localhost_result.reply_type, "ICMP echo reply");
+        assert_eq!(localhost_result.ttl, 64); // Based on mock
 
-        // Check the result for the unreachable host
-        let unreachable_result = results.iter().find(|r| !r.ip_address.is_loopback()).expect("Unreachable result not found");
+        // Check the result for the unreachable host (192.0.2.123)
+        let unreachable_result = results
+            .iter()
+            .find(|r| r.ip_address == IpAddr::V4(Ipv4Addr::new(192, 0, 2, 123)))
+            .expect("Unreachable result not found");
         assert!(!unreachable_result.is_up);
+        assert!(unreachable_result.latency.is_none());
         assert!(unreachable_result.dns_resolve.is_none());
-        assert_eq!(unreachable_result.reply_type, "no response");
-        assert_eq!(unreachable_result.ttl, 0);
+        assert_eq!(unreachable_result.ttl, 0); // No TTL for failed ping
     }
 
     /// Tests that `run_ping_scan` handles input errors gracefully.
@@ -250,12 +275,10 @@ mod tests {
     #[tokio::test]
     async fn test_run_ping_scan_with_input_error() {
         let ip_addresses = Err("Failed to parse IP range".to_string());
-        let (results, summary) = run_ping_scan(ip_addresses).await;
+        let scan_result = run_ping_scan(ip_addresses).await;
 
-        // The function should return empty/zeroed results without panicking.
-        assert!(results.is_empty(), "Results vector should be empty on input error");
-        assert_eq!(summary.hosts_up, 0);
-        assert_eq!(summary.packets_sent, 0);
-        assert!(summary.scanned_addresses.is_empty());
+        assert!(scan_result.is_err(), "Scan should return an error for invalid input");
+        let error_message = scan_result.unwrap_err();
+        assert_eq!(error_message, "Failed to parse IP range");
     }
 }

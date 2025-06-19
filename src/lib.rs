@@ -157,7 +157,18 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                             // Depending on what host discovery method is selected in the TUI
                             match host_discovery_selected {
                                 HostDiscoveryOption::ListScan => println!("Doing ListScan (Implementation coming soon)"),
-                                HostDiscoveryOption::PingScan => host_discovery_result = host_discovery::run_ping_scan(Ok(ip_addresses_arr)).await,
+                                HostDiscoveryOption::PingScan => {
+                                match host_discovery::run_ping_scan(Ok(ip_addresses_arr)).await {
+                                    Ok((results, summary)) => {
+                                        host_discovery_result = (results, summary);
+                                    },
+                                    Err(e) => {
+                                        // return an error from the current function.
+                                        eprintln!("Error during ping scan: {}", e);
+                                        std::process::exit(1);
+                                    }
+                                }
+                            },
                                 HostDiscoveryOption::TcpSynDiscovery => {
                                     run_tcp_syn_discovery();
                                     // Not implemented yet
@@ -165,7 +176,18 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                 HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery (Implementation coming soon)"),
                                 HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery (Implementation coming soon)"),
                                 HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery (Implementation coming soon)"),
-                                HostDiscoveryOption::IcmpEcho => host_discovery_result = host_discovery::run_icmp_echo(Ok(ip_addresses_arr)).await,
+                                HostDiscoveryOption::IcmpEcho => {
+                                match host_discovery::run_icmp_echo(Ok(ip_addresses_arr)).await {
+                                    Ok((results, summary)) => {
+                                        host_discovery_result = (results, summary);
+                                    },
+                                    Err(e) => {
+                                        // return an error from the current function.
+                                        eprintln!("Error during ICMP echo scan: {}", e);
+                                        std::process::exit(1);
+                                    }
+                                }
+                            },
                                 HostDiscoveryOption::IcmpTimestamp => {
                                     run_icmp_timestamp();
                                     // Not implemented yet
@@ -329,25 +351,40 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                 }
             },
             Some(ScanCommand::PingScan { ips: _ }) => {
-                
-                let host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await;
-                if use_original_printing {
-                    print_host_discovery_results_original(host_discovery_result);
-                } else {
-                    print_host_discovery_results(host_discovery_result);
+            let host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await;
+            match host_discovery_result {
+                Ok(results) => {
+                    if use_original_printing {
+                        print_host_discovery_results_original(results);
+                    } else {
+                        print_host_discovery_results(results);
+                    }
                 }
-            },
-            Some(ScanCommand::IcmpEcho { ips: _ }) => {
-                let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
-                if use_original_printing {
-                    print_host_discovery_results_original(host_discovery_result);
-                } else {
-                    print_host_discovery_results(host_discovery_result);
+                Err(e) => {
+                    eprintln!("Error during ping scan: {}", e);
+                    std::process::exit(1);
                 }
-            },
-            None => {
-                println!("No scan method specified. Use `onmap --help` for usage information.");
             }
+        },
+        Some(ScanCommand::IcmpEcho { ips: _ }) => {
+            let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
+            match host_discovery_result {
+                Ok(results) => {
+                    if use_original_printing {
+                        print_host_discovery_results_original(results);
+                    } else {
+                        print_host_discovery_results(results);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error during ICMP echo scan: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        },
+        None => {
+            println!("No scan method specified. Use `onmap --help` for usage information.");
+        }
         }
     }
     Ok(())

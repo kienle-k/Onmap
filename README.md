@@ -1,5 +1,5 @@
 # Oxidized Nmap (`onmap`)
-A fast, minimal Rust-based port scanner — inspired by Nmap, reimagined in Rust.
+A fast, minimal Rust-based port scanner — inspired by nmap, reimagined in Rust.
 
 
 ## Build
@@ -50,15 +50,15 @@ docker exec -it onmap bash
 
 ./onmap PE 172.28.0.0/24
 
-./onmap PE 172.28.0.24
+./onmap PE 172.28.0.22
 
 ./onmap PE 172.28.0.20-172.28.0.24
 
-./onmap sT -p- 172.28.0.24
+./onmap sT -p- 172.28.0.22
 
-./onmap sS -pF 172.28.0.22
+./onmap sS -pF 172.28.0.23
 
-./onmap sA -p1-1000 172.28.0.23
+./onmap sA -p1-1000 172.28.0.24
 
 ```
 
@@ -67,5 +67,6 @@ docker exec -it onmap bash
 - 172.28.0.21 host_2
 - 172.28.0.22 host_3
 - 172.28.0.23 host_4
-- 172.28.0.24 host_5
+- 172.28.0.24 host_5 (ACK scans only work on this host)
+- (ping scan does not work in docker container)
 
