@@ -8,25 +8,35 @@ cargo build --release
 
 ## Help
 ```bash
+
 cargo build --release
+
 sudo ./target/release/onmap --help
+
 sudo ./target/release/onmap -sT --help
+
 sudo ./target/release/onmap -PE --help
+
 ```
 
 
 #### Example usages
 ```bash
+
 ./onmap -PE 192.168.178.0/24
-./onmap -PE scanme.nmap.org
-./onmap -sT -p 22,80,443 scanme.nmap.org
+
 ./onmap -sT -p- 192.168.178.50
+
 ./onmap -sS -p1-1024 192.168.1.100
-./onmap -sS -p443 github.com
+
 ./onmap -sF -p80,443 192.168.1.101
+
 ./onmap -sA -p80,443 192.168.1.1
+
 ./onmap -PE 192.168.0.10-20
+
 ./onmap -sS -p22 10.0.0.1-10
+
 ```
 
 
@@ -71,7 +81,18 @@ docker compose up -d
 ```bash
 docker exec -it onmap bash
 ```
-##### Executing commands
+
+
+#### Availible dummy hosts to scan
+- 172.28.0.20 host_1
+- 172.28.0.21 host_2
+- 172.28.0.22 host_3
+- 172.28.0.23 host_4
+- 172.28.0.24 host_5
+- (ping scan does not work in docker container)
+
+
+#### Example usages
 ```bash
 
 ./onmap PE 172.28.0.0/24
@@ -92,31 +113,6 @@ docker exec -it onmap bash
 
 ./onmap sA -p1-1000 172.28.0.24
 
-```
-
-#### Availible dummy hosts to scan
-- 172.28.0.20 host_1
-- 172.28.0.21 host_2
-- 172.28.0.22 host_3
-- 172.28.0.23 host_4
-- 172.28.0.24 host_5 (ACK scans only work on this host)
-- (ping scan does not work in docker container)
-
-
-#### Example usages
-```bash
-
-./onmap -PE 172.28.0.0/24
-
-./onmap -PE 172.28.0.24
-
-./onmap -PE 172.28.0.20-26
-
-./onmap -sT -p- 172.28.0.24
-
-./onmap -sS -pF 172.28.0.22
-
-./onmap -sA -p1-1000 172.28.0.23
 ```
 
 
