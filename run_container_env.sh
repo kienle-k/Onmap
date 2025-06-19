@@ -12,7 +12,7 @@ fi
 
 # Stop containers (if previously running)
 echo ""
-echo "Making sure previous containers are down..."#
+echo "Making sure previous containers are down..."
 echo ""
 $COMPOSE_CMD down
 
