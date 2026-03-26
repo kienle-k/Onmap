@@ -20,7 +20,7 @@ use super::format_duration;
 /// * `results` - A tuple containing:
 ///   * A `Vec<HostDiscoverySingleResult>`: The detailed results for each host probed.
 ///   * A `HostDiscoveryAllResult`: The summary statistics for the entire scan.
-pub fn print_host_discovery_results(results: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
+pub fn print_host_discovery_results(results: &(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
     println!();
     let (single_results, all_results) = results;
 

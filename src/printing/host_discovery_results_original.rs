@@ -2,7 +2,7 @@ use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
 
 
 
-pub fn print_host_discovery_results_original(results: (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
+pub fn print_host_discovery_results_original(results: &(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
 
     println!("");
 

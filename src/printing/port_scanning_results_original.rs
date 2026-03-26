@@ -4,7 +4,7 @@ use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protoco
 use crate::resolving::{resolve_hostname};
 
 // Hauptfunktion zum Ausführen des Connect-Scans
-pub async fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, PortScanAllResult)) {
+pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResult>, PortScanAllResult)) {
 
     println!("");
 

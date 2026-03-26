@@ -23,7 +23,7 @@ use super::format_duration;
 /// * `results` - A tuple containing:
 ///   * A `Vec<PortScanSingleResult>`: A detailed list of results for every single port that was scanned.
 ///   * A `PortScanAllResult`: The summary statistics for the entire scan operation.
-pub fn print_port_scan_results(results: (Vec<PortScanSingleResult>, PortScanAllResult)) {
+pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAllResult)) {
     println!();
     let (single_results, all_results) = results;
 

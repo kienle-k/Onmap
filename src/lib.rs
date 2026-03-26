@@ -10,6 +10,7 @@ pub mod models;
 pub mod parsing;
 pub mod printing;
 pub mod resolving;
+mod output;
 
 // --- Standard library imports ---
 use std::io;
@@ -37,6 +38,7 @@ use crate::os_detection::run_os_detection;
 use crate::port_scanning::run_udp_scan;
 use crate::service_detection::run_service_detection;
 use crate::tui::{run_app, App};
+use crate::output::{save_to_file_xml_host_discovery, save_to_file_xml_port_scan};
 
 
 // --- Main public entry point ---
@@ -200,9 +202,9 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                             
                             // Use modern printing
                             if cli.modern_printing == true {
-                                print_host_discovery_results(host_discovery_result);
+                                print_host_discovery_results(&host_discovery_result);
                             } else {
-                                print_host_discovery_results_original(host_discovery_result);
+                                print_host_discovery_results_original(&host_discovery_result);
                             }
                         } else {
                             println!("No host discovery option selected or an error occurred.");
@@ -245,9 +247,9 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                             }
                             // Use modern printing
                             if cli.modern_printing == true {
-                                print_port_scan_results(port_scan_result);
+                                print_port_scan_results(&port_scan_result);
                             } else {
-                                print_port_scan_results_original(port_scan_result).await;
+                                print_port_scan_results_original(&port_scan_result).await;
                             }
                         } else {
                             println!("No port scan option selected or an error occurred.");
@@ -320,9 +322,9 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     Err(e) => eprintln!("SYN scan failed: {}", e),
                 }
                 if use_original_printing {
-                    print_port_scan_results_original(port_scan_result).await;
+                    print_port_scan_results_original(&port_scan_result).await;
                 } else {
-                    print_port_scan_results(port_scan_result);
+                    print_port_scan_results(&port_scan_result);
                 }
             },
             Some(ScanCommand::ConnectScan { ports: _, ips: _ }) => {
@@ -332,9 +334,9 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     Err(e) => eprintln!("Connect scan failed: {}", e),
                 }
                 if use_original_printing {
-                    print_port_scan_results_original(port_scan_result).await;
+                    print_port_scan_results_original(&port_scan_result).await;
                 } else {
-                    print_port_scan_results(port_scan_result);
+                    print_port_scan_results(&port_scan_result);
                 }
             },
             Some(ScanCommand::AckScan { ports: _, ips: _ }) => {
@@ -345,48 +347,73 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                 }
 
                 if use_original_printing {
-                    print_port_scan_results_original(port_scan_result).await;
+                    print_port_scan_results_original(&port_scan_result).await;
                 } else {
-                    print_port_scan_results(port_scan_result);
+                    print_port_scan_results(&port_scan_result);
                 }
             },
             Some(ScanCommand::PingScan { ips: _ }) => {
-            let host_discovery_result = host_discovery::run_ping_scan(ip_addresses_arr).await;
-            match host_discovery_result {
-                Ok(results) => {
-                    if use_original_printing {
-                        print_host_discovery_results_original(results);
-                    } else {
-                        print_host_discovery_results(results);
+                match host_discovery::run_ping_scan(ip_addresses_arr).await {
+                    Ok(results) => {
+                        // ASSIGN to the existing outer variable, don't use 'let'
+                        host_discovery_result = results; 
+                        
+                        if use_original_printing {
+                            print_host_discovery_results_original(&host_discovery_result);
+                        } else {
+                            print_host_discovery_results(&host_discovery_result);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error during ping scan: {}", e);
+                        std::process::exit(1);
                     }
                 }
-                Err(e) => {
-                    eprintln!("Error during ping scan: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        },
-        Some(ScanCommand::IcmpEcho { ips: _ }) => {
-            let host_discovery_result = host_discovery::run_icmp_echo(ip_addresses_arr).await;
-            match host_discovery_result {
-                Ok(results) => {
-                    if use_original_printing {
-                        print_host_discovery_results_original(results);
-                    } else {
-                        print_host_discovery_results(results);
+            },
+            Some(ScanCommand::IcmpEcho { ips: _ }) => {
+                match host_discovery::run_icmp_echo(ip_addresses_arr).await {
+                    Ok(results) => {
+                        // ASSIGN to the existing outer variable, don't use 'let'
+                        host_discovery_result = results;
+
+                        if use_original_printing {
+                            print_host_discovery_results_original(&host_discovery_result);
+                        } else {
+                            print_host_discovery_results(&host_discovery_result);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error during ICMP echo scan: {}", e);
+                        std::process::exit(1);
                     }
                 }
-                Err(e) => {
-                    eprintln!("Error during ICMP echo scan: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        },
+            },
         None => {
             println!("No scan method specified. Use `onmap --help` for usage information.");
         }
         }
+        if let Some(path) = &cli.output_xml {
+            let mut saved = false;
+
+            println!("Saving results to XML file: {}", path);
+            
+            if !host_discovery_result.0.is_empty() {
+                println!("Saving host discovery results to XML...");
+                save_to_file_xml_host_discovery(path, (&host_discovery_result.0, &host_discovery_result.1))?;
+                saved = true;
+            }
+
+            if !port_scan_result.0.is_empty() {
+                save_to_file_xml_port_scan(path, (&port_scan_result.0, &port_scan_result.1))?;
+                saved = true;
+            }
+
+            if !saved {
+                println!("No results available to save to XML.");
+            }
+        }
     }
+
     Ok(())
 }
 

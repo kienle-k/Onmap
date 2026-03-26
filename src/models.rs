@@ -18,6 +18,26 @@ pub struct Cli {
     /// Disable original printing style, use modernized printing
     #[arg(short = 'm', long = "modern-print", global = true, help = "Use modern result printing", action = ArgAction::SetTrue)]
     pub modern_printing: bool,
+
+    #[arg(
+        name = "output_normal",
+        short = 'o',        // The primary short flag is 'o'
+        short_alias = 'N',  // This allows the 'N' to be attached directly
+        id = "oN",          // Internal ID
+        global = true, 
+        value_name = "file",
+        help = "Output scan in normal format (-oN <file>)"
+    )]
+    pub output_normal: Option<String>,
+
+    #[arg(
+        name = "output_xml",
+        short = 'X', 
+        global = true, 
+        value_name = "file",
+        help = "Output scan in XML format (-oX <file>)"
+    )]
+    pub output_xml: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
