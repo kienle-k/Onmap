@@ -394,11 +394,8 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
         }
         if let Some(path) = &cli.output_xml {
             let mut saved = false;
-
-            println!("Saving results to XML file: {}", path);
             
             if !host_discovery_result.0.is_empty() {
-                println!("Saving host discovery results to XML...");
                 save_to_file_xml_host_discovery(path, (&host_discovery_result.0, &host_discovery_result.1))?;
                 saved = true;
             }
