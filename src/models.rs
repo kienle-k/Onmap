@@ -111,6 +111,17 @@ pub enum ScanCommand {
         #[arg(value_name = "TARGETS")]
         ips: String,
     },
+
+        /// TCP ACK discovery scan (Host Discovery)
+    #[command(name = "-PA", aliases = ["PA"])]
+    AckDiscovery {
+        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
+        #[arg(short = 'p', long="ports")]
+        ports: Option<String>,
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
+        ips: String,
+    },
 }
 
 /// Internal execution plan used to unify CLI and TUI flows.

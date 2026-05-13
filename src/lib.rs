@@ -292,6 +292,11 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
             targets: parse_targets(ips)?,
             ports: Some(parse_ports_spec(ports.as_ref())?),
         },
+        Some(ScanCommand::AckDiscovery { ports, ips }) => ExecutionCommand::HostDiscovery {
+            method: HostDiscoveryOption::TcpAckDiscovery,
+            targets: parse_targets(ips)?,
+            ports: Some(parse_ports_spec(ports.as_ref())?),
+        },
     };
 
     Ok(Some(command))
@@ -332,6 +337,7 @@ fn requires_root(cmd: &ExecutionCommand) -> bool {
                 | HostDiscoveryOption::IcmpNetmask
                 | HostDiscoveryOption::ArpDiscovery
                 | HostDiscoveryOption::TcpSynDiscovery
+                | HostDiscoveryOption::TcpAckDiscovery
         ),
         ExecutionCommand::ServiceDetection { .. } | ExecutionCommand::OsDetection { .. } => false,
     }
@@ -365,8 +371,8 @@ async fn execute_command(
                     host_discovery::run_tcp_syn_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
                 }
                 HostDiscoveryOption::TcpAckDiscovery => {
-                    println!("Doing TcpAckDiscovery (Implementation coming soon)");
-                    return Ok((None, None));
+                    let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
+                    host_discovery::run_tcp_ack_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
                 }
                 HostDiscoveryOption::UdpDiscovery => {
                     println!("Doing UdpDiscovery (Implementation coming soon)");
