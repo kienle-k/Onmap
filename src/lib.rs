@@ -319,12 +319,37 @@ fn to_ipv4_vec(targets: &[IpAddr]) -> Result<Vec<Ipv4Addr>, String> {
     Ok(ipv4_targets)
 }
 
+fn requires_root(cmd: &ExecutionCommand) -> bool {
+    match cmd {
+        ExecutionCommand::PortScan { method, .. } => matches!(
+            method,
+            PortScanOption::SynScan | PortScanOption::AckScan | PortScanOption::UdpScan
+        ),
+        ExecutionCommand::HostDiscovery { method, .. } => matches!(
+            method,
+            HostDiscoveryOption::IcmpEcho
+                | HostDiscoveryOption::IcmpTimestamp
+                | HostDiscoveryOption::IcmpNetmask
+                | HostDiscoveryOption::ArpDiscovery
+                | HostDiscoveryOption::TcpSynDiscovery
+        ),
+        ExecutionCommand::ServiceDetection { .. } | ExecutionCommand::OsDetection { .. } => false,
+    }
+}
+
 async fn execute_command(
     command: ExecutionCommand,
     local_ip_address: Ipv4Addr,
     connect_timeout: u64,
     use_original_printing: bool,
 ) -> Result<(Option<HostDiscoveryResult>, Option<PortScanResult>), String> {
+
+    let is_root = nix::unistd::Uid::effective().is_root();
+
+    if requires_root(&command) && !is_root {
+        return Err("This scan requires root privileges.".to_string());
+    }
+    
     match command {
         ExecutionCommand::HostDiscovery { method, targets, ports } => {
             let ipv4_targets = to_ipv4_vec(&targets)?;
