@@ -100,6 +100,17 @@ pub enum ScanCommand {
         #[arg(value_name = "TARGETS")]
         ips: String,
     },
+
+    /// TCP SYN discovery scan (Host Discovery)
+    #[command(name = "-PS", aliases = ["PS"])]
+    SynDiscovery {
+        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
+        #[arg(short = 'p', long="ports")]
+        ports: Option<String>,
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
+        ips: String,
+    },
 }
 
 /// Represents the current state or view of the application's user interface.

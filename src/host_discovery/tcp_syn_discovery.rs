@@ -1,4 +1,139 @@
 
-pub fn run_tcp_syn_discovery() {
-    println!("run_tcp_syn_discovery called!")
+use futures::stream::{FuturesUnordered, StreamExt};
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
+
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortStateReasons, PortStates};
+use crate::port_scanning::syn_scan::port_syn_scan;
+use crate::resolving::get_service_name::{load_protocol_map};
+use crate::resolving::resolve_hostname;
+
+struct HostProbeState {
+    is_up: bool,
+    latency: Option<Duration>,
+    ttl: u8,
+    reply_type: String,
+}
+
+/// Runs a TCP SYN discovery scan against a list of target IP addresses.
+pub async fn run_tcp_syn_discovery(
+    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ports: Vec<u16>,
+    local_ip_address: Ipv4Addr,
+) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
+    let start_time = SystemTime::now();
+    let ips = ip_addresses?;
+
+    if ports.is_empty() {
+        return Err("At least one port is required for TCP SYN discovery".to_string());
+    }
+
+    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json")
+        .map_err(|e| format!("Failed to load protocol map: {}", e))?);
+
+    let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let mut host_states: HashMap<Ipv4Addr, HostProbeState> = ips
+        .iter()
+        .map(|ip| (*ip, HostProbeState {
+            is_up: false,
+            latency: None,
+            ttl: 0,
+            reply_type: "no response".to_string(),
+        }))
+        .collect();
+
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
+    let mut futures = FuturesUnordered::new();
+
+    for ip in &ips {
+        for &port in &ports {
+            let sem_clone = Arc::clone(&semaphore);
+            let protocols_clone = Arc::clone(&protocols);
+            let ip = *ip;
+
+            futures.push(async move {
+                let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
+                let start = Instant::now();
+                let result = port_syn_scan(IpAddr::V4(ip), port, local_ip_address, protocols_clone).await;
+                let latency = start.elapsed();
+                (ip, port, latency, result)
+            });
+        }
+    }
+
+    while let Some((ip, port, latency, result)) = futures.next().await {
+        let entry = host_states
+            .get_mut(&ip)
+            .expect("Host state missing for IP");
+
+        match result {
+            Ok(port_result) => {
+                match port_result.port_state {
+                    PortStates::Open | PortStates::Closed => {
+                        let should_update = match entry.latency {
+                            None => true,
+                            Some(existing) => latency < existing,
+                        };
+
+                        if should_update {
+                            entry.is_up = true;
+                            entry.latency = Some(latency);
+                            entry.ttl = port_result.ttl;
+                            entry.reply_type = match port_result.reason {
+                                PortStateReasons::SynAck => format!("SYN-ACK port {}", port),
+                                PortStateReasons::Reset => format!("RST port {}", port),
+                                _ => format!("response port {}", port),
+                            };
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Err(e) => {
+                if !entry.is_up && entry.reply_type == "no response" {
+                    entry.reply_type = format!("Error: {}", e);
+                }
+            }
+        }
+    }
+
+    let mut host_results = Vec::new();
+    for ip in ips {
+        let state = host_states
+            .remove(&ip)
+            .expect("Host state missing for IP");
+
+        let dns_resolve = if state.is_up {
+            resolve_hostname(&ip).await
+        } else {
+            None
+        };
+
+        host_results.push(HostDiscoverySingleResult {
+            ip_address: IpAddr::V4(ip),
+            latency: state.latency,
+            dns_resolve,
+            is_up: state.is_up,
+            reply_type: state.reply_type,
+            ttl: state.ttl,
+        });
+    }
+
+    let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
+    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
+    let end_time = SystemTime::now();
+
+    let summary = HostDiscoveryAllResult {
+        scanned_addresses: all_ips,
+        ports_per_host: ports.len() as u16,
+        hosts_up,
+        hosts_dns_resolution,
+        start_time,
+        end_time,
+        packets_sent: (ports.len() * host_results.len()) as u64,
+    };
+
+    Ok((host_results, summary))
 }

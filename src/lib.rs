@@ -33,7 +33,7 @@ use ratatui::terminal::Terminal;
 // --- Internal imports (from this crate) ---
 use models::{Cli, ScanCommand, HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
 use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
-use crate::host_discovery::{run_icmp_netmask, run_tcp_syn_discovery};
+use crate::host_discovery::{run_icmp_netmask};
 use crate::os_detection::run_os_detection;
 use crate::port_scanning::run_udp_scan;
 use crate::service_detection::run_service_detection;
@@ -172,8 +172,20 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                 }
                             },
                                 HostDiscoveryOption::TcpSynDiscovery => {
-                                    run_tcp_syn_discovery();
-                                    // Not implemented yet
+                                    let ports = ports_arr.expect("Ports array could not be set");
+                                    match host_discovery::run_tcp_syn_discovery(
+                                        Ok(ip_addresses_arr),
+                                        ports,
+                                        local_ip_address,
+                                    ).await {
+                                        Ok((results, summary)) => {
+                                            host_discovery_result = (results, summary);
+                                        },
+                                        Err(e) => {
+                                            eprintln!("Error during TCP SYN discovery: {}", e);
+                                            std::process::exit(1);
+                                        }
+                                    }
                                 },
                                 HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery (Implementation coming soon)"),
                                 HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery (Implementation coming soon)"),
@@ -304,6 +316,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
             | Some(ScanCommand::IcmpEcho { ips })
             | Some(ScanCommand::IcmpTimestamp { ips })
             | Some(ScanCommand::Arp { ips })
+            | Some(ScanCommand::SynDiscovery { ips, .. })
             | Some(ScanCommand::SynScan { ips, .. })
             | Some(ScanCommand::ConnectScan { ips, .. })
             | Some(ScanCommand::AckScan { ips, .. }) => parsing::parse_ip_addresses(ips),
@@ -314,6 +327,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
         let ports_vec = match &cli.command {
             Some(ScanCommand::SynScan { ports, .. })
             | Some(ScanCommand::ConnectScan { ports, .. })
+            | Some(ScanCommand::SynDiscovery { ports, .. })
             | Some(ScanCommand::AckScan { ports, .. }) => {
                 let ports_str = ports.as_ref().unwrap_or_else(|| {
                     eprintln!("Ports must be provided");
@@ -442,6 +456,25 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                         std::process::exit(1);
                     }
                 }
+            },
+            Some(ScanCommand::SynDiscovery { ports: _, ips: _ }) => {
+                match host_discovery::run_tcp_syn_discovery(ip_addresses_arr, ports_vec, local_ip_address).await {
+                    Ok(results) => {
+                        // ASSIGN to the existing outer variable, don't use 'let'
+                        host_discovery_result = results;
+
+                        if use_original_printing {
+                            print_host_discovery_results_original(&host_discovery_result);
+                        } else {
+                            print_host_discovery_results(&host_discovery_result);
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("TCP SYN discovery failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            
             },
         None => {
             println!("No scan method specified. Use `onmap --help` for usage information.");
