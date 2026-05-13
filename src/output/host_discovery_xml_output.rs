@@ -13,8 +13,8 @@ pub fn save_to_file_xml_host_discovery(
     // Start header
     let start_timestamp = summary.start_time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
     writeln!(file, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>")?;
-    writeln!(file, "<!DOCTYPE nmaprun>")?;
-    writeln!(file, "<nmaprun scanner=\"onmap\" start=\"{}\" version=\"1.0\">", start_timestamp)?;
+    writeln!(file, "<!DOCTYPE onmap>")?;
+    writeln!(file, "<onmap start=\"{}\" version=\"1.0\">", start_timestamp)?;
 
     for host in single_results {
         let state = if host.is_up { "up" } else { "down" };
@@ -38,7 +38,7 @@ pub fn save_to_file_xml_host_discovery(
     writeln!(file, "    <finished time=\"{}\" summary=\"Onmap done; {} hosts up\"/>", end_timestamp, summary.hosts_up)?;
     writeln!(file, "    <hosts up=\"{}\" down=\"{}\" total=\"{}\"/>", summary.hosts_up, summary.scanned_addresses.len() as u64 - summary.hosts_up, summary.scanned_addresses.len())?;
     writeln!(file, "  </runstats>")?;
-    writeln!(file, "</nmaprun>")?;
+    writeln!(file, "</onmap>")?;
 
     println!("Successfully saved host discovery results to: {}", path);
     Ok(())

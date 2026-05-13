@@ -4,6 +4,43 @@ use std::time::UNIX_EPOCH;
 use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates};
 use std::collections::HashMap;
 
+fn format_port_ranges(ports: &mut Vec<u16>) -> String {
+    if ports.is_empty() {
+        return String::new();
+    }
+
+    ports.sort_unstable();
+    ports.dedup();
+
+    let mut ranges: Vec<String> = Vec::new();
+    let mut range_start = ports[0];
+    let mut range_end = ports[0];
+
+    for &port in ports.iter().skip(1) {
+        if port == range_end + 1 {
+            range_end = port;
+            continue;
+        }
+
+        if range_start == range_end {
+            ranges.push(range_start.to_string());
+        } else {
+            ranges.push(format!("{}-{}", range_start, range_end));
+        }
+
+        range_start = port;
+        range_end = port;
+    }
+
+    if range_start == range_end {
+        ranges.push(range_start.to_string());
+    } else {
+        ranges.push(format!("{}-{}", range_start, range_end));
+    }
+
+    ranges.join(",")
+}
+
 pub fn save_to_file_xml_port_scan(
     path: &str, 
     results: (&Vec<PortScanSingleResult>, &PortScanAllResult)
@@ -26,18 +63,35 @@ pub fn save_to_file_xml_port_scan(
         writeln!(file, "    <status state=\"up\" reason=\"user-set\"/>")?;
         writeln!(file, "    <address addr=\"{}\" addrtype=\"ipv4\"/>", ip)?;
         writeln!(file, "    <ports>")?;
-        
-        for p in ports {
+
+        let mut closed_ports: Vec<u16> = Vec::new();
+
+        for p in &ports {
+            if p.port_state == PortStates::Closed {
+                closed_ports.push(p.port);
+                continue;
+            }
+
             let state_str = match p.port_state {
                 PortStates::Open => "open",
-                PortStates::Closed => "closed",
                 PortStates::Filtered => "filtered",
                 PortStates::Unfiltered => "unfiltered",
+                PortStates::Closed => "closed",
             };
             writeln!(file, "      <port protocol=\"tcp\" portid=\"{}\">", p.port)?;
             writeln!(file, "        <state state=\"{}\" reason=\"{:?}\" reason_ttl=\"{}\"/>", state_str, p.reason, p.ttl)?;
             writeln!(file, "        <service name=\"{}\" method=\"table\"/>", p.service)?;
             writeln!(file, "      </port>")?;
+        }
+
+        if !closed_ports.is_empty() {
+            let closed_ports_list = format_port_ranges(&mut closed_ports);
+            writeln!(
+                file,
+                "      <closed-ports count=\"{}\" ports=\"{}\"/>",
+                closed_ports.len(),
+                closed_ports_list
+            )?;
         }
         
         writeln!(file, "    </ports>")?;
