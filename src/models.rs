@@ -93,6 +93,13 @@ pub enum ScanCommand {
         #[arg(value_name = "TARGETS")]
         ips: String,
     },
+    /// ARP scan (Host Discovery)
+    #[command(name = "-PR", aliases = ["PR"])]
+    Arp {
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
+        ips: String,
+    },
 }
 
 /// Represents the current state or view of the application's user interface.

@@ -215,7 +215,6 @@ pub fn run_app<B: Backend>(
                         KeyCode::Char('6') => {
                             app.select_host_discovery(HostDiscoveryOption::ArpDiscovery);
                             app.state = AppState::IpAddressInput;
-                            app.port_needed = true;
                         }
                         KeyCode::Char('7') => {
                             app.select_host_discovery(HostDiscoveryOption::IcmpEcho);

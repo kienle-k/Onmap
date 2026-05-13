@@ -177,7 +177,17 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                 },
                                 HostDiscoveryOption::TcpAckDiscovery => println!("Doing TcpAckDiscovery (Implementation coming soon)"),
                                 HostDiscoveryOption::UdpDiscovery => println!("Doing UdpDiscovery (Implementation coming soon)"),
-                                HostDiscoveryOption::ArpDiscovery => println!("Doing ArpDiscovery (Implementation coming soon)"),
+                                HostDiscoveryOption::ArpDiscovery => {
+                                    match host_discovery::run_arp(Ok(ip_addresses_arr)).await {
+                                        Ok((results, summary)) => {
+                                            host_discovery_result = (results, summary);
+                                        },
+                                        Err(e) => {
+                                            eprintln!("Error during ARP scan: {}", e);
+                                            std::process::exit(1);
+                                        }
+                                    }
+                                },
                                 HostDiscoveryOption::IcmpEcho => {
                                 match host_discovery::run_icmp_echo(Ok(ip_addresses_arr)).await {
                                     Ok((results, summary)) => {
@@ -293,6 +303,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
             Some(ScanCommand::PingScan { ips })
             | Some(ScanCommand::IcmpEcho { ips })
             | Some(ScanCommand::IcmpTimestamp { ips })
+            | Some(ScanCommand::Arp { ips })
             | Some(ScanCommand::SynScan { ips, .. })
             | Some(ScanCommand::ConnectScan { ips, .. })
             | Some(ScanCommand::AckScan { ips, .. }) => parsing::parse_ip_addresses(ips),
@@ -410,6 +421,24 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     }
                     Err(e) => {
                         eprintln!("Error during ICMP timestamp scan: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            },
+            Some(ScanCommand::Arp { ips: _ }) => {
+                match host_discovery::run_arp(ip_addresses_arr).await {
+                    Ok(results) => {
+                        // ASSIGN to the existing outer variable, don't use 'let'
+                        host_discovery_result = results;
+
+                        if use_original_printing {
+                            print_host_discovery_results_original(&host_discovery_result);
+                        } else {
+                            print_host_discovery_results(&host_discovery_result);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error during ARP scan: {}", e);
                         std::process::exit(1);
                     }
                 }

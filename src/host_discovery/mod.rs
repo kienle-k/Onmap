@@ -33,3 +33,9 @@ pub use icmp_timestamp::run_icmp_timestamp;
 /// Implements host discovery by sending TCP SYN packets to specific ports.
 pub mod tcp_syn_discovery;
 pub use tcp_syn_discovery::run_tcp_syn_discovery;
+
+// --- ARP-based Discovery Methods ---
+
+/// Implements host discovery using ARP requests.
+pub mod arp;
+pub use arp::run_arp;
