@@ -113,6 +113,27 @@ pub enum ScanCommand {
     },
 }
 
+/// Internal execution plan used to unify CLI and TUI flows.
+#[derive(Debug, Clone)]
+pub enum ExecutionCommand {
+    HostDiscovery {
+        method: HostDiscoveryOption,
+        targets: Vec<IpAddr>,
+        ports: Option<Vec<u16>>,
+    },
+    PortScan {
+        method: PortScanOption,
+        targets: Vec<IpAddr>,
+        ports: Vec<u16>,
+    },
+    ServiceDetection {
+        targets: Vec<IpAddr>,
+    },
+    OsDetection {
+        targets: Vec<IpAddr>,
+    },
+}
+
 /// Represents the current state or view of the application's user interface.
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum AppState {
