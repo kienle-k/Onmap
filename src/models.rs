@@ -86,6 +86,13 @@ pub enum ScanCommand {
         #[arg(value_name = "TARGETS")]
         ips: String,
     },
+    /// ICMP Timestamp scan (Host Discovery)
+    #[command(name = "-PP", aliases = ["PP"])]
+    IcmpTimestamp {
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
+        ips: String,
+    },
 }
 
 /// Represents the current state or view of the application's user interface.

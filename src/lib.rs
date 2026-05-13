@@ -33,7 +33,7 @@ use ratatui::terminal::Terminal;
 // --- Internal imports (from this crate) ---
 use models::{Cli, ScanCommand, HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
 use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
-use crate::host_discovery::{run_icmp_netmask, run_icmp_timestamp, run_tcp_syn_discovery};
+use crate::host_discovery::{run_icmp_netmask, run_tcp_syn_discovery};
 use crate::os_detection::run_os_detection;
 use crate::port_scanning::run_udp_scan;
 use crate::service_detection::run_service_detection;
@@ -191,8 +191,15 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                                 }
                             },
                                 HostDiscoveryOption::IcmpTimestamp => {
-                                    run_icmp_timestamp();
-                                    // Not implemented yet
+                                    match host_discovery::run_icmp_timestamp(Ok(ip_addresses_arr)).await {
+                                        Ok((results, summary)) => {
+                                            host_discovery_result = (results, summary);
+                                        },
+                                        Err(e) => {
+                                            eprintln!("Error during ICMP timestamp scan: {}", e);
+                                            std::process::exit(1);
+                                        }
+                                    }
                                 },
                                 HostDiscoveryOption::IcmpNetmask => {
                                     run_icmp_netmask();
@@ -285,6 +292,7 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
         let ip_addresses_arr = match &cli.command {
             Some(ScanCommand::PingScan { ips })
             | Some(ScanCommand::IcmpEcho { ips })
+            | Some(ScanCommand::IcmpTimestamp { ips })
             | Some(ScanCommand::SynScan { ips, .. })
             | Some(ScanCommand::ConnectScan { ips, .. })
             | Some(ScanCommand::AckScan { ips, .. }) => parsing::parse_ip_addresses(ips),
@@ -384,6 +392,24 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
                     }
                     Err(e) => {
                         eprintln!("Error during ICMP echo scan: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            },
+            Some(ScanCommand::IcmpTimestamp { ips: _ }) => {
+                match host_discovery::run_icmp_timestamp(ip_addresses_arr).await {
+                    Ok(results) => {
+                        // ASSIGN to the existing outer variable, don't use 'let'
+                        host_discovery_result = results;
+
+                        if use_original_printing {
+                            print_host_discovery_results_original(&host_discovery_result);
+                        } else {
+                            print_host_discovery_results(&host_discovery_result);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error during ICMP timestamp scan: {}", e);
                         std::process::exit(1);
                     }
                 }
