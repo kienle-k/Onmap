@@ -99,7 +99,17 @@ pub fn save_to_file_xml_port_scan(
     }
 
     let end_timestamp = summary.end_time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-    writeln!(file, "  <runstats><finished time=\"{}\" exit=\"success\"/></runstats>", end_timestamp)?;
+    let elapsed = summary
+        .end_time
+        .duration_since(summary.start_time)
+        .unwrap_or_default()
+        .as_secs_f64();
+    writeln!(
+        file,
+        "  <runstats><finished time=\"{}\" elapsed=\"{:.3}\" exit=\"success\"/></runstats>",
+        end_timestamp,
+        elapsed
+    )?;
     writeln!(file, "</nmaprun>")?;
 
     println!("Successfully saved port scan results to: {}", path);

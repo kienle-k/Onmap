@@ -98,8 +98,19 @@ pub fn save_to_file_xml_host_discovery(
 
     // Footer stats
     let end_timestamp = summary.end_time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let elapsed = summary
+        .end_time
+        .duration_since(summary.start_time)
+        .unwrap_or_default()
+        .as_secs_f64();
     writeln!(file, "  <runstats>")?;
-    writeln!(file, "    <finished time=\"{}\" summary=\"Onmap done; {} hosts up\"/>", end_timestamp, summary.hosts_up)?;
+    writeln!(
+        file,
+        "    <finished time=\"{}\" elapsed=\"{:.3}\" summary=\"Onmap done; {} hosts up\"/>",
+        end_timestamp,
+        elapsed,
+        summary.hosts_up
+    )?;
     writeln!(file, "    <hosts up=\"{}\" down=\"{}\" total=\"{}\"/>", summary.hosts_up, summary.scanned_addresses.len() as u64 - summary.hosts_up, summary.scanned_addresses.len())?;
     writeln!(file, "  </runstats>")?;
     writeln!(file, "</onmap>")?;
