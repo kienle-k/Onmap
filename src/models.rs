@@ -62,6 +62,16 @@ pub enum ScanCommand {
         #[arg(value_name = "TARGETS")]
         ips: String,
     },
+    /// UDP scan
+    #[command(name = "-sU", aliases = ["sU"])]
+    UdpScan {
+        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
+        #[arg(short = 'p', long="ports")]
+        ports: Option<String>,
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
+        ips: String,
+    },
     /// ACK scan (firewall rule discovery)
     #[command(name = "-sA", aliases = ["sA"])]
     AckScan {
@@ -244,7 +254,9 @@ pub enum PortStates {
     /// The port's state cannot be determined, likely due to a firewall.
     Filtered,
     /// The port is not blocked by a stateful firewall (RST received).
-    Unfiltered
+    Unfiltered,
+    /// The port is open or filtered, but the exact state cannot be determined.
+    OpenOrFiltered,
 }
 
 /// The reason for a port's determined state, based on the network response.
@@ -254,6 +266,10 @@ pub enum PortStateReasons {
     SynAck,
     /// A RST (reset) packet was received, indicating a closed port.
     Reset,
+    /// A UDP response was received, indicating an open UDP port.
+    UdpResponse,
+    /// An ICMP port unreachable message was received, indicating a closed UDP port.
+    IcmpPortUnreachable,
     /// A RST-ACK packet was received from an ACK scan, indicating an unfiltered port.
     Unfiltered,
     /// No response was received, indicating a filtered port or dropped packet.
@@ -266,7 +282,9 @@ pub enum PortStateReasons {
 #[derive(Clone, Copy, Debug)]
 pub enum Protocols {
     /// Transmission Control Protocol.
-    TCP
+    TCP,
+    /// User Datagram Protocol.
+    UDP
 }
 
 /// Holds the detailed result of a scan on a single port of a single host.

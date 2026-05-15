@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::time::UNIX_EPOCH;
-use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates};
+use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols};
 use std::collections::HashMap;
 
 fn format_port_ranges(ports: &mut Vec<u16>) -> String {
@@ -77,8 +77,13 @@ pub fn save_to_file_xml_port_scan(
                 PortStates::Filtered => "filtered",
                 PortStates::Unfiltered => "unfiltered",
                 PortStates::Closed => "closed",
+                PortStates::OpenOrFiltered => "open|filtered",
             };
-            writeln!(file, "      <port protocol=\"tcp\" portid=\"{}\">", p.port)?;
+            let protocol_str = match p.protocol {
+                Protocols::TCP => "tcp",
+                Protocols::UDP => "udp",
+            };
+            writeln!(file, "      <port protocol=\"{}\" portid=\"{}\">", protocol_str, p.port)?;
             writeln!(file, "        <state state=\"{}\" reason=\"{:?}\" reason_ttl=\"{}\"/>", state_str, p.reason, p.ttl)?;
             writeln!(file, "        <service name=\"{}\" method=\"table\"/>", p.service)?;
             writeln!(file, "      </port>")?;

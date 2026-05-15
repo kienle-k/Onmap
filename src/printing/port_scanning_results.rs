@@ -73,9 +73,13 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
     for (ip_address, host_results) in results_by_ip.iter() {
         println!("\n=== Host: {} ===", ip_address);
 
-        // Filter for only open ports to display them
+        // Filter for only open or open|filtered ports to display them
         let open_ports: Vec<&PortScanSingleResult> = host_results.iter()
-            .filter(|r| r.port_state == PortStates::Open || r.port_state == PortStates::Unfiltered)
+            .filter(|r| {
+                r.port_state == PortStates::Open
+                    || r.port_state == PortStates::Unfiltered
+                    || r.port_state == PortStates::OpenOrFiltered
+            })
             .copied()
             .collect();
 
@@ -108,16 +112,20 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
                 PortStates::Unfiltered => "unfiltered",
                 PortStates::Closed => "closed",
                 PortStates::Filtered => "filtered",
+                PortStates::OpenOrFiltered => "open|filtered",
                 };
 
                 // Convert enum values to strings for display
                 let protocol_str = match port_result.protocol {
                     Protocols::TCP => "TCP",
+                    Protocols::UDP => "UDP",
                 };
 
                 let reason_str = match port_result.reason {
                     PortStateReasons::SynAck => "SYN-ACK",
                     PortStateReasons::Reset => "RST",
+                    PortStateReasons::UdpResponse => "UDP Response",
+                    PortStateReasons::IcmpPortUnreachable => "ICMP Port Unreachable",
                     PortStateReasons::Unfiltered => "Unfiltered",
                     PortStateReasons::Timeout => "Timeout",
                 };

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
-use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols};
+use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates};
 use crate::resolving::{resolve_hostname};
 
 // Hauptfunktion zum Ausführen des Connect-Scans
@@ -29,9 +29,9 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
         
         println!("Onmap scan report for {} ({})", &hostname, &ip_address);
         
-        // Filter for only open ports first
+        // Filter for only open or open|filtered ports first
         let open_ports: Vec<&PortScanSingleResult> = host_results.iter()
-            .filter(|r| r.port_state == PortStates::Open)
+            .filter(|r| r.port_state == PortStates::Open || r.port_state == PortStates::OpenOrFiltered)
             .cloned()
             .collect(); 
 
@@ -92,28 +92,35 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
             let mut sorted_open_ports = open_ports.clone();
             sorted_open_ports.sort_by_key(|r| r.port);
             
-            println!("{:<7}      STATE    SERVICE", "PORT");
+            println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
 
             for port_result in sorted_open_ports {
-                // Convert enum values to strings for display
-                let protocol_str = match port_result.protocol {
-                    Protocols::TCP => "tcp"
+                let state_str = match port_result.port_state {
+                    PortStates::Open => "open",
+                    PortStates::OpenOrFiltered => "open|filtered",
+                    _ => "unknown",
                 };
-                println!("{:<7}/{}  open     {}", &port_result.port.to_string(), protocol_str, &port_result.service);  
+                println!(
+                    "{:<7}  {:<14} {}",
+                    &port_result.port.to_string(),
+                    state_str,
+                    &port_result.service
+                );
             }
         } else if !unfiltered_ports.is_empty() {
 
             let mut sorted_unfiltered_ports = unfiltered_ports.clone();
             sorted_unfiltered_ports.sort_by_key(|r| r.port);
 
-            println!("{:<7}      STATE       SERVICE", "PORT");
+            println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
 
             for port_result in sorted_unfiltered_ports {
-                let protocol_str = match port_result.protocol {
-                    Protocols::TCP => "tcp"
-                };
-                
-                println!("{:<7}/{}  unfiltered  {}", &port_result.port.to_string(), protocol_str, &port_result.service);
+                println!(
+                    "{:<7}  {:<14} {}",
+                    &port_result.port.to_string(),
+                    "unfiltered",
+                    &port_result.service
+                );
             }
         } else {
             if !host_results.is_empty() {

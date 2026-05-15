@@ -35,7 +35,6 @@ use models::{Cli, ExecutionCommand, ScanCommand, HostDiscoveryAllResult, HostDis
 use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
 use crate::host_discovery::{run_icmp_netmask};
 use crate::os_detection::run_os_detection;
-use crate::port_scanning::run_udp_scan;
 use crate::service_detection::run_service_detection;
 use crate::tui::{run_app, App};
 use crate::output::{save_to_file_xml_host_discovery, save_to_file_xml_port_scan};
@@ -267,6 +266,11 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
         },
+        Some(ScanCommand::UdpScan { ports, ips }) => ExecutionCommand::PortScan {
+            method: PortScanOption::UdpScan,
+            targets: parse_targets(ips)?,
+            ports: parse_ports_spec(ports.as_ref())?,
+        },
         Some(ScanCommand::PingScan { ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::PingScan,
             targets: parse_targets(ips)?,
@@ -422,10 +426,7 @@ async fn execute_command(
                     println!("Doing XmasScan (Implementation coming soon)");
                     return Ok((None, None));
                 }
-                PortScanOption::UdpScan => {
-                    run_udp_scan();
-                    return Ok((None, None));
-                }
+                PortScanOption::UdpScan => port_scanning::run_udp_scan(Ok(ipv4_targets), ports, local_ip_address).await?
             };
 
             if use_original_printing {
