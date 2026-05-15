@@ -113,6 +113,7 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
                 PortStates::Closed => "closed",
                 PortStates::Filtered => "filtered",
                 PortStates::OpenOrFiltered => "open|filtered",
+                PortStates::ClosedOrFiltered => "closed|filtered",
                 };
 
                 // Convert enum values to strings for display

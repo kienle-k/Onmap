@@ -122,9 +122,20 @@ pub enum ScanCommand {
         ips: String,
     },
 
-        /// TCP ACK discovery scan (Host Discovery)
+    /// TCP ACK discovery scan (Host Discovery)
     #[command(name = "-PA", aliases = ["PA"])]
     AckDiscovery {
+        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
+        #[arg(short = 'p', long="ports")]
+        ports: Option<String>,
+        /// Target IP address, IP address list, IP range or CIDR
+        #[arg(value_name = "TARGETS")]
+        ips: String,
+    },
+
+    /// UDP discovery scan (Host Discovery)
+    #[command(name = "-PU", aliases = ["PU"])]
+    UdpDiscovery {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
         #[arg(short = 'p', long="ports")]
         ports: Option<String>,
@@ -257,6 +268,9 @@ pub enum PortStates {
     Unfiltered,
     /// The port is open or filtered, but the exact state cannot be determined.
     OpenOrFiltered,
+    /// The port is closed or filtered, but the exact state cannot be determined.
+    ClosedOrFiltered
+
 }
 
 /// The reason for a port's determined state, based on the network response.

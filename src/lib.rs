@@ -301,6 +301,11 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
             targets: parse_targets(ips)?,
             ports: Some(parse_ports_spec(ports.as_ref())?),
         },
+        Some(ScanCommand::UdpDiscovery { ports, ips }) => ExecutionCommand::HostDiscovery {
+            method: HostDiscoveryOption::UdpDiscovery,
+            targets: parse_targets(ips)?,
+            ports: Some(parse_ports_spec(ports.as_ref())?),
+        },
     };
 
     Ok(Some(command))
@@ -332,16 +337,19 @@ fn requires_root(cmd: &ExecutionCommand) -> bool {
     match cmd {
         ExecutionCommand::PortScan { method, .. } => matches!(
             method,
-            PortScanOption::SynScan | PortScanOption::AckScan | PortScanOption::UdpScan
+            PortScanOption::SynScan
+            | PortScanOption::AckScan
+            | PortScanOption::UdpScan
         ),
         ExecutionCommand::HostDiscovery { method, .. } => matches!(
             method,
             HostDiscoveryOption::IcmpEcho
-                | HostDiscoveryOption::IcmpTimestamp
-                | HostDiscoveryOption::IcmpNetmask
-                | HostDiscoveryOption::ArpDiscovery
-                | HostDiscoveryOption::TcpSynDiscovery
-                | HostDiscoveryOption::TcpAckDiscovery
+            | HostDiscoveryOption::IcmpTimestamp
+            | HostDiscoveryOption::IcmpNetmask
+            | HostDiscoveryOption::ArpDiscovery
+            | HostDiscoveryOption::TcpSynDiscovery
+            | HostDiscoveryOption::TcpAckDiscovery
+            | HostDiscoveryOption::UdpDiscovery
         ),
         ExecutionCommand::ServiceDetection { .. } | ExecutionCommand::OsDetection { .. } => false,
     }
@@ -379,8 +387,8 @@ async fn execute_command(
                     host_discovery::run_tcp_ack_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
                 }
                 HostDiscoveryOption::UdpDiscovery => {
-                    println!("Doing UdpDiscovery (Implementation coming soon)");
-                    return Ok((None, None));
+                    let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
+                    host_discovery::run_udp_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
                 }
                 HostDiscoveryOption::ArpDiscovery => host_discovery::run_arp(Ok(ipv4_targets)).await?,
                 HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(Ok(ipv4_targets)).await?,

@@ -78,6 +78,7 @@ pub fn save_to_file_xml_port_scan(
                 PortStates::Unfiltered => "unfiltered",
                 PortStates::Closed => "closed",
                 PortStates::OpenOrFiltered => "open|filtered",
+                PortStates::ClosedOrFiltered => "closed|filtered",
             };
             let protocol_str = match p.protocol {
                 Protocols::TCP => "tcp",
