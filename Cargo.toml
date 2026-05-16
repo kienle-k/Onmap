@@ -1,9 +1,10 @@
 [package]
-name = "Onmap"
+name = "onmap"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5", features = ["derive"] }
 ratatui = "0.26.0"
 crossterm = "0.27.0"
 rand = "0.8.5"
@@ -12,13 +13,19 @@ pnet = "0.33.0"
 prettytable = "0.10"
 chrono = "0.4"
 futures = "0.3"
-trust-dns-resolver = "*"
+trust-dns-resolver = { version = "*", features = ["testing"] }
 local-ip-address = "0.5.6"
+dns-lookup = "1.0"
+nix = { version = "0.28", features = ["user"] }
+
 
 chrono-tz = "0.8"
 iana-time-zone = "0.1"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+itoa = "1"
 ping = "0.3"
+regex = "1"
+
 

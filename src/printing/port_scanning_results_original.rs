@@ -1,11 +1,13 @@
-use std::time::Duration;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols};
-
+use crate::resolving::{resolve_hostname};
 
 // Hauptfunktion zum Ausführen des Connect-Scans
-pub fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, PortScanAllResult)) {
+pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResult>, PortScanAllResult)) {
+
+    println!("");
+
     let (single_results, all_results) = results;
 
     let mut results_by_ip: HashMap<IpAddr, Vec<&PortScanSingleResult>> = HashMap::new();
@@ -17,7 +19,15 @@ pub fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, Por
     }
 
     for (ip_address, host_results) in results_by_ip.iter() {
-        println!("Onmap scan report for {}", ip_address);
+        
+        let mut hostname = String::from("-");
+        if let IpAddr::V4(ipv4_addr) = ip_address {
+            if let Some(resolved_hostname) = resolve_hostname(&ipv4_addr).await {
+                hostname = resolved_hostname;
+            }
+        }
+        
+        println!("Onmap scan report for {} ({})", &hostname, &ip_address);
         
         // Filter for only open ports first
         let open_ports: Vec<&PortScanSingleResult> = host_results.iter()
@@ -25,21 +35,59 @@ pub fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, Por
             .cloned()
             .collect(); 
 
-        let closed_ports: Vec<&PortScanSingleResult> = host_results.iter()
+        // let closed_ports: Vec<&PortScanSingleResult> = host_results.iter()
+        //     .filter(|r| r.port_state == PortStates::Closed)
+        //     .cloned()
+        //     .collect();
+        // let closed_port_num = closed_ports.len();
+        
+
+        // Count closed and filtered ports
+        let closed_port_num = host_results
+            .iter()
             .filter(|r| r.port_state == PortStates::Closed)
-            .cloned()
+            .count();
+
+        let filtered_port_num = host_results
+            .iter()
+            .filter(|r| r.port_state == PortStates::Filtered)
+            .count();
+
+        let unfiltered_ports: Vec<&PortScanSingleResult> = host_results.iter()
+            .filter(|r| r.port_state == PortStates::Unfiltered)
+            .copied()
             .collect();
+
+
+        // Debug to show filtered ports
+        // let filtered_ports: Vec<&PortScanSingleResult> = host_results.iter()
+        //     .filter(|r| r.port_state == PortStates::Filtered)
+        //     .copied()
+        //     .collect();
+        // 
+        // for port in filtered_ports {
+        //     let protocol_str = match port_result.protocol {
+        //         Protocols::TCP => "tcp"
+        //     };
+        //     println!("{:<7}/{}  open     {}", &port_result.port.to_string(), protocol_str, &port_result.service);  
+        // }
         
-        let closed_port_num = closed_ports.len();
-        
-        if closed_port_num > 0 {
-            println!("Not shown: {} closed ports", closed_port_num);
+        // Show either closed port num, filtered port num or both
+        if closed_port_num > 0 || filtered_port_num > 0 {
+            print!("Not shown: ");
+            if closed_port_num > 0 {
+                print!("{} closed ports", closed_port_num);
+            }
+            if filtered_port_num > 0 {
+                if closed_port_num > 0 {
+                    print!(" and ");
+                }
+                print!("{} filtered ports", filtered_port_num);
+            }
+            println!();
         }
         
-        if open_ports.is_empty() {
-            //println!("No open ports discovered.");
-        } else {
-
+        if !open_ports.is_empty() {
 
             let mut sorted_open_ports = open_ports.clone();
             sorted_open_ports.sort_by_key(|r| r.port);
@@ -49,11 +97,27 @@ pub fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, Por
             for port_result in sorted_open_ports {
                 // Convert enum values to strings for display
                 let protocol_str = match port_result.protocol {
-                    Protocols::TCP => "tcp",
-                    Protocols::UDP => "udp",
-                    Protocols::ICMP => "icmp",
+                    Protocols::TCP => "tcp"
                 };
                 println!("{:<7}/{}  open     {}", &port_result.port.to_string(), protocol_str, &port_result.service);  
+            }
+        } else if !unfiltered_ports.is_empty() {
+
+            let mut sorted_unfiltered_ports = unfiltered_ports.clone();
+            sorted_unfiltered_ports.sort_by_key(|r| r.port);
+
+            println!("{:<7}      STATE       SERVICE", "PORT");
+
+            for port_result in sorted_unfiltered_ports {
+                let protocol_str = match port_result.protocol {
+                    Protocols::TCP => "tcp"
+                };
+                
+                println!("{:<7}/{}  unfiltered  {}", &port_result.port.to_string(), protocol_str, &port_result.service);
+            }
+        } else {
+            if !host_results.is_empty() {
+                println!("Host is up, but all {} scanned ports are in a 'closed' or 'filtered' state.", host_results.len());
             }
         }
         println!("");
@@ -66,21 +130,10 @@ pub fn print_port_scan_results_original(results: (Vec<PortScanSingleResult>, Por
 
     let num_hosts_scanned = results_by_ip.len();
 
-    if num_hosts_scanned == 0{
-        println!(
-            "Onmap done: 0 IP addresses (0 hosts up) scanned in {} seconds",
-            elapsed_time
-        );        
-    }else if num_hosts_scanned == 1{
-        println!(
-            "Onmap done: 1 IP address (1 host up) scanned in {} seconds",
-            elapsed_time
-        );
-    }else {
-        println!(
-            "Onmap done: {} IP addresses ({} hosts up) scanned in {} seconds",
-            num_hosts_scanned, num_hosts_scanned, elapsed_time
-        );
+    match num_hosts_scanned {
+        0 => println!("Onmap done: 0 IP addresses (0 hosts up) scanned in {} seconds", elapsed_time),    
+        1 => println!("Onmap done: 1 IP address (1 host up) scanned in {} seconds", elapsed_time),
+        _ => println!("Onmap done: {} IP addresses ({} hosts up) scanned in {} seconds", num_hosts_scanned, num_hosts_scanned, elapsed_time)
     }
-    
+    println!(); 
 }

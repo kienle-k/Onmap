@@ -60,6 +60,12 @@ for port in selected_filter_ports:
         stderr=subprocess.DEVNULL
     )
     
-print(f"-> {NUM_SERVERS} servers started on ports: {actual_server_ports}")
-print(f"-> {NUM_FILTERS} ports filtered: {selected_filter_ports}")
+    
+print(f"-> {NUM_SERVERS} servers started on ports:")
+for p in actual_server_ports:
+     print("\t", p)
+print("")
+print(f"-> {NUM_FILTERS} ports filtered:")
+for p in selected_filter_ports:
+     print("\t", p)
 print("")

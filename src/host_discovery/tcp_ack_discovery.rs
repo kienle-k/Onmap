@@ -5,9 +5,8 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult, PortStateReasons, PortStates};
-use crate::port_scanning::syn_scan::port_syn_scan;
-use crate::resolving::get_service_name::{load_protocol_map};
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::port_scanning::ack_scan::port_ack_scan;
 use crate::resolving::resolve_hostname;
 
 struct HostProbeState {
@@ -17,8 +16,8 @@ struct HostProbeState {
     reply_type: String,
 }
 
-/// Runs a TCP SYN discovery scan against a list of target IP addresses.
-pub async fn run_tcp_syn_discovery(
+/// Runs a TCP ACK discovery scan against a list of target IP addresses.
+pub async fn run_tcp_ack_discovery(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
     ports: Vec<u16>,
     local_ip_address: Ipv4Addr,
@@ -27,11 +26,8 @@ pub async fn run_tcp_syn_discovery(
     let ips = ip_addresses?;
 
     if ports.is_empty() {
-        return Err("At least one port is required for TCP SYN discovery".to_string());
+        return Err("At least one port is required for TCP ACK discovery".to_string());
     }
-
-    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json")
-        .map_err(|e| format!("Failed to load protocol map: {}", e))?);
 
     let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
     let mut host_states: HashMap<Ipv4Addr, HostProbeState> = ips
@@ -50,51 +46,39 @@ pub async fn run_tcp_syn_discovery(
     for ip in &ips {
         for &port in &ports {
             let sem_clone = Arc::clone(&semaphore);
-            let protocols_clone = Arc::clone(&protocols);
             let ip = *ip;
+            let source_ip = if ip.is_loopback() {
+                Ipv4Addr::new(127, 0, 0, 1)
+            } else {
+                local_ip_address
+            };
 
             futures.push(async move {
                 let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
                 let start = Instant::now();
-                let result = port_syn_scan(IpAddr::V4(ip), port, local_ip_address, protocols_clone).await;
+                let (is_unfiltered, ttl) = port_ack_scan(ip, port, source_ip).await;
                 let latency = start.elapsed();
-                (ip, port, latency, result)
+                (ip, port, latency, is_unfiltered, ttl)
             });
         }
     }
 
-    while let Some((ip, port, latency, result)) = futures.next().await {
+    while let Some((ip, port, latency, is_unfiltered, ttl)) = futures.next().await {
         let entry = host_states
             .get_mut(&ip)
             .expect("Host state missing for IP");
 
-        match result {
-            Ok(port_result) => {
-                match port_result.port_state {
-                    PortStates::Open | PortStates::Closed => {
-                        let should_update = match entry.latency {
-                            None => true,
-                            Some(existing) => latency < existing,
-                        };
+        if is_unfiltered {
+            let should_update = match entry.latency {
+                None => true,
+                Some(existing) => latency < existing,
+            };
 
-                        if should_update {
-                            entry.is_up = true;
-                            entry.latency = Some(latency);
-                            entry.ttl = port_result.ttl;
-                            entry.reply_type = match port_result.reason {
-                                PortStateReasons::SynAck => format!("SYN-ACK port {}", port),
-                                PortStateReasons::Reset => format!("RST port {}", port),
-                                _ => format!("response port {}", port),
-                            };
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Err(e) => {
-                if !entry.is_up && entry.reply_type == "no response" {
-                    entry.reply_type = format!("Error: {}", e);
-                }
+            if should_update {
+                entry.is_up = true;
+                entry.latency = Some(latency);
+                entry.ttl = ttl.unwrap_or(0);
+                entry.reply_type = format!("RST port {}", port);
             }
         }
     }
