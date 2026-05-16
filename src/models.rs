@@ -5,7 +5,12 @@ use clap::{Parser, Subcommand, ArgAction};
 
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Onmap - A fast and memory-safe network scanning tool built in Rust.", long_about = None)]
+#[command(
+    author,
+    version,
+    about = "Onmap - A fast and memory-safe network scanning tool built in Rust.",
+    long_about = None
+)]
 pub struct Cli {
     /// Run in Text User Interface (TUI) mode
     #[arg(long)]
@@ -21,21 +26,19 @@ pub struct Cli {
 
     #[arg(
         name = "output_normal",
-        short = 'o',        // The primary short flag is 'o'
-        short_alias = 'N',  // This allows the 'N' to be attached directly
-        id = "oN",          // Internal ID
+        short = 'N',
         global = true, 
         value_name = "file",
-        help = "Output scan in normal format (-oN <file>)"
+        help = "Output scan in normal format"
     )]
     pub output_normal: Option<String>,
 
     #[arg(
         name = "output_xml",
-        short = 'X', 
+        short = 'X',
         global = true, 
         value_name = "file",
-        help = "Output scan in XML format (-oX <file>)"
+        help = "Output scan in XML format"
     )]
     pub output_xml: Option<String>,
 }
@@ -235,7 +238,7 @@ pub enum PortOptions {
 }
 
 /// Represents the determined state of a scanned network port.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PortStates {
     /// The port is open and accepting connections.
     Open,
@@ -248,7 +251,7 @@ pub enum PortStates {
 }
 
 /// The reason for a port's determined state, based on the network response.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PortStateReasons {
     /// A SYN-ACK packet was received, indicating an open port.
     SynAck,
