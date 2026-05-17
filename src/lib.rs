@@ -35,7 +35,6 @@ use models::{Cli, ExecutionCommand, ScanCommand, HostDiscoveryAllResult, HostDis
 use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
 use crate::host_discovery::{run_icmp_netmask};
 use crate::os_detection::run_os_detection;
-use crate::port_scanning::run_udp_scan;
 use crate::service_detection::run_service_detection;
 use crate::tui::{run_app, App};
 use crate::output::{save_to_file_xml_host_discovery, save_to_file_xml_port_scan};
@@ -267,6 +266,11 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
         },
+        Some(ScanCommand::UdpScan { ports, ips }) => ExecutionCommand::PortScan {
+            method: PortScanOption::UdpScan,
+            targets: parse_targets(ips)?,
+            ports: parse_ports_spec(ports.as_ref())?,
+        },
         Some(ScanCommand::PingScan { ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::PingScan,
             targets: parse_targets(ips)?,
@@ -294,6 +298,11 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
         },
         Some(ScanCommand::AckDiscovery { ports, ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::TcpAckDiscovery,
+            targets: parse_targets(ips)?,
+            ports: Some(parse_ports_spec(ports.as_ref())?),
+        },
+        Some(ScanCommand::UdpDiscovery { ports, ips }) => ExecutionCommand::HostDiscovery {
+            method: HostDiscoveryOption::UdpDiscovery,
             targets: parse_targets(ips)?,
             ports: Some(parse_ports_spec(ports.as_ref())?),
         },
@@ -328,16 +337,19 @@ fn requires_root(cmd: &ExecutionCommand) -> bool {
     match cmd {
         ExecutionCommand::PortScan { method, .. } => matches!(
             method,
-            PortScanOption::SynScan | PortScanOption::AckScan | PortScanOption::UdpScan
+            PortScanOption::SynScan
+            | PortScanOption::AckScan
+            | PortScanOption::UdpScan
         ),
         ExecutionCommand::HostDiscovery { method, .. } => matches!(
             method,
             HostDiscoveryOption::IcmpEcho
-                | HostDiscoveryOption::IcmpTimestamp
-                | HostDiscoveryOption::IcmpNetmask
-                | HostDiscoveryOption::ArpDiscovery
-                | HostDiscoveryOption::TcpSynDiscovery
-                | HostDiscoveryOption::TcpAckDiscovery
+            | HostDiscoveryOption::IcmpTimestamp
+            | HostDiscoveryOption::IcmpNetmask
+            | HostDiscoveryOption::ArpDiscovery
+            | HostDiscoveryOption::TcpSynDiscovery
+            | HostDiscoveryOption::TcpAckDiscovery
+            | HostDiscoveryOption::UdpDiscovery
         ),
         ExecutionCommand::ServiceDetection { .. } | ExecutionCommand::OsDetection { .. } => false,
     }
@@ -375,8 +387,8 @@ async fn execute_command(
                     host_discovery::run_tcp_ack_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
                 }
                 HostDiscoveryOption::UdpDiscovery => {
-                    println!("Doing UdpDiscovery (Implementation coming soon)");
-                    return Ok((None, None));
+                    let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
+                    host_discovery::run_udp_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
                 }
                 HostDiscoveryOption::ArpDiscovery => host_discovery::run_arp(Ok(ipv4_targets)).await?,
                 HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(Ok(ipv4_targets)).await?,
@@ -422,10 +434,7 @@ async fn execute_command(
                     println!("Doing XmasScan (Implementation coming soon)");
                     return Ok((None, None));
                 }
-                PortScanOption::UdpScan => {
-                    run_udp_scan();
-                    return Ok((None, None));
-                }
+                PortScanOption::UdpScan => port_scanning::run_udp_scan(Ok(ipv4_targets), ports, local_ip_address).await?
             };
 
             if use_original_printing {

@@ -14,6 +14,7 @@ fn addrtype(ip: std::net::IpAddr) -> &'static str {
 fn protocol_name(protocol: Protocols) -> &'static str {
     match protocol {
         Protocols::TCP => "tcp",
+        Protocols::UDP => "udp",
     }
 }
 
@@ -23,6 +24,8 @@ fn port_state_name(state: PortStates) -> &'static str {
         PortStates::Closed => "closed",
         PortStates::Filtered => "filtered",
         PortStates::Unfiltered => "unfiltered",
+        PortStates::OpenOrFiltered => "open|filtered",
+        PortStates::ClosedOrFiltered => "closed|filtered",
     }
 }
 
@@ -156,6 +159,8 @@ pub fn save_to_file_xml_port_scan(
             PortStates::Closed,
             PortStates::Filtered,
             PortStates::Unfiltered,
+            PortStates::OpenOrFiltered,
+            PortStates::ClosedOrFiltered,
         ];
 
         for state in extraport_order {
@@ -222,11 +227,6 @@ pub fn save_to_file_xml_port_scan(
     println!("Successfully saved port scan results to: {}", path);
     Ok(())
 }
-
-
-
-
-
 
 #[cfg(test)]
 mod tests {
@@ -310,5 +310,70 @@ mod tests {
         assert!(xml.contains("<extrareasons reason=\"no-responses\" count=\"1\" ports=\"443\"/>"));
         assert!(xml.contains("<extraports state=\"unfiltered\" count=\"1\">"));
         assert!(xml.contains("<extrareasons reason=\"resets\" count=\"1\" ports=\"8080\"/>"));
+    }
+
+    #[test]
+    fn writes_udp_open_or_filtered_extraports_with_exact_port_membership() {
+        let path = std::env::temp_dir().join(format!(
+            "onmap-udp-port-scan-xml-{}.xml",
+            std::process::id()
+        ));
+        let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+        let results = vec![
+            PortScanSingleResult {
+                ip_address: ip,
+                port: 53,
+                protocol: Protocols::UDP,
+                port_state: PortStates::Open,
+                ttl: 64,
+                reason: PortStateReasons::SynAck,
+                service: "domain".to_string(),
+            },
+            PortScanSingleResult {
+                ip_address: ip,
+                port: 54,
+                protocol: Protocols::UDP,
+                port_state: PortStates::OpenOrFiltered,
+                ttl: 0,
+                reason: PortStateReasons::Timeout,
+                service: "unknown".to_string(),
+            },
+            PortScanSingleResult {
+                ip_address: ip,
+                port: 55,
+                protocol: Protocols::UDP,
+                port_state: PortStates::OpenOrFiltered,
+                ttl: 0,
+                reason: PortStateReasons::Timeout,
+                service: "unknown".to_string(),
+            },
+            PortScanSingleResult {
+                ip_address: ip,
+                port: 56,
+                protocol: Protocols::UDP,
+                port_state: PortStates::ClosedOrFiltered,
+                ttl: 0,
+                reason: PortStateReasons::Timeout,
+                service: "unknown".to_string(),
+            },
+        ];
+        let summary = PortScanAllResult {
+            ports_scanned: 4,
+            packets_sent: 4,
+            open_ports: vec![53],
+            start_time: SystemTime::now(),
+            end_time: SystemTime::now(),
+        };
+
+        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary)).unwrap();
+
+        let xml = fs::read_to_string(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert!(xml.contains("<port protocol=\"udp\" portid=\"53\">"));
+        assert!(xml.contains("<extraports state=\"open|filtered\" count=\"2\">"));
+        assert!(xml.contains("<extrareasons reason=\"no-responses\" count=\"2\" ports=\"54-55\"/>"));
+        assert!(xml.contains("<extraports state=\"closed|filtered\" count=\"1\">"));
+        assert!(xml.contains("<extrareasons reason=\"no-responses\" count=\"1\" ports=\"56\"/>"));
     }
 }
