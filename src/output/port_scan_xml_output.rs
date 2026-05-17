@@ -34,6 +34,8 @@ fn state_reason_name(reason: PortStateReasons) -> &'static str {
         PortStateReasons::SynAck => "syn-ack",
         PortStateReasons::Reset | PortStateReasons::Unfiltered => "reset",
         PortStateReasons::Timeout => "no-response",
+        PortStateReasons::UdpResponse => "udp-response",
+        PortStateReasons::IcmpPortUnreachable => "port-unreach",
     }
 }
 
@@ -42,6 +44,8 @@ fn extraport_reason_name(reason: PortStateReasons) -> &'static str {
         PortStateReasons::SynAck => "syn-acks",
         PortStateReasons::Reset | PortStateReasons::Unfiltered => "resets",
         PortStateReasons::Timeout => "no-responses",
+        PortStateReasons::UdpResponse => "udp-responses",
+        PortStateReasons::IcmpPortUnreachable => "port-unreaches",
     }
 }
 
