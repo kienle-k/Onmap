@@ -3,7 +3,6 @@ use std::time::{Duration, SystemTime};
 use clap::{Parser, Subcommand, ArgAction};
 
 
-
 #[derive(Parser, Debug)]
 #[command(
     author,
@@ -27,6 +26,7 @@ pub struct Cli {
     #[arg(
         name = "output_normal",
         short = 'N',
+        long = "oN",
         global = true, 
         value_name = "file",
         help = "Output scan in normal format"
@@ -36,6 +36,7 @@ pub struct Cli {
     #[arg(
         name = "output_xml",
         short = 'X',
+        long = "oX",
         global = true, 
         value_name = "file",
         help = "Output scan in XML format"
