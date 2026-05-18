@@ -45,7 +45,7 @@ pub fn print_host_discovery_results(results: &(Vec<HostDiscoverySingleResult>, H
         Cell::new(&all_results.hosts_dns_resolution.to_string())
     ]));
     summary_table.add_row(Row::new(vec![
-        Cell::new("Ports scanned per host"),
+        Cell::new("Port probes per host"),
         Cell::new(&all_results.ports_per_host.to_string())
     ]));
     summary_table.add_row(Row::new(vec![

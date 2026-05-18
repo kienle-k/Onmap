@@ -31,6 +31,10 @@ sudo ./target/release/onmap -PE --help
 
 ./onmap -PE 192.168.178.0/24
 
+./onmap -PE -PP -PS22 -PA80 -PU53 192.168.178.0/24
+
+./onmap -PS22 -PA -PU -p 53 192.168.178.0/24
+
 ./onmap -sT -p- 192.168.178.50
 
 ./onmap -sS -p1-1024 192.168.1.100
@@ -44,6 +48,8 @@ sudo ./target/release/onmap -PE --help
 ./onmap -sS -p22 10.0.0.1-10
 
 ```
+
+Host discovery probes can be combined. When multiple probes are selected, Onmap runs them in parallel and treats a host as up if any configured probe succeeds. Method-specific ports (`-PS22`, `-PA80`, `-PU53`) override shared `-p` ports for that method, while shared `-p` remains a fallback for selected port-based methods that do not define method-specific ports.
 
 
 

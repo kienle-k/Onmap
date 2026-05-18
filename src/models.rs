@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
 use clap::{Parser, Subcommand, ArgAction};
@@ -8,7 +9,8 @@ use clap::{Parser, Subcommand, ArgAction};
     author,
     version,
     about = "Onmap - A fast and memory-safe network scanning tool built in Rust.",
-    long_about = None
+    long_about = None,
+    args_conflicts_with_subcommands = true
 )]
 pub struct Cli {
     /// Run in Text User Interface (TUI) mode
@@ -18,6 +20,58 @@ pub struct Cli {
     /// Specify the scan type and its arguments
     #[command(subcommand)]
     pub command: Option<ScanCommand>,
+
+    /// Ping scan (Host Discovery)
+    #[arg(long = "sn", help = "Ping scan (Host Discovery)", action = ArgAction::SetTrue)]
+    pub ping_scan: bool,
+
+    /// ICMP Echo scan (Host Discovery)
+    #[arg(long = "PE", help = "ICMP Echo scan (Host Discovery)", action = ArgAction::SetTrue)]
+    pub icmp_echo: bool,
+
+    /// ICMP Timestamp scan (Host Discovery)
+    #[arg(long = "PP", help = "ICMP Timestamp scan (Host Discovery)", action = ArgAction::SetTrue)]
+    pub icmp_timestamp: bool,
+
+    /// ARP scan (Host Discovery)
+    #[arg(long = "PR", help = "ARP scan (Host Discovery)", action = ArgAction::SetTrue)]
+    pub arp: bool,
+
+    /// TCP SYN discovery scan (Host Discovery)
+    #[arg(long = "PS", help = "TCP SYN discovery scan (Host Discovery)", action = ArgAction::SetTrue)]
+    pub syn_discovery: bool,
+
+    /// TCP ACK discovery scan (Host Discovery)
+    #[arg(long = "PA", help = "TCP ACK discovery scan (Host Discovery)", action = ArgAction::SetTrue)]
+    pub ack_discovery: bool,
+
+    /// UDP discovery scan (Host Discovery)
+    #[arg(long = "PU", help = "UDP discovery scan (Host Discovery)", action = ArgAction::SetTrue)]
+    pub udp_discovery: bool,
+
+    /// Port specification for host discovery probes that require ports
+    #[arg(short = 'p', long = "ports", value_name = "PORTS")]
+    pub host_discovery_ports: Option<String>,
+
+    /// Port specification for TCP SYN host discovery probes
+    #[arg(long = "PS-ports", value_name = "PORTS")]
+    pub syn_discovery_ports: Option<String>,
+
+    /// Port specification for TCP ACK host discovery probes
+    #[arg(long = "PA-ports", value_name = "PORTS")]
+    pub ack_discovery_ports: Option<String>,
+
+    /// Port specification for UDP host discovery probes
+    #[arg(long = "PU-ports", value_name = "PORTS")]
+    pub udp_discovery_ports: Option<String>,
+
+    /// Override host discovery timeout in milliseconds
+    #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+    pub host_discovery_timeout_ms: Option<u64>,
+
+    /// Target IP address, IP address list, IP range or CIDR for host discovery
+    #[arg(value_name = "TARGETS")]
+    pub host_discovery_targets: Option<String>,
 
     /// Disable original printing style, use modernized printing
     #[arg(short = 'm', long = "modern-print", global = true, help = "Use modern result printing", action = ArgAction::SetTrue)]
@@ -98,97 +152,98 @@ pub enum ScanCommand {
         #[arg(value_name = "TARGETS")]
         ips: String,
     },
-    /// Ping scan (Host Discovery)
-    #[command(name = "-sn", aliases = ["sn"])]
-    PingScan {
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
-    /// ICMP Echo scan (Host Discovery)
-    #[command(name = "-PE", aliases = ["PE"])]
-    IcmpEcho {
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
-    /// ICMP Timestamp scan (Host Discovery)
-    #[command(name = "-PP", aliases = ["PP"])]
-    IcmpTimestamp {
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
-    /// ARP scan (Host Discovery)
-    #[command(name = "-PR", aliases = ["PR"])]
-    Arp {
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
+}
 
-    /// TCP SYN discovery scan (Host Discovery)
-    #[command(name = "-PS", aliases = ["PS"])]
-    SynDiscovery {
-        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long="ports")]
-        ports: Option<String>,
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
+impl Cli {
+    pub fn normalize_args<I, T>(args: I) -> Vec<OsString>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<OsString>,
+    {
+        let mut normalized = Vec::new();
 
-    /// TCP ACK discovery scan (Host Discovery)
-    #[command(name = "-PA", aliases = ["PA"])]
-    AckDiscovery {
-        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long="ports")]
-        ports: Option<String>,
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
+        for arg in args {
+            let arg = arg.into();
 
-    /// UDP discovery scan (Host Discovery)
-    #[command(name = "-PU", aliases = ["PU"])]
-    UdpDiscovery {
-        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long="ports")]
-        ports: Option<String>,
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
+            match arg.to_str() {
+                Some("-sn") => normalized.push(OsString::from("--sn")),
+                Some("-PE") => normalized.push(OsString::from("--PE")),
+                Some("-PP") => normalized.push(OsString::from("--PP")),
+                Some("-PR") => normalized.push(OsString::from("--PR")),
+                Some("-PS") => normalized.push(OsString::from("--PS")),
+                Some("-PA") => normalized.push(OsString::from("--PA")),
+                Some("-PU") => normalized.push(OsString::from("--PU")),
+                Some(value) => {
+                    if let Some(ports_spec) = value.strip_prefix("-PS") {
+                        if ports_spec.is_empty() {
+                            normalized.push(arg);
+                        } else {
+                            normalized.push(OsString::from("--PS"));
+                            normalized.push(OsString::from("--PS-ports"));
+                            normalized.push(OsString::from(ports_spec));
+                        }
+                    } else if let Some(ports_spec) = value.strip_prefix("-PA") {
+                        if ports_spec.is_empty() {
+                            normalized.push(arg);
+                        } else {
+                            normalized.push(OsString::from("--PA"));
+                            normalized.push(OsString::from("--PA-ports"));
+                            normalized.push(OsString::from(ports_spec));
+                        }
+                    } else if let Some(ports_spec) = value.strip_prefix("-PU") {
+                        if ports_spec.is_empty() {
+                            normalized.push(arg);
+                        } else {
+                            normalized.push(OsString::from("--PU"));
+                            normalized.push(OsString::from("--PU-ports"));
+                            normalized.push(OsString::from(ports_spec));
+                        }
+                    } else {
+                        normalized.push(arg);
+                    }
+                }
+                None => normalized.push(arg),
+            }
+        }
+
+        normalized
+    }
+
+    pub fn host_discovery_methods(&self) -> Vec<HostDiscoveryOption> {
+        let mut methods = Vec::new();
+
+        if self.ping_scan {
+            methods.push(HostDiscoveryOption::PingScan);
+        }
+        if self.icmp_echo {
+            methods.push(HostDiscoveryOption::IcmpEcho);
+        }
+        if self.icmp_timestamp {
+            methods.push(HostDiscoveryOption::IcmpTimestamp);
+        }
+        if self.arp {
+            methods.push(HostDiscoveryOption::ArpDiscovery);
+        }
+        if self.syn_discovery {
+            methods.push(HostDiscoveryOption::TcpSynDiscovery);
+        }
+        if self.ack_discovery {
+            methods.push(HostDiscoveryOption::TcpAckDiscovery);
+        }
+        if self.udp_discovery {
+            methods.push(HostDiscoveryOption::UdpDiscovery);
+        }
+
+        methods
+    }
 }
 
 /// Internal execution plan used to unify CLI and TUI flows.
 #[derive(Debug, Clone)]
 pub enum ExecutionCommand {
     HostDiscovery {
-        method: HostDiscoveryOption,
+        methods: Vec<HostDiscoverySpec>,
         targets: Vec<IpAddr>,
-        ports: Option<Vec<u16>>,
         timeout_override_ms: Option<u64>,
     },
     PortScan {
@@ -203,6 +258,12 @@ pub enum ExecutionCommand {
     OsDetection {
         targets: Vec<IpAddr>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct HostDiscoverySpec {
+    pub method: HostDiscoveryOption,
+    pub ports: Option<Vec<u16>>,
 }
 
 /// Represents the current state or view of the application's user interface.

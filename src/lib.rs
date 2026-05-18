@@ -13,9 +13,11 @@ pub mod resolving;
 mod output;
 
 // --- Standard library imports ---
+use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 use std::io::Write;
+use std::time::SystemTime;
 
 // --- External crate imports ---
 use chrono::prelude::*;
@@ -29,9 +31,10 @@ use iana_time_zone::get_timezone;
 use local_ip_address::local_ip;
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
+use futures::future::try_join_all;
 
 // --- Internal imports (from this crate) ---
-use models::{Cli, ExecutionCommand, ScanCommand, HostDiscoveryAllResult, HostDiscoverySingleResult, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
+use models::{Cli, ExecutionCommand, ScanCommand, HostDiscoveryAllResult, HostDiscoverySingleResult, HostDiscoverySpec, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
 use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
 use crate::host_discovery::{run_icmp_netmask};
 use crate::os_detection::run_os_detection;
@@ -190,6 +193,11 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
 type HostDiscoveryResult = (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult);
 type PortScanResult = (Vec<PortScanSingleResult>, PortScanAllResult);
 
+struct HostMergeState {
+    best_up: Option<HostDiscoverySingleResult>,
+    best_down: Option<HostDiscoverySingleResult>,
+}
+
 fn build_command_from_tui(
     main_selected: Option<MainMenuItem>,
     host_discovery_selected: Option<HostDiscoveryOption>,
@@ -223,9 +231,8 @@ fn build_command_from_tui(
         MainMenuItem::SubMenuHostDiscovery => {
             let method = host_discovery_selected.ok_or_else(|| "No host discovery option selected".to_string())?;
             ExecutionCommand::HostDiscovery {
-                method,
+                methods: vec![HostDiscoverySpec { method, ports }],
                 targets,
-                ports,
                 timeout_override_ms: None,
             }
         }
@@ -247,8 +254,27 @@ fn build_command_from_tui(
 }
 
 fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String> {
+    let host_discovery_methods = cli.host_discovery_methods();
+    let has_host_discovery_config = !host_discovery_methods.is_empty()
+        || cli.host_discovery_ports.is_some()
+        || cli.syn_discovery_ports.is_some()
+        || cli.ack_discovery_ports.is_some()
+        || cli.udp_discovery_ports.is_some()
+        || cli.host_discovery_timeout_ms.is_some()
+        || cli.host_discovery_targets.is_some();
+
+    if cli.command.is_some() && has_host_discovery_config {
+        return Err("Host discovery flags cannot be combined with port scan subcommands".to_string());
+    }
+
     let command = match &cli.command {
-        None => return Ok(None),
+        None => {
+            if !has_host_discovery_config {
+                return Ok(None);
+            }
+
+            build_host_discovery_command(cli, host_discovery_methods)?
+        }
         Some(ScanCommand::SynScan { ports, timeout_ms, ips }) => ExecutionCommand::PortScan {
             method: PortScanOption::SynScan,
             targets: parse_targets(ips)?,
@@ -273,51 +299,114 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
             ports: parse_ports_spec(ports.as_ref())?,
             timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::PingScan { timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
-            method: HostDiscoveryOption::PingScan,
-            targets: parse_targets(ips)?,
-            ports: None,
-            timeout_override_ms: *timeout_ms,
-        },
-        Some(ScanCommand::IcmpEcho { timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
-            method: HostDiscoveryOption::IcmpEcho,
-            targets: parse_targets(ips)?,
-            ports: None,
-            timeout_override_ms: *timeout_ms,
-        },
-        Some(ScanCommand::IcmpTimestamp { timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
-            method: HostDiscoveryOption::IcmpTimestamp,
-            targets: parse_targets(ips)?,
-            ports: None,
-            timeout_override_ms: *timeout_ms,
-        },
-        Some(ScanCommand::Arp { timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
-            method: HostDiscoveryOption::ArpDiscovery,
-            targets: parse_targets(ips)?,
-            ports: None,
-            timeout_override_ms: *timeout_ms,
-        },
-        Some(ScanCommand::SynDiscovery { ports, timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
-            method: HostDiscoveryOption::TcpSynDiscovery,
-            targets: parse_targets(ips)?,
-            ports: Some(parse_ports_spec(ports.as_ref())?),
-            timeout_override_ms: *timeout_ms,
-        },
-        Some(ScanCommand::AckDiscovery { ports, timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
-            method: HostDiscoveryOption::TcpAckDiscovery,
-            targets: parse_targets(ips)?,
-            ports: Some(parse_ports_spec(ports.as_ref())?),
-            timeout_override_ms: *timeout_ms,
-        },
-        Some(ScanCommand::UdpDiscovery { ports, timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
-            method: HostDiscoveryOption::UdpDiscovery,
-            targets: parse_targets(ips)?,
-            ports: Some(parse_ports_spec(ports.as_ref())?),
-            timeout_override_ms: *timeout_ms,
-        },
     };
 
     Ok(Some(command))
+}
+
+fn build_host_discovery_command(
+    cli: &Cli,
+    methods: Vec<HostDiscoveryOption>,
+) -> Result<ExecutionCommand, String> {
+    let targets = cli
+        .host_discovery_targets
+        .as_deref()
+        .ok_or_else(|| "Host discovery targets must be provided".to_string())?;
+
+    let has_syn = methods.contains(&HostDiscoveryOption::TcpSynDiscovery);
+    let has_ack = methods.contains(&HostDiscoveryOption::TcpAckDiscovery);
+    let has_udp = methods.contains(&HostDiscoveryOption::UdpDiscovery);
+    let has_port_based_method = has_syn || has_ack || has_udp;
+
+    if cli.syn_discovery_ports.is_some() && !has_syn {
+        return Err("TCP SYN discovery ports were provided but -PS was not selected".to_string());
+    }
+    if cli.ack_discovery_ports.is_some() && !has_ack {
+        return Err("TCP ACK discovery ports were provided but -PA was not selected".to_string());
+    }
+    if cli.udp_discovery_ports.is_some() && !has_udp {
+        return Err("UDP discovery ports were provided but -PU was not selected".to_string());
+    }
+
+    if methods.is_empty() {
+        return Err("No host discovery method specified".to_string());
+    }
+
+    let shared_ports = match cli.host_discovery_ports.as_ref() {
+        Some(ports) => Some(parsing::convert_ports(ports.clone())
+            .map_err(|e| format!("Invalid port specification: {}", e))?),
+        None => None,
+    };
+
+    if shared_ports.is_some() && !has_port_based_method {
+        return Err("Ports can only be used with TCP/UDP host discovery probes".to_string());
+    }
+
+    let syn_ports = match cli.syn_discovery_ports.as_ref() {
+        Some(ports) => Some(parsing::convert_ports(ports.clone())
+            .map_err(|e| format!("Invalid TCP SYN discovery ports: {}", e))?),
+        None => None,
+    };
+    let ack_ports = match cli.ack_discovery_ports.as_ref() {
+        Some(ports) => Some(parsing::convert_ports(ports.clone())
+            .map_err(|e| format!("Invalid TCP ACK discovery ports: {}", e))?),
+        None => None,
+    };
+    let udp_ports = match cli.udp_discovery_ports.as_ref() {
+        Some(ports) => Some(parsing::convert_ports(ports.clone())
+            .map_err(|e| format!("Invalid UDP discovery ports: {}", e))?),
+        None => None,
+    };
+
+    let methods = methods
+        .into_iter()
+        .map(|method| {
+            let ports = match method {
+                HostDiscoveryOption::TcpSynDiscovery => syn_ports.clone().or_else(|| shared_ports.clone()),
+                HostDiscoveryOption::TcpAckDiscovery => ack_ports.clone().or_else(|| shared_ports.clone()),
+                HostDiscoveryOption::UdpDiscovery => udp_ports.clone().or_else(|| shared_ports.clone()),
+                _ => None,
+            };
+
+            if method_requires_ports(method) && ports.is_none() {
+                return Err(format!("Ports must be provided for {}", host_discovery_method_name(method)));
+            }
+
+            Ok(HostDiscoverySpec {
+                method,
+                ports,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    Ok(ExecutionCommand::HostDiscovery {
+        methods,
+        targets: parse_targets(targets)?,
+        timeout_override_ms: cli.host_discovery_timeout_ms,
+    })
+}
+
+fn host_discovery_method_name(method: HostDiscoveryOption) -> &'static str {
+    match method {
+        HostDiscoveryOption::TcpSynDiscovery => "TCP SYN discovery probes",
+        HostDiscoveryOption::TcpAckDiscovery => "TCP ACK discovery probes",
+        HostDiscoveryOption::UdpDiscovery => "UDP discovery probes",
+        HostDiscoveryOption::ListScan => "list scan",
+        HostDiscoveryOption::PingScan => "ping scan",
+        HostDiscoveryOption::ArpDiscovery => "ARP discovery",
+        HostDiscoveryOption::IcmpEcho => "ICMP echo discovery",
+        HostDiscoveryOption::IcmpTimestamp => "ICMP timestamp discovery",
+        HostDiscoveryOption::IcmpNetmask => "ICMP netmask discovery",
+    }
+}
+
+fn method_requires_ports(method: HostDiscoveryOption) -> bool {
+    matches!(
+        method,
+        HostDiscoveryOption::TcpSynDiscovery
+            | HostDiscoveryOption::TcpAckDiscovery
+            | HostDiscoveryOption::UdpDiscovery
+    )
 }
 
 fn parse_ports_spec(ports: Option<&String>) -> Result<Vec<u16>, String> {
@@ -350,16 +439,18 @@ fn requires_root(cmd: &ExecutionCommand) -> bool {
             | PortScanOption::AckScan
             | PortScanOption::UdpScan
         ),
-        ExecutionCommand::HostDiscovery { method, .. } => matches!(
-            method,
-            HostDiscoveryOption::IcmpEcho
-            | HostDiscoveryOption::IcmpTimestamp
-            | HostDiscoveryOption::IcmpNetmask
-            | HostDiscoveryOption::ArpDiscovery
-            | HostDiscoveryOption::TcpSynDiscovery
-            | HostDiscoveryOption::TcpAckDiscovery
-            | HostDiscoveryOption::UdpDiscovery
-        ),
+        ExecutionCommand::HostDiscovery { methods, .. } => methods.iter().any(|spec| {
+            matches!(
+                spec.method,
+                HostDiscoveryOption::IcmpEcho
+                    | HostDiscoveryOption::IcmpTimestamp
+                    | HostDiscoveryOption::IcmpNetmask
+                    | HostDiscoveryOption::ArpDiscovery
+                    | HostDiscoveryOption::TcpSynDiscovery
+                    | HostDiscoveryOption::TcpAckDiscovery
+                    | HostDiscoveryOption::UdpDiscovery
+            )
+        }),
         ExecutionCommand::ServiceDetection { .. } | ExecutionCommand::OsDetection { .. } => false,
     }
 }
@@ -377,34 +468,21 @@ async fn execute_command(
     }
     
     match command {
-        ExecutionCommand::HostDiscovery { method, targets, ports, timeout_override_ms } => {
+        ExecutionCommand::HostDiscovery { methods, targets, timeout_override_ms } => {
             let ipv4_targets = to_ipv4_vec(&targets)?;
 
-            let result = match method {
-                HostDiscoveryOption::ListScan => {
-                    println!("Doing ListScan (Implementation coming soon)");
-                    return Ok((None, None));
+            let result = if methods.len() == 1 {
+                match run_host_discovery_spec(
+                    methods.into_iter().next().expect("single method is present"),
+                    ipv4_targets,
+                    local_ip_address,
+                    timeout_override_ms,
+                ).await? {
+                    Some(result) => result,
+                    None => return Ok((None, None)),
                 }
-                HostDiscoveryOption::PingScan => host_discovery::run_ping_scan(Ok(ipv4_targets), timeout_override_ms).await?,
-                HostDiscoveryOption::TcpSynDiscovery => {
-                    let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
-                    host_discovery::run_tcp_syn_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
-                }
-                HostDiscoveryOption::TcpAckDiscovery => {
-                    let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
-                    host_discovery::run_tcp_ack_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
-                }
-                HostDiscoveryOption::UdpDiscovery => {
-                    let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
-                    host_discovery::run_udp_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
-                }
-                HostDiscoveryOption::ArpDiscovery => host_discovery::run_arp(Ok(ipv4_targets), timeout_override_ms).await?,
-                HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(Ok(ipv4_targets), timeout_override_ms).await?,
-                HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(Ok(ipv4_targets), timeout_override_ms).await?,
-                HostDiscoveryOption::IcmpNetmask => {
-                    run_icmp_netmask();
-                    return Ok((None, None));
-                }
+            } else {
+                run_multi_host_discovery(methods, ipv4_targets, local_ip_address, timeout_override_ms).await?
             };
 
             if use_original_printing {
@@ -464,6 +542,151 @@ async fn execute_command(
     }
 }
 
+async fn run_host_discovery_spec(
+    spec: HostDiscoverySpec,
+    ipv4_targets: Vec<Ipv4Addr>,
+    local_ip_address: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
+) -> Result<Option<HostDiscoveryResult>, String> {
+    let result = match spec.method {
+        HostDiscoveryOption::ListScan => {
+            println!("Doing ListScan (Implementation coming soon)");
+            return Ok(None);
+        }
+        HostDiscoveryOption::PingScan => host_discovery::run_ping_scan(Ok(ipv4_targets), timeout_override_ms).await?,
+        HostDiscoveryOption::TcpSynDiscovery => {
+            let ports = spec.ports.ok_or_else(|| "Ports array could not be set".to_string())?;
+            host_discovery::run_tcp_syn_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
+        }
+        HostDiscoveryOption::TcpAckDiscovery => {
+            let ports = spec.ports.ok_or_else(|| "Ports array could not be set".to_string())?;
+            host_discovery::run_tcp_ack_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
+        }
+        HostDiscoveryOption::UdpDiscovery => {
+            let ports = spec.ports.ok_or_else(|| "Ports array could not be set".to_string())?;
+            host_discovery::run_udp_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
+        }
+        HostDiscoveryOption::ArpDiscovery => host_discovery::run_arp(Ok(ipv4_targets), timeout_override_ms).await?,
+        HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(Ok(ipv4_targets), timeout_override_ms).await?,
+        HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(Ok(ipv4_targets), timeout_override_ms).await?,
+        HostDiscoveryOption::IcmpNetmask => {
+            run_icmp_netmask();
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(result))
+}
+
+async fn run_multi_host_discovery(
+    methods: Vec<HostDiscoverySpec>,
+    ipv4_targets: Vec<Ipv4Addr>,
+    local_ip_address: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
+) -> Result<HostDiscoveryResult, String> {
+    if methods.iter().any(|spec| matches!(spec.method, HostDiscoveryOption::ListScan | HostDiscoveryOption::IcmpNetmask)) {
+        return Err("List scan and ICMP netmask discovery cannot be combined with other host discovery methods".to_string());
+    }
+
+    let futures = methods.into_iter().map(|spec| {
+        let targets = ipv4_targets.clone();
+        async move {
+            run_host_discovery_spec(spec, targets, local_ip_address, timeout_override_ms)
+                .await?
+                .ok_or_else(|| "Host discovery method did not produce a result".to_string())
+        }
+    });
+
+    let results = try_join_all(futures).await?;
+    Ok(merge_host_discovery_results(results))
+}
+
+fn merge_host_discovery_results(results: Vec<HostDiscoveryResult>) -> HostDiscoveryResult {
+    let mut merged_hosts: HashMap<IpAddr, HostMergeState> = HashMap::new();
+    let mut scanned_addresses = Vec::new();
+    let mut ports_per_host = 0_u16;
+    let mut packets_sent = 0_u64;
+    let mut start_time: Option<SystemTime> = None;
+    let mut end_time: Option<SystemTime> = None;
+
+    for (hosts, summary) in results {
+        if scanned_addresses.is_empty() {
+            scanned_addresses = summary.scanned_addresses.clone();
+        }
+
+        ports_per_host = ports_per_host.saturating_add(summary.ports_per_host);
+        packets_sent = packets_sent.saturating_add(summary.packets_sent);
+        start_time = Some(match start_time {
+            Some(existing) => existing.min(summary.start_time),
+            None => summary.start_time,
+        });
+        end_time = Some(match end_time {
+            Some(existing) => existing.max(summary.end_time),
+            None => summary.end_time,
+        });
+
+        for host in hosts {
+            let entry = merged_hosts.entry(host.ip_address).or_insert_with(|| HostMergeState {
+                best_up: None,
+                best_down: None,
+            });
+
+            if host.is_up {
+                let should_replace = match &entry.best_up {
+                    Some(current) => compare_host_priority(&host, current),
+                    None => true,
+                };
+
+                if should_replace {
+                    entry.best_up = Some(host);
+                }
+            } else if entry.best_down.is_none() {
+                entry.best_down = Some(host);
+            }
+        }
+    }
+
+    let mut merged_results = Vec::new();
+    for address in &scanned_addresses {
+        if let Some(state) = merged_hosts.remove(address) {
+            if let Some(host) = state.best_up.or(state.best_down) {
+                merged_results.push(host);
+            }
+        }
+    }
+
+    for state in merged_hosts.into_values() {
+        if let Some(host) = state.best_up.or(state.best_down) {
+            merged_results.push(host);
+        }
+    }
+
+    let hosts_up = merged_results.iter().filter(|host| host.is_up).count() as u64;
+    let hosts_dns_resolution = merged_results.iter().filter(|host| host.dns_resolve.is_some()).count() as u64;
+
+    (
+        merged_results,
+        HostDiscoveryAllResult {
+            scanned_addresses,
+            ports_per_host,
+            hosts_up,
+            hosts_dns_resolution,
+            start_time: start_time.unwrap_or_else(SystemTime::now),
+            end_time: end_time.unwrap_or_else(SystemTime::now),
+            packets_sent,
+        },
+    )
+}
+
+fn compare_host_priority(candidate: &HostDiscoverySingleResult, current: &HostDiscoverySingleResult) -> bool {
+    match (candidate.latency, current.latency) {
+        (Some(candidate_latency), Some(current_latency)) => candidate_latency < current_latency,
+        (Some(_), None) => true,
+        (None, Some(_)) => false,
+        (None, None) => false,
+    }
+}
+
 
 
 /// Print startup message
@@ -477,6 +700,186 @@ fn print_startup_message(){
     let version = env!("CARGO_PKG_VERSION");
     let name = env!("CARGO_PKG_NAME");
     println!("\nStarting {} {} (https://github.com/kienle-k/Onmap) at {}", name, version, formatted_time);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use std::time::Duration;
+
+    fn parse_cli(args: &[&str]) -> Cli {
+        Cli::try_parse_from(Cli::normalize_args(args.iter().copied()))
+            .expect("CLI arguments should parse")
+    }
+
+    #[test]
+    fn build_command_from_cli_supports_combined_host_discovery_probes() {
+        let cli = parse_cli(&["onmap", "-PE", "-PP", "-PS22", "127.0.0.1"]);
+        assert!(cli.command.is_none(), "expected no subcommand for host discovery flags, got: {:?}", cli);
+
+        let command = build_command_from_cli(&cli)
+            .expect("combined host discovery command should build")
+            .expect("combined host discovery command should be present");
+
+        match command {
+            ExecutionCommand::HostDiscovery { methods, targets, timeout_override_ms } => {
+                assert_eq!(methods.len(), 3);
+                assert_eq!(timeout_override_ms, None);
+                assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
+
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::IcmpEcho && spec.ports.is_none()));
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::IcmpTimestamp && spec.ports.is_none()));
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::TcpSynDiscovery && spec.ports == Some(vec![22])));
+            }
+            other => panic!("expected host discovery command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn build_command_from_cli_supports_different_ports_per_method() {
+        let cli = parse_cli(&["onmap", "-PE", "-PS22", "-PA80", "-PU53", "127.0.0.1"]);
+
+        let command = build_command_from_cli(&cli)
+            .expect("host discovery command should build")
+            .expect("host discovery command should be present");
+
+        match command {
+            ExecutionCommand::HostDiscovery { methods, targets, .. } => {
+                assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::IcmpEcho && spec.ports.is_none()));
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::TcpSynDiscovery && spec.ports == Some(vec![22])));
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::TcpAckDiscovery && spec.ports == Some(vec![80])));
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::UdpDiscovery && spec.ports == Some(vec![53])));
+            }
+            other => panic!("expected host discovery command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn build_command_from_cli_uses_shared_fallback_ports_for_unspecified_methods() {
+        let cli = parse_cli(&["onmap", "-PS22", "-PA", "-PU", "-p", "53", "127.0.0.1"]);
+
+        let command = build_command_from_cli(&cli)
+            .expect("host discovery command should build")
+            .expect("host discovery command should be present");
+
+        match command {
+            ExecutionCommand::HostDiscovery { methods, .. } => {
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::TcpSynDiscovery && spec.ports == Some(vec![22])));
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::TcpAckDiscovery && spec.ports == Some(vec![53])));
+                assert!(methods.iter().any(|spec| spec.method == HostDiscoveryOption::UdpDiscovery && spec.ports == Some(vec![53])));
+            }
+            other => panic!("expected host discovery command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn build_command_from_cli_errors_when_selected_port_method_has_no_ports() {
+        let cli = parse_cli(&["onmap", "-PS", "-PA80", "127.0.0.1"]);
+
+        let err = build_command_from_cli(&cli)
+            .expect_err("missing ports for selected port-based method should error");
+
+        assert!(err.contains("TCP SYN discovery probes"));
+    }
+
+    #[test]
+    fn build_command_from_cli_errors_when_method_specific_ports_are_unused() {
+        let cli = parse_cli(&["onmap", "--PA-ports", "80", "127.0.0.1"]);
+
+        let err = build_command_from_cli(&cli)
+            .expect_err("method-specific ports without selecting the method should error");
+
+        assert!(err.contains("-PA"));
+    }
+
+    #[test]
+    fn build_command_from_cli_keeps_port_scan_subcommand_ports_local() {
+        let cli = parse_cli(&["onmap", "-sT", "-p", "22", "127.0.0.1"]);
+
+        let command = build_command_from_cli(&cli)
+            .expect("port scan command should build")
+            .expect("port scan command should be present");
+
+        match command {
+            ExecutionCommand::PortScan { method, ports, targets, timeout_override_ms } => {
+                assert_eq!(method, PortScanOption::ConnectScan);
+                assert_eq!(ports, vec![22]);
+                assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
+                assert_eq!(timeout_override_ms, None);
+            }
+            other => panic!("expected port scan command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn merge_host_discovery_results_uses_any_up_and_best_latency() {
+        let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+        let start_one = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+        let end_one = SystemTime::UNIX_EPOCH + Duration::from_secs(12);
+        let start_two = SystemTime::UNIX_EPOCH + Duration::from_secs(9);
+        let end_two = SystemTime::UNIX_EPOCH + Duration::from_secs(13);
+
+        let merged = merge_host_discovery_results(vec![
+            (
+                vec![
+                    HostDiscoverySingleResult {
+                        ip_address: ip,
+                        dns_resolve: Some("slow.example".to_string()),
+                        latency: Some(Duration::from_millis(25)),
+                        is_up: true,
+                        reply_type: "ICMP echo reply".to_string(),
+                        ttl: 42,
+                    },
+                ],
+                HostDiscoveryAllResult {
+                    scanned_addresses: vec![ip],
+                    ports_per_host: 0,
+                    hosts_up: 1,
+                    hosts_dns_resolution: 1,
+                    start_time: start_one,
+                    end_time: end_one,
+                    packets_sent: 1,
+                },
+            ),
+            (
+                vec![
+                    HostDiscoverySingleResult {
+                        ip_address: ip,
+                        dns_resolve: Some("fast.example".to_string()),
+                        latency: Some(Duration::from_millis(5)),
+                        is_up: true,
+                        reply_type: "RST port 22".to_string(),
+                        ttl: 55,
+                    },
+                ],
+                HostDiscoveryAllResult {
+                    scanned_addresses: vec![ip],
+                    ports_per_host: 1,
+                    hosts_up: 1,
+                    hosts_dns_resolution: 1,
+                    start_time: start_two,
+                    end_time: end_two,
+                    packets_sent: 1,
+                },
+            ),
+        ]);
+
+        assert_eq!(merged.0.len(), 1);
+        assert!(merged.0[0].is_up);
+        assert_eq!(merged.0[0].reply_type, "RST port 22");
+        assert_eq!(merged.0[0].dns_resolve.as_deref(), Some("fast.example"));
+        assert_eq!(merged.0[0].ttl, 55);
+
+        assert_eq!(merged.1.scanned_addresses, vec![ip]);
+        assert_eq!(merged.1.hosts_up, 1);
+        assert_eq!(merged.1.hosts_dns_resolution, 1);
+        assert_eq!(merged.1.ports_per_host, 1);
+        assert_eq!(merged.1.packets_sent, 2);
+        assert_eq!(merged.1.start_time, start_two);
+        assert_eq!(merged.1.end_time, end_two);
+    }
 }
 
 
