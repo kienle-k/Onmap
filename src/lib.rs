@@ -36,7 +36,11 @@ use models::{Cli, ExecutionCommand, ScanCommand, HostDiscoveryAllResult, HostDis
 use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
 use crate::host_discovery::{run_icmp_netmask};
 use crate::tui::{run_app, App};
-use crate::output::{save_to_file_xml_host_discovery, save_to_file_xml_port_scan};
+use crate::output::{
+    save_to_file_xml_host_discovery, save_to_file_xml_port_scan,
+    save_to_file_normal_host_discovery, save_to_file_normal_port_scan,
+    save_to_file_grepable_host_discovery, save_to_file_grepable_port_scan,
+};
 
 
 // --- Main public entry point ---
@@ -167,19 +171,68 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
 
     if let Some(path) = &cli.output_xml {
         let mut saved = false;
-
         if !host_discovery_result.0.is_empty() {
             save_to_file_xml_host_discovery(path, (&host_discovery_result.0, &host_discovery_result.1))?;
             saved = true;
         }
-
         if !port_scan_result.0.is_empty() {
             save_to_file_xml_port_scan(path, (&port_scan_result.0, &port_scan_result.1))?;
             saved = true;
         }
-
         if !saved {
             println!("No results available to save to XML.");
+        }
+    }
+
+    if let Some(path) = &cli.output_normal {
+        let mut saved = false;
+        if !host_discovery_result.0.is_empty() {
+            save_to_file_normal_host_discovery(path, (&host_discovery_result.0, &host_discovery_result.1))?;
+            saved = true;
+        }
+        if !port_scan_result.0.is_empty() {
+            save_to_file_normal_port_scan(path, (&port_scan_result.0, &port_scan_result.1))?;
+            saved = true;
+        }
+        if !saved {
+            println!("No results available to save to normal output.");
+        }
+    }
+
+    if let Some(path) = &cli.output_grepable {
+        let mut saved = false;
+        if !host_discovery_result.0.is_empty() {
+            save_to_file_grepable_host_discovery(path, (&host_discovery_result.0, &host_discovery_result.1))?;
+            saved = true;
+        }
+        if !port_scan_result.0.is_empty() {
+            save_to_file_grepable_port_scan(path, (&port_scan_result.0, &port_scan_result.1))?;
+            saved = true;
+        }
+        if !saved {
+            println!("No results available to save to grepable output.");
+        }
+    }
+
+    if let Some(basename) = &cli.output_all {
+        let xml_path = format!("{}.xml", basename);
+        let normal_path = format!("{}.nmap", basename);
+        let grepable_path = format!("{}.gnmap", basename);
+        let mut saved = false;
+        if !host_discovery_result.0.is_empty() {
+            save_to_file_xml_host_discovery(&xml_path, (&host_discovery_result.0, &host_discovery_result.1))?;
+            save_to_file_normal_host_discovery(&normal_path, (&host_discovery_result.0, &host_discovery_result.1))?;
+            save_to_file_grepable_host_discovery(&grepable_path, (&host_discovery_result.0, &host_discovery_result.1))?;
+            saved = true;
+        }
+        if !port_scan_result.0.is_empty() {
+            save_to_file_xml_port_scan(&xml_path, (&port_scan_result.0, &port_scan_result.1))?;
+            save_to_file_normal_port_scan(&normal_path, (&port_scan_result.0, &port_scan_result.1))?;
+            save_to_file_grepable_port_scan(&grepable_path, (&port_scan_result.0, &port_scan_result.1))?;
+            saved = true;
+        }
+        if !saved {
+            println!("No results available to save.");
         }
     }
 

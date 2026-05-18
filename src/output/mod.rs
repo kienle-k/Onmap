@@ -1,8 +1,14 @@
 
 pub mod host_discovery_xml_output;
-
 pub mod port_scan_xml_output;
+pub mod host_discovery_normal_output;
+pub mod port_scan_normal_output;
+pub mod host_discovery_grepable_output;
+pub mod port_scan_grepable_output;
 
 pub use host_discovery_xml_output::save_to_file_xml_host_discovery;
-
 pub use port_scan_xml_output::save_to_file_xml_port_scan;
+pub use host_discovery_normal_output::save_to_file_normal_host_discovery;
+pub use port_scan_normal_output::save_to_file_normal_port_scan;
+pub use host_discovery_grepable_output::save_to_file_grepable_host_discovery;
+pub use port_scan_grepable_output::save_to_file_grepable_port_scan;

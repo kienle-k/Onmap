@@ -97,6 +97,26 @@ pub struct Cli {
     )]
     pub output_xml: Option<String>,
 
+    #[arg(
+        name = "output_grepable",
+        short = 'G',
+        long = "oG",
+        global = true,
+        value_name = "file",
+        help = "Output scan in grepable format"
+    )]
+    pub output_grepable: Option<String>,
+
+    #[arg(
+        name = "output_all",
+        short = 'A',
+        long = "oA",
+        global = true,
+        value_name = "basename",
+        help = "Output scan in all formats (.nmap, .gnmap, .xml)"
+    )]
+    pub output_all: Option<String>,
+
     /// Service and version detection via nmap (post-scan)
     #[arg(long = "sV", global = true, help = "Run nmap service/version detection on open ports after scan", action = ArgAction::SetTrue)]
     pub service_version: bool,
