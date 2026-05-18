@@ -22,6 +22,7 @@ pub async fn run_tcp_syn_discovery(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
     ports: Vec<u16>,
     local_ip_address: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
     let ips = ip_addresses?;
@@ -56,7 +57,7 @@ pub async fn run_tcp_syn_discovery(
             futures.push(async move {
                 let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
                 let start = Instant::now();
-                let result = port_syn_scan(IpAddr::V4(ip), port, local_ip_address, protocols_clone).await;
+                let result = port_syn_scan(IpAddr::V4(ip), port, local_ip_address, protocols_clone, timeout_override_ms).await;
                 let latency = start.elapsed();
                 (ip, port, latency, result)
             });

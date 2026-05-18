@@ -23,6 +23,7 @@ use crate::resolving::{resolve_hostname};
 /// Should return Result
 pub async fn run_icmp_echo(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     // Start timing the entire scan operation.
     let start_time = SystemTime::now();
@@ -38,7 +39,7 @@ pub async fn run_icmp_echo(
     // Create and spawn a ping task for each IP address.
     for ip in ips {
         futures.push(async move {
-            let icmp_result = icmp_ping_host_with_details(&ip).await;
+            let icmp_result = icmp_ping_host_with_details(&ip, timeout_override_ms).await;
 
             let mut dns_resolve = None;
             let mut is_reachable = false;
@@ -107,8 +108,16 @@ pub async fn run_icmp_echo(
 ///
 /// # Returns (Should return result)
 /// A tuple: `(is_reachable, latency, ttl)`.
-async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> Result<(bool, Option<Duration>, Option<u8>), String> {
+async fn icmp_ping_host_with_details(
+    ip: &Ipv4Addr,
+    timeout_override_ms: Option<u64>,
+) -> Result<(bool, Option<Duration>, Option<u8>), String> {
     let ip = *ip;
+
+    const DEFAULT_RECEIVE_TIMEOUT_MS: u64 = 2_000;
+    const DEFAULT_OUTER_PADDING_MS: u64 = 1_000;
+    let receive_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_RECEIVE_TIMEOUT_MS);
+    let outer_timeout_ms = receive_timeout_ms + DEFAULT_OUTER_PADDING_MS;
 
     let task = task::spawn_blocking(move || {
         // Layer 4 protocol channel for ICMP.
@@ -153,7 +162,7 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> Result<(bool, Option<Dura
         // Create an iterator to process incoming ICMP packets.
         let mut iter = icmp_packet_iter(&mut rx);
         let receive_start_time = Instant::now();
-        let timeout_duration = Duration::from_secs(2);
+        let timeout_duration = Duration::from_millis(receive_timeout_ms);
 
         while receive_start_time.elapsed() < timeout_duration {
 
@@ -190,7 +199,7 @@ async fn icmp_ping_host_with_details(ip: &Ipv4Addr) -> Result<(bool, Option<Dura
     });
 
     // A secondary, hard timeout on the entire task.
-    match timeout(Duration::from_secs(3), task).await {
+    match timeout(Duration::from_millis(outer_timeout_ms), task).await {
         Ok(Ok(result)) => result, // This is the Result<(bool, Option<Duration>, Option<u8>), String> from the spawned_blocking task
         Ok(Err(e)) => {
             // Error originated from the spawned_blocking task itself

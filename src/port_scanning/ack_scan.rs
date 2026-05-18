@@ -26,12 +26,23 @@ use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protoco
 /// * `ip_address` - The target IPv4 address to scan.
 /// * `port` - The target port number.
 /// * `local_ip` - The source IPv4 address to use for the packet.
+/// * `timeout_override_ms` - Optional receive timeout in milliseconds.
 ///
 /// # Returns
 ///
 /// A tuple `(is_unfiltered, optional_ttl)` indicating the scan result.
-pub async fn port_ack_scan(ip_address: Ipv4Addr, port: u16, local_ip: Ipv4Addr) -> (bool, Option<u8>) {
+pub async fn port_ack_scan(
+    ip_address: Ipv4Addr,
+    port: u16,
+    local_ip: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
+) -> (bool, Option<u8>) {
     let target_ip = IpAddr::V4(ip_address);
+
+    const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+    const DEFAULT_OUTER_PADDING_MS: u64 = 100;
+    let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
+    let outer_timeout_ms = read_timeout_ms + DEFAULT_OUTER_PADDING_MS;
 
      // Entire pnet operation is synchronous and blocking.
      // -> Spawn a blocking task, to move off the main thread.
@@ -68,7 +79,7 @@ pub async fn port_ack_scan(ip_address: Ipv4Addr, port: u16, local_ip: Ipv4Addr) 
         
         let mut iter = tcp_packet_iter(&mut rx);
         let start_time = Instant::now();
-        let timeout_duration = Duration::from_millis(800);
+        let timeout_duration = Duration::from_millis(read_timeout_ms);
 
         while start_time.elapsed() < timeout_duration {
             let remaining_time = timeout_duration.saturating_sub(start_time.elapsed());
@@ -93,7 +104,7 @@ pub async fn port_ack_scan(ip_address: Ipv4Addr, port: u16, local_ip: Ipv4Addr) 
     });
 
     // A hard outer timeout to ensure the blocking task never hangs.
-    match timeout(Duration::from_millis(900), send_and_recv).await {
+    match timeout(Duration::from_millis(outer_timeout_ms), send_and_recv).await {
         Ok(Ok(result)) => result,
         _ => (false, None),
     }
@@ -117,6 +128,7 @@ pub async fn run_ack_scan(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
     ports: &[u16],
     local_ip: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     let ips = match ip_addresses {
         Ok(ips) => ips,
@@ -152,7 +164,7 @@ pub async fn run_ack_scan(
             futs.push(async move {
                 // Wait for a permit from the semaphore before starting the scan.
                 let _permit = sem_clone.acquire().await.unwrap();
-                let (is_unfiltered, ttl_option) = port_ack_scan(ip, port, source_ip).await;
+                let (is_unfiltered, ttl_option) = port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
                 
                 PortScanSingleResult {
                     ip_address: IpAddr::V4(ip),

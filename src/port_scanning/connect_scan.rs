@@ -75,7 +75,7 @@ pub async fn port_tcp_connect_scan(
 /// # Arguments
 /// * `ip_address_arr` - A `Result` wrapping a list of IPv4 addresses to scan.
 /// * `ports_arr` - A list of TCP ports to scan on each IP.
-/// * `timeout_ms` - Timeout per scan attempt, in milliseconds.
+/// * `timeout_override_ms` - Optional timeout per scan attempt, in milliseconds.
 ///
 /// # Returns
 /// * `Ok((Vec<PortScanSingleResult>, PortScanAllResult))` if all scans complete without critical error.
@@ -88,10 +88,10 @@ pub async fn port_tcp_connect_scan(
 pub async fn run_connect_scan(
     ip_address_arr: Result<Vec<Ipv4Addr>, String>, 
     ports_arr: Vec<u16>,
-    timeout_ms: u64
+    timeout_override_ms: Option<u64>
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-
-    let timeout = Duration::from_millis(timeout_ms);
+    const DEFAULT_TIMEOUT_MS: u64 = 300;
+    let timeout = Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
 
     let ip_addresses = match ip_address_arr {
         Ok(ips) => ips,

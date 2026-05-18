@@ -7,6 +7,8 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
 use crate::resolving::{resolve_hostname, extract_ttl};
 
+const DEFAULT_PING_TIMEOUT_MS: u64 = 1000;
+
 
 /// Performs an asynchronous ICMP ping scan on a list of target IP addresses.
 ///
@@ -29,6 +31,7 @@ use crate::resolving::{resolve_hostname, extract_ttl};
 /// On failure, it returns a `String` error.
 pub async fn run_ping_scan(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     // Start timing the operation
     let start_time = SystemTime::now();
@@ -43,9 +46,11 @@ pub async fn run_ping_scan(
     let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
 
     // Add ping tasks to our collection. Each task is an async block.
+    let timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_PING_TIMEOUT_MS);
+
     for ip in ips {
         futures.push(async move {
-            let ping_result = ping_host_with_details(&ip).await;
+            let ping_result = ping_host_with_details(&ip, timeout_ms).await;
 
             let mut dns_resolve = None;
             let mut is_reachable = false;
@@ -129,19 +134,24 @@ pub async fn run_ping_scan(
 /// On failure, it returns a `String` error.
 pub async fn ping_host_with_details(
     ip: &Ipv4Addr,
+    timeout_ms: u64,
 ) -> Result<(bool, Option<Duration>, Option<u8>), String> {
     let ip_string = ip.to_string();
+    let timeout_ms = timeout_ms.max(1);
 
     let result = task::spawn_blocking(move || {
         let start = Instant::now();
 
         let output = if cfg!(target_os = "windows") {
+            let timeout_arg = timeout_ms.to_string();
             Command::new("ping")
-                .args(["-n", "1", "-w", "1000", &ip_string])
+                .args(["-n", "1", "-w", &timeout_arg, &ip_string])
                 .output()
         } else {
+            let timeout_secs = ((timeout_ms + 999) / 1000).max(1);
+            let timeout_arg = timeout_secs.to_string();
             Command::new("ping")
-                .args(["-c", "1", "-W", "1", &ip_string])
+                .args(["-c", "1", "-W", &timeout_arg, &ip_string])
                 .output()
         };
 
@@ -185,7 +195,7 @@ mod tests {
     #[tokio::test]
     async fn test_ping_host_with_details_reachable() {
         let ip = Ipv4Addr::new(127, 0, 0, 1);
-        let result = ping_host_with_details(&ip).await;
+        let result = ping_host_with_details(&ip, DEFAULT_PING_TIMEOUT_MS).await;
 
         assert!(result.is_ok(), "Ping to localhost should succeed, but got error: {:?}", result.err());
         let (is_reachable, latency, ttl) = result.expect("Ping result could not be resolved");
@@ -206,7 +216,7 @@ mod tests {
     #[tokio::test]
     async fn test_ping_host_with_details_unreachable() {
         let ip = Ipv4Addr::new(192, 0, 2, 1);
-        let result = ping_host_with_details(&ip).await;
+        let result = ping_host_with_details(&ip, DEFAULT_PING_TIMEOUT_MS).await;
 
         assert!(result.is_err(), "Ping to unreachable IP should fail");
         let error_message = result.unwrap_err();
@@ -229,7 +239,7 @@ mod tests {
         ]);
         let total_ips = ips.as_ref().expect("Ips could not be resolved").len();
 
-        let scan_result = run_ping_scan(ips).await;
+        let scan_result = run_ping_scan(ips, None).await;
         assert!(scan_result.is_ok(), "Ping scan should succeed, but got error: {:?}", scan_result.err());
         let (results, summary) = scan_result.expect("Scan result could not be resolved");
 
@@ -275,7 +285,7 @@ mod tests {
     #[tokio::test]
     async fn test_run_ping_scan_with_input_error() {
         let ip_addresses = Err("Failed to parse IP range".to_string());
-        let scan_result = run_ping_scan(ip_addresses).await;
+        let scan_result = run_ping_scan(ip_addresses, None).await;
 
         assert!(scan_result.is_err(), "Scan should return an error for invalid input");
         let error_message = scan_result.unwrap_err();

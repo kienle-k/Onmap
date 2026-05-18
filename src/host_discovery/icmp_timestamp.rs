@@ -20,6 +20,7 @@ use crate::resolving::resolve_hostname;
 /// per-host results and a summary of the entire scan.
 pub async fn run_icmp_timestamp(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
     let ips = ip_addresses?;
@@ -29,7 +30,7 @@ pub async fn run_icmp_timestamp(
 
     for ip in ips {
         futures.push(async move {
-            let icmp_result = icmp_timestamp_host_with_details(&ip).await;
+            let icmp_result = icmp_timestamp_host_with_details(&ip, timeout_override_ms).await;
 
             let mut dns_resolve = None;
             let mut is_reachable = false;
@@ -94,8 +95,14 @@ fn icmp_timestamp_origin_ms() -> u32 {
 /// Sends a single ICMP Timestamp Request and waits for a reply.
 async fn icmp_timestamp_host_with_details(
     ip: &Ipv4Addr,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(bool, Option<Duration>, Option<u8>), String> {
     let ip = *ip;
+
+    const DEFAULT_RECEIVE_TIMEOUT_MS: u64 = 2_000;
+    const DEFAULT_OUTER_PADDING_MS: u64 = 1_000;
+    let receive_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_RECEIVE_TIMEOUT_MS);
+    let outer_timeout_ms = receive_timeout_ms + DEFAULT_OUTER_PADDING_MS;
 
     let task = task::spawn_blocking(move || {
         let protocol = TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp));
@@ -141,7 +148,7 @@ async fn icmp_timestamp_host_with_details(
 
         let mut iter = icmp_packet_iter(&mut rx);
         let receive_start_time = Instant::now();
-        let timeout_duration = Duration::from_secs(2);
+        let timeout_duration = Duration::from_millis(receive_timeout_ms);
 
         while receive_start_time.elapsed() < timeout_duration {
             let remaining_time = timeout_duration.saturating_sub(receive_start_time.elapsed());
@@ -176,7 +183,7 @@ async fn icmp_timestamp_host_with_details(
         Ok((false, None, None))
     });
 
-    match timeout(Duration::from_secs(3), task).await {
+    match timeout(Duration::from_millis(outer_timeout_ms), task).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => {
             let error_msg = format!("ICMP timestamp task failed for {}: {}", ip, e);

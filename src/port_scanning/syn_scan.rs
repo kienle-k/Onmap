@@ -25,6 +25,7 @@ use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResul
 /// * `port` - The target port number to scan.
 /// * `local_ip_address` - The source `Ipv4Addr` to use for the packet.
 /// * `protocols` - A map of protocols and services for service name resolution.
+/// * `timeout_override_ms` - Optional receive timeout in milliseconds.
 ///
 /// # Returns
 ///
@@ -35,7 +36,13 @@ use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResul
 ///
 /// This function will return an `Err` if it fails to create the transport channel,
 /// which typically requires administrator/root privileges. It also returns an error for IPv6 addresses.
-pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4Addr, protocols: Arc<ProtocolMap>) -> Result<PortScanSingleResult, String> {
+pub async fn port_syn_scan(
+    ip_address: IpAddr,
+    port: u16,
+    local_ip_address: Ipv4Addr,
+    protocols: Arc<ProtocolMap>,
+    timeout_override_ms: Option<u64>,
+) -> Result<PortScanSingleResult, String> {
     // Only IPv4 is supported for this implementation
     let ipv4 = match ip_address {
         IpAddr::V4(ipv4) => ipv4,
@@ -81,10 +88,13 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
     let protocols_clone_for_response = Arc::clone(&protocols);
     let rx_clone = Arc::clone(&rx);
 
+    const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+    let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
+
     let response_task = tokio::task::spawn_blocking(move || {
         let mut rx_guard = rx_clone.lock().expect("Mutex was poisoned");
         let mut iter = tcp_packet_iter(&mut *rx_guard);
-        let timeout_duration = Duration::from_millis(800);
+        let timeout_duration = Duration::from_millis(read_timeout_ms);
         let start_time = Instant::now();
 
         loop {
@@ -164,7 +174,8 @@ pub async fn port_syn_scan(ip_address: IpAddr, port: u16, local_ip_address: Ipv4
 pub async fn run_syn_scan(
     ip_address_arr: Result<Vec<Ipv4Addr>, String>,
     ports_arr: Vec<u16>,
-    local_ip_address: Ipv4Addr
+    local_ip_address: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     let ip_addresses = match ip_address_arr {
         Ok(ips) => ips,
@@ -205,7 +216,7 @@ pub async fn run_syn_scan(
                 // Increment packets sent counter safely
                 *packets_sent_clone.lock().expect("Mutex was poisoned") += 1;
                 
-                match port_syn_scan(IpAddr::V4(ip), port, local_ip_address, protocols_clone).await {
+                match port_syn_scan(IpAddr::V4(ip), port, local_ip_address, protocols_clone, timeout_override_ms).await {
                     Ok(result) => {
                         // If port is open, add it to the shared list of open ports
                         if result.port_state == PortStates::Open {
@@ -261,7 +272,7 @@ mod tests {
         let ports = vec![80];
         let local_ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let result = run_syn_scan(ips, ports, local_ip).await;
+        let result = run_syn_scan(ips, ports, local_ip, None).await;
 
         assert!(result.is_err());
         let err_msg = result.expect_err("Expected run_syn_scan to fail");

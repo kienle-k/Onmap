@@ -16,12 +16,15 @@ async fn udp_probe_with_details(
     target_ip: Ipv4Addr,
     port: u16,
     source_ip: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
 ) -> (PortStates, PortStateReasons) {
     const ATTEMPTS: usize = 2;
     const MIN_SUCCESS: usize = 2;
-    const READ_TIMEOUT_MS: u64 = 800;
+    const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
     const RETRY_DELAY_MS: u64 = 50;
-    const OUTER_TIMEOUT_MS: u64 = (ATTEMPTS as u64 * (READ_TIMEOUT_MS + RETRY_DELAY_MS)) + 200;
+    const OUTER_PADDING_MS: u64 = 200;
+    let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
+    let outer_timeout_ms = (ATTEMPTS as u64 * (read_timeout_ms + RETRY_DELAY_MS)) + OUTER_PADDING_MS;
 
     let task = task::spawn_blocking(move || {
         let mut success_count = 0usize;
@@ -37,7 +40,7 @@ async fn udp_probe_with_details(
                 .map_err(|e| format!("Failed to connect UDP socket to {}:{}: {}", target_ip, port, e))?;
 
             socket
-                .set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)))
+                .set_read_timeout(Some(Duration::from_millis(read_timeout_ms)))
                 .map_err(|e| format!("Failed to set UDP read timeout: {}", e))?;
 
             let payload = [0u8; 8];
@@ -76,7 +79,7 @@ async fn udp_probe_with_details(
         Ok((PortStates::OpenOrFiltered, PortStateReasons::Timeout))
     });
 
-    match timeout(Duration::from_millis(OUTER_TIMEOUT_MS), task).await {
+    match timeout(Duration::from_millis(outer_timeout_ms), task).await {
         Ok(Ok(result)) => result.expect("UDP probe task should return a result"),
         Ok(Err(e)) => {
             eprintln!("UDP probe failed for {}:{}: {}", target_ip, port, e);
@@ -91,6 +94,7 @@ pub async fn run_udp_scan(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
     ports: Vec<u16>,
     local_ip: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     let ips = match ip_addresses {
         Ok(ips) => ips,
@@ -117,7 +121,7 @@ pub async fn run_udp_scan(
 
             futs.push(async move {
                 let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
-                let (state, reason) = udp_probe_with_details(ip, port, source_ip).await;
+                let (state, reason) = udp_probe_with_details(ip, port, source_ip, timeout_override_ms).await;
 
                 PortScanSingleResult {
                     ip_address: IpAddr::V4(ip),

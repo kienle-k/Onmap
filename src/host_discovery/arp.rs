@@ -16,6 +16,7 @@ use crate::resolving::resolve_hostname;
 /// Runs an ARP scan against a list of target IP addresses on the local network.
 pub async fn run_arp(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
     let ips = ip_addresses?;
@@ -37,7 +38,7 @@ pub async fn run_arp(
     for ip in ips {
         let interface = interface.clone();
         futures.push(async move {
-            let arp_result = arp_ping_host_with_details(interface, source_mac, local_ip, ip).await;
+            let arp_result = arp_ping_host_with_details(interface, source_mac, local_ip, ip, timeout_override_ms).await;
 
             let mut dns_resolve = None;
             let mut is_reachable = false;
@@ -105,10 +106,18 @@ async fn arp_ping_host_with_details(
     source_mac: MacAddr,
     source_ip: Ipv4Addr,
     target_ip: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(bool, Option<Duration>, Option<u8>), String> {
+    const DEFAULT_READ_TIMEOUT_MS: u64 = 200;
+    const DEFAULT_SCAN_WINDOW_MS: u64 = 2_000;
+    const DEFAULT_OUTER_PADDING_MS: u64 = 1_000;
+    let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
+    let scan_window_ms = timeout_override_ms.unwrap_or(DEFAULT_SCAN_WINDOW_MS);
+    let outer_timeout_ms = scan_window_ms + DEFAULT_OUTER_PADDING_MS;
+
     let task = task::spawn_blocking(move || {
         let mut config = datalink::Config::default();
-        config.read_timeout = Some(Duration::from_millis(200));
+        config.read_timeout = Some(Duration::from_millis(read_timeout_ms));
 
         let (mut tx, mut rx) = match datalink::channel(&interface, config) {
             Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
@@ -138,7 +147,7 @@ async fn arp_ping_host_with_details(
         let start_time = Instant::now();
         let _ = tx.send_to(ethernet_packet.packet(), None).expect("Failed to send ARP request");
 
-        let timeout_duration = Duration::from_secs(2);
+        let timeout_duration = Duration::from_millis(scan_window_ms);
         while start_time.elapsed() < timeout_duration {
             match rx.next() {
                 Ok(packet) => {
@@ -167,7 +176,7 @@ async fn arp_ping_host_with_details(
         Ok((false, None, None))
     });
 
-    match timeout(Duration::from_secs(3), task).await {
+    match timeout(Duration::from_millis(outer_timeout_ms), task).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => {
             let error_msg = format!("ARP task failed for {}: {}", target_ip, e);

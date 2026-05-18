@@ -21,6 +21,7 @@ pub async fn run_tcp_ack_discovery(
     ip_addresses: Result<Vec<Ipv4Addr>, String>,
     ports: Vec<u16>,
     local_ip_address: Ipv4Addr,
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
     let ips = ip_addresses?;
@@ -56,7 +57,7 @@ pub async fn run_tcp_ack_discovery(
             futures.push(async move {
                 let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
                 let start = Instant::now();
-                let (is_unfiltered, ttl) = port_ack_scan(ip, port, source_ip).await;
+                let (is_unfiltered, ttl) = port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
                 let latency = start.elapsed();
                 (ip, port, latency, is_unfiltered, ttl)
             });

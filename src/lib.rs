@@ -51,9 +51,6 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
     io::stdout().flush()?;
 
 
-    // for tcp connect scan
-    let connect_timeout: u64 = 300;
-
     // Get the local source IP for proper checksum calculation
     let local_ip_address: Ipv4Addr = match local_ip() {
         Ok(ip) => match ip {
@@ -152,7 +149,6 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
     let (host_result_opt, port_result_opt) = match execute_command(
         command,
         local_ip_address,
-        connect_timeout,
         use_original_printing,
     ).await {
         Ok(result) => result,
@@ -230,6 +226,7 @@ fn build_command_from_tui(
                 method,
                 targets,
                 ports,
+                timeout_override_ms: None,
             }
         }
         MainMenuItem::SubMenuPortScan => {
@@ -239,6 +236,7 @@ fn build_command_from_tui(
                 method,
                 targets,
                 ports,
+                timeout_override_ms: None,
             }
         }
         MainMenuItem::SubMenuServiceDetection => ExecutionCommand::ServiceDetection { targets },
@@ -251,60 +249,71 @@ fn build_command_from_tui(
 fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String> {
     let command = match &cli.command {
         None => return Ok(None),
-        Some(ScanCommand::SynScan { ports, ips }) => ExecutionCommand::PortScan {
+        Some(ScanCommand::SynScan { ports, timeout_ms, ips }) => ExecutionCommand::PortScan {
             method: PortScanOption::SynScan,
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::ConnectScan { ports, ips }) => ExecutionCommand::PortScan {
+        Some(ScanCommand::ConnectScan { ports, timeout_ms, ips }) => ExecutionCommand::PortScan {
             method: PortScanOption::ConnectScan,
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::AckScan { ports, ips }) => ExecutionCommand::PortScan {
+        Some(ScanCommand::AckScan { ports, timeout_ms, ips }) => ExecutionCommand::PortScan {
             method: PortScanOption::AckScan,
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::UdpScan { ports, ips }) => ExecutionCommand::PortScan {
+        Some(ScanCommand::UdpScan { ports, timeout_ms, ips }) => ExecutionCommand::PortScan {
             method: PortScanOption::UdpScan,
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::PingScan { ips }) => ExecutionCommand::HostDiscovery {
+        Some(ScanCommand::PingScan { timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::PingScan,
             targets: parse_targets(ips)?,
             ports: None,
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::IcmpEcho { ips }) => ExecutionCommand::HostDiscovery {
+        Some(ScanCommand::IcmpEcho { timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::IcmpEcho,
             targets: parse_targets(ips)?,
             ports: None,
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::IcmpTimestamp { ips }) => ExecutionCommand::HostDiscovery {
+        Some(ScanCommand::IcmpTimestamp { timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::IcmpTimestamp,
             targets: parse_targets(ips)?,
             ports: None,
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::Arp { ips }) => ExecutionCommand::HostDiscovery {
+        Some(ScanCommand::Arp { timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::ArpDiscovery,
             targets: parse_targets(ips)?,
             ports: None,
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::SynDiscovery { ports, ips }) => ExecutionCommand::HostDiscovery {
+        Some(ScanCommand::SynDiscovery { ports, timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::TcpSynDiscovery,
             targets: parse_targets(ips)?,
             ports: Some(parse_ports_spec(ports.as_ref())?),
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::AckDiscovery { ports, ips }) => ExecutionCommand::HostDiscovery {
+        Some(ScanCommand::AckDiscovery { ports, timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::TcpAckDiscovery,
             targets: parse_targets(ips)?,
             ports: Some(parse_ports_spec(ports.as_ref())?),
+            timeout_override_ms: *timeout_ms,
         },
-        Some(ScanCommand::UdpDiscovery { ports, ips }) => ExecutionCommand::HostDiscovery {
+        Some(ScanCommand::UdpDiscovery { ports, timeout_ms, ips }) => ExecutionCommand::HostDiscovery {
             method: HostDiscoveryOption::UdpDiscovery,
             targets: parse_targets(ips)?,
             ports: Some(parse_ports_spec(ports.as_ref())?),
+            timeout_override_ms: *timeout_ms,
         },
     };
 
@@ -358,7 +367,6 @@ fn requires_root(cmd: &ExecutionCommand) -> bool {
 async fn execute_command(
     command: ExecutionCommand,
     local_ip_address: Ipv4Addr,
-    connect_timeout: u64,
     use_original_printing: bool,
 ) -> Result<(Option<HostDiscoveryResult>, Option<PortScanResult>), String> {
 
@@ -369,7 +377,7 @@ async fn execute_command(
     }
     
     match command {
-        ExecutionCommand::HostDiscovery { method, targets, ports } => {
+        ExecutionCommand::HostDiscovery { method, targets, ports, timeout_override_ms } => {
             let ipv4_targets = to_ipv4_vec(&targets)?;
 
             let result = match method {
@@ -377,22 +385,22 @@ async fn execute_command(
                     println!("Doing ListScan (Implementation coming soon)");
                     return Ok((None, None));
                 }
-                HostDiscoveryOption::PingScan => host_discovery::run_ping_scan(Ok(ipv4_targets)).await?,
+                HostDiscoveryOption::PingScan => host_discovery::run_ping_scan(Ok(ipv4_targets), timeout_override_ms).await?,
                 HostDiscoveryOption::TcpSynDiscovery => {
                     let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
-                    host_discovery::run_tcp_syn_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
+                    host_discovery::run_tcp_syn_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
                 }
                 HostDiscoveryOption::TcpAckDiscovery => {
                     let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
-                    host_discovery::run_tcp_ack_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
+                    host_discovery::run_tcp_ack_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
                 }
                 HostDiscoveryOption::UdpDiscovery => {
                     let ports = ports.ok_or_else(|| "Ports array could not be set".to_string())?;
-                    host_discovery::run_udp_discovery(Ok(ipv4_targets), ports, local_ip_address).await?
+                    host_discovery::run_udp_discovery(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
                 }
-                HostDiscoveryOption::ArpDiscovery => host_discovery::run_arp(Ok(ipv4_targets)).await?,
-                HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(Ok(ipv4_targets)).await?,
-                HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(Ok(ipv4_targets)).await?,
+                HostDiscoveryOption::ArpDiscovery => host_discovery::run_arp(Ok(ipv4_targets), timeout_override_ms).await?,
+                HostDiscoveryOption::IcmpEcho => host_discovery::run_icmp_echo(Ok(ipv4_targets), timeout_override_ms).await?,
+                HostDiscoveryOption::IcmpTimestamp => host_discovery::run_icmp_timestamp(Ok(ipv4_targets), timeout_override_ms).await?,
                 HostDiscoveryOption::IcmpNetmask => {
                     run_icmp_netmask();
                     return Ok((None, None));
@@ -407,13 +415,13 @@ async fn execute_command(
 
             Ok((Some(result), None))
         }
-        ExecutionCommand::PortScan { method, targets, ports } => {
+        ExecutionCommand::PortScan { method, targets, ports, timeout_override_ms } => {
             let ipv4_targets = to_ipv4_vec(&targets)?;
 
             let result = match method {
-                PortScanOption::SynScan => port_scanning::run_syn_scan(Ok(ipv4_targets), ports, local_ip_address).await?,
-                PortScanOption::ConnectScan => port_scanning::run_connect_scan(Ok(ipv4_targets), ports, connect_timeout).await?,
-                PortScanOption::AckScan => port_scanning::run_ack_scan(Ok(ipv4_targets), &ports, local_ip_address).await?,
+                PortScanOption::SynScan => port_scanning::run_syn_scan(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?,
+                PortScanOption::ConnectScan => port_scanning::run_connect_scan(Ok(ipv4_targets), ports, timeout_override_ms).await?,
+                PortScanOption::AckScan => port_scanning::run_ack_scan(Ok(ipv4_targets), &ports, local_ip_address, timeout_override_ms).await?,
                 PortScanOption::WindowScan => {
                     println!("Doing WindowScan (Implementation coming soon)");
                     return Ok((None, None));
@@ -434,7 +442,7 @@ async fn execute_command(
                     println!("Doing XmasScan (Implementation coming soon)");
                     return Ok((None, None));
                 }
-                PortScanOption::UdpScan => port_scanning::run_udp_scan(Ok(ipv4_targets), ports, local_ip_address).await?
+                PortScanOption::UdpScan => port_scanning::run_udp_scan(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
             };
 
             if use_original_printing {

@@ -51,6 +51,9 @@ pub enum ScanCommand {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
         #[arg(short = 'p', long="ports")]
         ports: Option<String>,
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "Targets")]
         ips: String,
@@ -61,6 +64,9 @@ pub enum ScanCommand {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
         #[arg(short = 'p', long="ports")]
         ports: Option<String>,
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -71,6 +77,9 @@ pub enum ScanCommand {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
         #[arg(short = 'p', long="ports")]
         ports: Option<String>,
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -81,6 +90,9 @@ pub enum ScanCommand {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
         #[arg(short = 'p', long="ports")]
         ports: Option<String>,
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -88,6 +100,9 @@ pub enum ScanCommand {
     /// Ping scan (Host Discovery)
     #[command(name = "-sn", aliases = ["sn"])]
     PingScan {
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -95,6 +110,9 @@ pub enum ScanCommand {
     /// ICMP Echo scan (Host Discovery)
     #[command(name = "-PE", aliases = ["PE"])]
     IcmpEcho {
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -102,6 +120,9 @@ pub enum ScanCommand {
     /// ICMP Timestamp scan (Host Discovery)
     #[command(name = "-PP", aliases = ["PP"])]
     IcmpTimestamp {
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -109,6 +130,9 @@ pub enum ScanCommand {
     /// ARP scan (Host Discovery)
     #[command(name = "-PR", aliases = ["PR"])]
     Arp {
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -120,6 +144,9 @@ pub enum ScanCommand {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
         #[arg(short = 'p', long="ports")]
         ports: Option<String>,
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -131,6 +158,9 @@ pub enum ScanCommand {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
         #[arg(short = 'p', long="ports")]
         ports: Option<String>,
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -142,6 +172,9 @@ pub enum ScanCommand {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
         #[arg(short = 'p', long="ports")]
         ports: Option<String>,
+        /// Override scan timeout in milliseconds
+        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
+        timeout_ms: Option<u64>,
         /// Target IP address, IP address list, IP range or CIDR
         #[arg(value_name = "TARGETS")]
         ips: String,
@@ -155,11 +188,13 @@ pub enum ExecutionCommand {
         method: HostDiscoveryOption,
         targets: Vec<IpAddr>,
         ports: Option<Vec<u16>>,
+        timeout_override_ms: Option<u64>,
     },
     PortScan {
         method: PortScanOption,
         targets: Vec<IpAddr>,
         ports: Vec<u16>,
+        timeout_override_ms: Option<u64>,
     },
     ServiceDetection {
         targets: Vec<IpAddr>,
