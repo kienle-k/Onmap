@@ -1,8 +1,6 @@
 // --- Module declarations ---
 mod host_discovery;
 mod port_scanning;
-mod service_detection;
-mod os_detection;
 mod tui;
 
 // --- Public API modules ---
@@ -37,8 +35,6 @@ use futures::future::try_join_all;
 use models::{Cli, ExecutionCommand, ScanCommand, HostDiscoveryAllResult, HostDiscoverySingleResult, HostDiscoverySpec, PortOptions, MainMenuItem, HostDiscoveryOption, PortScanOption, PortScanAllResult, PortScanSingleResult};
 use printing::{print_port_scan_results, print_host_discovery_results, print_port_scan_results_original, print_host_discovery_results_original};
 use crate::host_discovery::{run_icmp_netmask};
-use crate::os_detection::run_os_detection;
-use crate::service_detection::run_service_detection;
 use crate::tui::{run_app, App};
 use crate::output::{save_to_file_xml_host_discovery, save_to_file_xml_port_scan};
 
@@ -244,10 +240,11 @@ fn build_command_from_tui(
                 targets,
                 ports,
                 timeout_override_ms: None,
+                service_version: false,
+                os_detection: false,
+                script: None,
             }
         }
-        MainMenuItem::SubMenuServiceDetection => ExecutionCommand::ServiceDetection { targets },
-        MainMenuItem::SubMenuOperatingSystemDetection => ExecutionCommand::OsDetection { targets },
     };
 
     Ok(Some(command))
@@ -280,24 +277,36 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
             timeout_override_ms: *timeout_ms,
+            service_version: cli.service_version,
+            os_detection: cli.os_detection,
+            script: cli.script.clone(),
         },
         Some(ScanCommand::ConnectScan { ports, timeout_ms, ips }) => ExecutionCommand::PortScan {
             method: PortScanOption::ConnectScan,
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
             timeout_override_ms: *timeout_ms,
+            service_version: cli.service_version,
+            os_detection: cli.os_detection,
+            script: cli.script.clone(),
         },
         Some(ScanCommand::AckScan { ports, timeout_ms, ips }) => ExecutionCommand::PortScan {
             method: PortScanOption::AckScan,
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
             timeout_override_ms: *timeout_ms,
+            service_version: cli.service_version,
+            os_detection: cli.os_detection,
+            script: cli.script.clone(),
         },
         Some(ScanCommand::UdpScan { ports, timeout_ms, ips }) => ExecutionCommand::PortScan {
             method: PortScanOption::UdpScan,
             targets: parse_targets(ips)?,
             ports: parse_ports_spec(ports.as_ref())?,
             timeout_override_ms: *timeout_ms,
+            service_version: cli.service_version,
+            os_detection: cli.os_detection,
+            script: cli.script.clone(),
         },
     };
 
@@ -451,8 +460,63 @@ fn requires_root(cmd: &ExecutionCommand) -> bool {
                     | HostDiscoveryOption::UdpDiscovery
             )
         }),
-        ExecutionCommand::ServiceDetection { .. } | ExecutionCommand::OsDetection { .. } => false,
     }
+}
+
+async fn run_nmap_post_scan(
+    targets: &[Ipv4Addr],
+    open_ports: &[u16],
+    is_udp: bool,
+    service_version: bool,
+    os_detection: bool,
+    script: Option<&str>,
+) -> Result<(), String> {
+    if open_ports.is_empty() {
+        println!("\nNo open ports found — skipping nmap post-scan detection.");
+        return Ok(());
+    }
+
+    let port_list: String = if is_udp {
+        open_ports.iter().map(|p| format!("U:{}", p)).collect::<Vec<_>>().join(",")
+    } else {
+        open_ports.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(",")
+    };
+
+    let mut args: Vec<String> = Vec::new();
+
+    if is_udp         { args.push("-sU".to_string()); }
+    if service_version { args.push("-sV".to_string()); }
+    if os_detection    { args.push("-O".to_string()); }
+    if let Some(s)     = script { args.push(format!("--script={}", s)); }
+
+    args.push("-p".to_string());
+    args.push(port_list);
+
+    for ip in targets {
+        args.push(ip.to_string());
+    }
+
+    println!("---------- Nmap Post-Scan ----------");
+    println!("Running: nmap {}", args.join(" "));
+    println!();
+
+    let status = tokio::process::Command::new("nmap")
+        .args(&args)
+        .status()
+        .await
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "nmap not found — please install nmap to use post-scan detection.".to_string()
+            } else {
+                format!("Failed to launch nmap: {}", e)
+            }
+        })?;
+
+    if !status.success() {
+        eprintln!("nmap exited with status: {}", status);
+    }
+
+    Ok(())
 }
 
 async fn execute_command(
@@ -493,8 +557,9 @@ async fn execute_command(
 
             Ok((Some(result), None))
         }
-        ExecutionCommand::PortScan { method, targets, ports, timeout_override_ms } => {
+        ExecutionCommand::PortScan { method, targets, ports, timeout_override_ms, service_version, os_detection, script } => {
             let ipv4_targets = to_ipv4_vec(&targets)?;
+            let nmap_targets = ipv4_targets.clone();
 
             let result = match method {
                 PortScanOption::SynScan => port_scanning::run_syn_scan(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?,
@@ -529,15 +594,12 @@ async fn execute_command(
                 print_port_scan_results(&result);
             }
 
+            if service_version || os_detection || script.is_some() {
+                let is_udp = method == PortScanOption::UdpScan;
+                run_nmap_post_scan(&nmap_targets, &result.1.open_ports, is_udp, service_version, os_detection, script.as_deref()).await?;
+            }
+
             Ok((None, Some(result)))
-        }
-        ExecutionCommand::ServiceDetection { .. } => {
-            run_service_detection();
-            Ok((None, None))
-        }
-        ExecutionCommand::OsDetection { .. } => {
-            run_os_detection();
-            Ok((None, None))
         }
     }
 }
@@ -803,7 +865,7 @@ mod tests {
             .expect("port scan command should be present");
 
         match command {
-            ExecutionCommand::PortScan { method, ports, targets, timeout_override_ms } => {
+            ExecutionCommand::PortScan { method, ports, targets, timeout_override_ms, .. } => {
                 assert_eq!(method, PortScanOption::ConnectScan);
                 assert_eq!(ports, vec![22]);
                 assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);

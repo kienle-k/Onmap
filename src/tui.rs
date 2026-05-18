@@ -166,14 +166,6 @@ pub fn run_app<B: Backend>(
                             app.select(MainMenuItem::SubMenuPortScan);
                             app.state = AppState::SubMenuPortScan;
                         }
-                        KeyCode::Char('3') => {
-                            app.select(MainMenuItem::SubMenuServiceDetection);
-                            app.state = AppState::IpAddressInput;
-                        }
-                        KeyCode::Char('4') => {
-                            app.select(MainMenuItem::SubMenuOperatingSystemDetection);
-                            app.state = AppState::IpAddressInput;
-                        }
                         _ => {}
                     }
                 }
@@ -521,22 +513,7 @@ fn ui(f: &mut Frame, app: &App) {
                         )
                     )
                 ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
-                            "3. Service detection",
-                            Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
-                            "4. OS detection",
-                            Style::default().fg(Color::White),
-                        )
-                    )
-                ),
+
             ];
 
             // Create menu list

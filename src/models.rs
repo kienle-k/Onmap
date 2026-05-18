@@ -96,6 +96,18 @@ pub struct Cli {
         help = "Output scan in XML format"
     )]
     pub output_xml: Option<String>,
+
+    /// Service and version detection via nmap (post-scan)
+    #[arg(long = "sV", global = true, help = "Run nmap service/version detection on open ports after scan", action = ArgAction::SetTrue)]
+    pub service_version: bool,
+
+    /// OS detection via nmap (post-scan)
+    #[arg(long = "sO", global = true, help = "Run nmap OS detection on open ports after scan", action = ArgAction::SetTrue)]
+    pub os_detection: bool,
+
+    /// Run nmap scripts on open ports after scan (e.g. --script=default, --script=http-title, --script="vuln,safe")
+    #[arg(long = "script", global = true, value_name = "SCRIPTS", help = "Run nmap script(s) on open ports after scan")]
+    pub script: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -173,6 +185,12 @@ impl Cli {
                 Some("-PS") => normalized.push(OsString::from("--PS")),
                 Some("-PA") => normalized.push(OsString::from("--PA")),
                 Some("-PU") => normalized.push(OsString::from("--PU")),
+                Some("-sV") => normalized.push(OsString::from("--sV")),
+                Some("-O")  => normalized.push(OsString::from("--sO")),
+                Some("-sC") => {
+                    normalized.push(OsString::from("--script"));
+                    normalized.push(OsString::from("default"));
+                }
                 Some(value) => {
                     if let Some(ports_spec) = value.strip_prefix("-PS") {
                         if ports_spec.is_empty() {
@@ -251,12 +269,9 @@ pub enum ExecutionCommand {
         targets: Vec<IpAddr>,
         ports: Vec<u16>,
         timeout_override_ms: Option<u64>,
-    },
-    ServiceDetection {
-        targets: Vec<IpAddr>,
-    },
-    OsDetection {
-        targets: Vec<IpAddr>,
+        service_version: bool,
+        os_detection: bool,
+        script: Option<String>,
     },
 }
 
@@ -290,10 +305,6 @@ pub enum MainMenuItem {
     SubMenuHostDiscovery,
     /// Option to perform a port scan.
     SubMenuPortScan,
-    /// Option to perform service and version detection (not yet implemented).
-    SubMenuServiceDetection,
-    /// Option to perform operating system detection (not yet implemented).
-    SubMenuOperatingSystemDetection,
 }
 
 /// Defines the different techniques available for host discovery.
