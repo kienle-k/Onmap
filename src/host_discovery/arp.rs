@@ -40,7 +40,7 @@ pub async fn run_arp(
         futures.push(async move {
             let arp_result = arp_ping_host_with_details(interface, source_mac, local_ip, ip, timeout_override_ms).await;
 
-            let mut dns_resolve = None;
+            let dns_resolve = None;
             let mut is_reachable = false;
             let mut latency = None;
             let ttl = 0;
@@ -52,7 +52,6 @@ pub async fn run_arp(
                     latency = lat;
                     if is_reachable {
                         reply_type = "ARP reply".to_string();
-                        dns_resolve = resolve_hostname(&ip).await;
                     }
                 }
                 Err(e) => {
@@ -76,6 +75,23 @@ pub async fn run_arp(
         host_results.push(result);
     }
 
+    let dns_start = Instant::now();
+    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+        .filter_map(|(i, r)| match r.ip_address {
+            IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
+            _ => None,
+        })
+        .collect();
+    let dns_resolved = futures::future::join_all(
+        dns_tasks.into_iter().map(|(i, ipv4)| async move {
+            (i, resolve_hostname(&ipv4).await)
+        })
+    ).await;
+    for (idx, hostname) in dns_resolved {
+        host_results[idx].dns_resolve = hostname;
+    }
+    let dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
+
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
     let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
     let end_time = SystemTime::now();
@@ -88,6 +104,7 @@ pub async fn run_arp(
         start_time,
         end_time,
         packets_sent: host_results.len() as u64,
+        dns_elapsed_secs,
     };
 
     Ok((host_results, summary))

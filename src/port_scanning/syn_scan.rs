@@ -221,12 +221,13 @@ pub async fn run_syn_scan(
                         // If port is open, add it to the shared list of open ports
                         if result.port_state == PortStates::Open {
                             open_ports_clone.lock().expect("Mutex was poisoned").push(port);
+                            log::info!("Discovered open port {}/tcp on {}", port, ip);
                         }
                         // Add the detailed result to the shared list of all results
                         single_results_clone.lock().expect("Mutex was poisoned").push(result);
                     }
                     Err(e) => {
-                        eprintln!("Error scanning {}:{}: {}", ip, port, e);
+                        log::warn!("Error scanning {}:{}: {}", ip, port, e);
                     }
                 }
             });

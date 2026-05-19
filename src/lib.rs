@@ -53,6 +53,18 @@ pub async fn run_onmap(cli : Cli) -> Result<(), io::Error> {
     // This is a quick fix for an issue where the TUI doesn't display inside the container
     io::stdout().flush()?;
 
+    env_logger::Builder::new()
+    .target(env_logger::Target::Stdout)
+    .format(|buf, record| writeln!(buf, "{}", record.args()))
+    .filter_level(log::LevelFilter::Warn)          // all other crates: Warn only
+    .filter_module("onmap", match cli.verbosity {  // only onmap follows -v flags
+        0 => log::LevelFilter::Warn,
+        1 => log::LevelFilter::Info,
+        2 => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Trace,
+    })
+    .init();
+
 
     // Get the local source IP for proper checksum calculation
     let local_ip_address: Ipv4Addr = match local_ip() {
@@ -587,6 +599,28 @@ async fn execute_command(
     match command {
         ExecutionCommand::HostDiscovery { methods, targets, timeout_override_ms } => {
             let ipv4_targets = to_ipv4_vec(&targets)?;
+            let num_targets = ipv4_targets.len();
+
+            let scan_type_names: Vec<&str> = methods.iter().map(|s| match s.method {
+                HostDiscoveryOption::PingScan       => "Ping Scan",
+                HostDiscoveryOption::IcmpEcho       => "ICMP Echo Ping Scan",
+                HostDiscoveryOption::IcmpTimestamp  => "ICMP Timestamp Ping Scan",
+                HostDiscoveryOption::IcmpNetmask    => "ICMP Netmask Ping Scan",
+                HostDiscoveryOption::ArpDiscovery   => "ARP Ping Scan",
+                HostDiscoveryOption::TcpSynDiscovery => "SYN Ping Scan",
+                HostDiscoveryOption::TcpAckDiscovery => "ACK Ping Scan",
+                HostDiscoveryOption::UdpDiscovery   => "UDP Ping Scan",
+                HostDiscoveryOption::ListScan       => "List Scan",
+            }).collect();
+            let ports_per_host: usize = methods.iter()
+                .map(|s| s.ports.as_ref().map(|p| p.len()).unwrap_or(1))
+                .max()
+                .unwrap_or(1);
+
+            for name in &scan_type_names {
+                log::info!("Initiating {} at {}", name, Local::now().format("%H:%M"));
+            }
+            log::info!("Scanning {} hosts [{} port/host]", num_targets, ports_per_host);
 
             let result = if methods.len() == 1 {
                 match run_host_discovery_spec(
@@ -602,17 +636,59 @@ async fn execute_command(
                 run_multi_host_discovery(methods, ipv4_targets, local_ip_address, timeout_override_ms).await?
             };
 
+            let elapsed = result.1.end_time
+                .duration_since(result.1.start_time)
+                .unwrap_or_default()
+                .as_secs_f64();
+            for name in &scan_type_names {
+                log::info!(
+                    "Completed {} at {}, {:.2}s elapsed ({} total hosts)",
+                    name, Local::now().format("%H:%M"), elapsed, num_targets
+                );
+            }
+
+            let dns_count = result.1.scanned_addresses.len();
+            let dns_ok = result.1.hosts_dns_resolution as usize;
+            let dns_nx = dns_count.saturating_sub(dns_ok);
+            let dns_elapsed = result.1.dns_elapsed_secs;
+            log::info!("Initiating Parallel DNS resolution of {} host(s). at {}", dns_count, Local::now().format("%H:%M"));
+            log::info!("Completed Parallel DNS resolution of {} host(s). at {}, {:.2}s elapsed", dns_count, Local::now().format("%H:%M"), dns_elapsed);
+            log::trace!(
+                "DNS resolution of {} IPs took {:.2}s. Mode: Async [#: {}, OK: {}, NX: {}, DR: 0, SF: 0, TR: {}, CN: 0]",
+                dns_count, dns_elapsed, dns_count, dns_ok, dns_nx, dns_count
+            );
+
             if use_original_printing {
                 print_host_discovery_results_original(&result);
             } else {
                 print_host_discovery_results(&result);
             }
 
+            log::info!("Read data files from: src/resolving/port_service_mapping.json");
+            log::info!("Raw packets sent: {}", result.1.packets_sent);
+
             Ok((Some(result), None))
         }
         ExecutionCommand::PortScan { method, targets, ports, timeout_override_ms, service_version, os_detection, script } => {
             let ipv4_targets = to_ipv4_vec(&targets)?;
             let nmap_targets = ipv4_targets.clone();
+
+            let num_ports = ports.len();
+            let target_display = if ipv4_targets.len() == 1 {
+                ipv4_targets[0].to_string()
+            } else {
+                format!("{} hosts", ipv4_targets.len())
+            };
+            let scan_type_name = match method {
+                PortScanOption::SynScan => "SYN Stealth Scan",
+                PortScanOption::ConnectScan => "TCP Connect Scan",
+                PortScanOption::AckScan => "ACK Scan",
+                PortScanOption::UdpScan => "UDP Scan",
+                _ => "Port Scan",
+            };
+
+            log::info!("Initiating {} at {}", scan_type_name, Local::now().format("%H:%M"));
+            log::info!("Scanning {} [{} ports]", target_display, num_ports);
 
             let result = match method {
                 PortScanOption::SynScan => port_scanning::run_syn_scan(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?,
@@ -641,11 +717,26 @@ async fn execute_command(
                 PortScanOption::UdpScan => port_scanning::run_udp_scan(Ok(ipv4_targets), ports, local_ip_address, timeout_override_ms).await?
             };
 
+            let elapsed = result.1.end_time
+                .duration_since(result.1.start_time)
+                .unwrap_or_default()
+                .as_secs_f64();
+            log::info!(
+                "Completed {} at {}, {:.2}s elapsed ({} total ports)",
+                scan_type_name,
+                Local::now().format("%H:%M"),
+                elapsed,
+                result.1.ports_scanned
+            );
+
             if use_original_printing {
                 print_port_scan_results_original(&result).await;
             } else {
                 print_port_scan_results(&result);
             }
+
+            log::info!("Read data files from: src/resolving/port_service_mapping.json");
+            log::info!("Raw packets sent: {}", result.1.packets_sent);
 
             if service_version || os_detection || script.is_some() {
                 let is_udp = method == PortScanOption::UdpScan;
@@ -789,6 +880,7 @@ fn merge_host_discovery_results(results: Vec<HostDiscoveryResult>) -> HostDiscov
             start_time: start_time.unwrap_or_else(SystemTime::now),
             end_time: end_time.unwrap_or_else(SystemTime::now),
             packets_sent,
+            dns_elapsed_secs: 0.0,
         },
     )
 }
@@ -956,6 +1048,7 @@ mod tests {
                     start_time: start_one,
                     end_time: end_one,
                     packets_sent: 1,
+                    dns_elapsed_secs: 0.0,
                 },
             ),
             (
@@ -977,6 +1070,7 @@ mod tests {
                     start_time: start_two,
                     end_time: end_two,
                     packets_sent: 1,
+                    dns_elapsed_secs: 0.0,
                 },
             ),
         ]);

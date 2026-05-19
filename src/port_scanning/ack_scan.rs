@@ -165,7 +165,11 @@ pub async fn run_ack_scan(
                 // Wait for a permit from the semaphore before starting the scan.
                 let _permit = sem_clone.acquire().await.unwrap();
                 let (is_unfiltered, ttl_option) = port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
-                
+
+                if is_unfiltered {
+                    log::info!("Discovered unfiltered port {}/tcp on {}", port, ip);
+                }
+
                 PortScanSingleResult {
                     ip_address: IpAddr::V4(ip),
                     port,

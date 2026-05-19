@@ -27,5 +27,7 @@ serde_json = "1.0"
 itoa = "1"
 ping = "0.3"
 regex = "1"
+log = "0.4"
+env_logger = "0.11"
 
 

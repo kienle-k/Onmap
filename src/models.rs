@@ -77,6 +77,10 @@ pub struct Cli {
     #[arg(short = 'm', long = "modern-print", global = true, help = "Use modern result printing", action = ArgAction::SetTrue)]
     pub modern_printing: bool,
 
+    /// Increase verbosity level (-v, -vv, -vvv)
+    #[arg(short = 'v', long = "verbose", global = true, action = ArgAction::Count, help = "Increase verbosity (-v, -vv, -vvv)")]
+    pub verbosity: u8,
+
     #[arg(
         name = "output_normal",
         short = 'N',
@@ -512,7 +516,9 @@ pub struct HostDiscoveryAllResult {
     /// The timestamp when the scan completed.
     pub end_time: SystemTime,
     /// The total number of packets sent during the scan.
-    pub packets_sent: u64
+    pub packets_sent: u64,
+    /// Elapsed seconds for the DNS resolution phase only.
+    pub dns_elapsed_secs: f64,
 }
 
 impl HostDiscoveryAllResult {
@@ -525,7 +531,8 @@ impl HostDiscoveryAllResult {
             hosts_dns_resolution: 0,
             start_time: SystemTime::now(),
             end_time: SystemTime::now(),
-            packets_sent: 0
+            packets_sent: 0,
+            dns_elapsed_secs: 0.0,
         }
     }
 }

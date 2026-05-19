@@ -1,72 +1,86 @@
+use std::net::IpAddr;
 use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
 
-
+fn reply_type_to_nmap(reply_type: &str) -> &str {
+    if reply_type.starts_with("SYN-ACK") {
+        "syn-ack"
+    } else if reply_type.starts_with("RST") {
+        "reset"
+    } else if reply_type == "ARP reply" {
+        "arp-response"
+    } else if reply_type == "ICMP echo reply" {
+        "echo-reply"
+    } else if reply_type.contains("timestamp") {
+        "timestamp-reply"
+    } else if reply_type.contains("UDP") {
+        "udp-response"
+    } else {
+        "user-set"
+    }
+}
 
 pub fn print_host_discovery_results_original(results: &(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
-
     println!("");
 
     let (single_results, all_results) = results;
 
+    let show_down   = log::max_level() >= log::LevelFilter::Info;
+    let show_reason = log::max_level() >= log::LevelFilter::Debug;
 
-    // Sort results by IP address for consistent output
-    let reachable_hosts: Vec<&HostDiscoverySingleResult> = single_results.iter()
-        .filter(|host| host.is_up)
-        .collect();
-    
-    if reachable_hosts.is_empty() {
+    // Sort by IP for consistent output
+    let mut sorted: Vec<&HostDiscoverySingleResult> = single_results.iter().collect();
+    sorted.sort_by_key(|h| match h.ip_address {
+        IpAddr::V4(a) => u32::from(a),
+        IpAddr::V6(_) => u32::MAX,
+    });
+
+    let up_hosts: Vec<_> = sorted.iter().filter(|h| h.is_up).copied().collect();
+
+    if !show_down && up_hosts.is_empty() {
         println!("No hosts discovered.");
-    }else {}
-        // Add each host as a row
-        for host in reachable_hosts {
-            let hostname = match &host.dns_resolve {
-                Some(name) => name,
-                None => &String::from("-"),
-            };
+    }
 
-            println!("Onmap scan report for {} ({})", &hostname, &host.ip_address.to_string());
+    for host in &sorted {
+        if !host.is_up {
+            if !show_down {
+                continue;
+            }
+            if show_reason {
+                println!("Onmap scan report for {}  [host down, received no-response]", host.ip_address);
+            } else {
+                println!("Onmap scan report for {}  [host down]", host.ip_address);
+            }
+        } else {
+            let hostname = host.dns_resolve.as_deref().unwrap_or("-");
+            println!("Onmap scan report for {} ({})", hostname, host.ip_address);
 
-            let status = if host.is_up { "up" } else { "down" };
-            
-            let latency = match host.latency {
-                Some(duration) => duration.as_secs_f32() / 10.0,
-                None => -1.0,
-            };  
-            println!("Host is {} ({:.7}s latency)", status, latency);
+            let latency = host.latency
+                .map(|d| d.as_secs_f32() / 10.0)
+                .unwrap_or(-1.0);
+
+            if show_reason {
+                let reply = reply_type_to_nmap(&host.reply_type);
+                println!("Host is up, received {} ({:.7}s latency).", reply, latency);
+            } else {
+                println!("Host is up ({:.7}s latency).", latency);
+            }
             println!("");
+        }
     }
 
     let elapsed_time = match all_results.end_time.duration_since(all_results.start_time) {
         Ok(duration) => format!("{:.2}", duration.as_secs_f32()),
-        Err(_) => String::from("Invalid time calculation"),
+        Err(_) => String::from("0.00"),
     };
 
     let num_hosts_scanned = all_results.scanned_addresses.len();
     let num_hosts_up = all_results.hosts_up;
 
-    if num_hosts_scanned == 0 && num_hosts_up == 0{
-        println!(
-            "Onmap done: {} IP addresses (0 hosts up) scanned in {} seconds",
-            num_hosts_scanned, elapsed_time
-        );        
-    }if num_hosts_scanned == 1 && num_hosts_up == 0{
-        println!(
-            "Onmap done: 1 IP address (0 hosts up) scanned in {} seconds",
-            elapsed_time
-        );        
-    }else if num_hosts_scanned == 1 && num_hosts_up == 1{
-        println!(
-            "Onmap done: 1 IP address (1 host up) scanned in {} seconds",
-            elapsed_time
-        );
-    }else {
-        println!(
-            "Onmap done: {} IP addresses ({} hosts up) scanned in {} seconds",
-            num_hosts_scanned, num_hosts_up, elapsed_time
-        );
+    let hosts_up_str = if num_hosts_up == 1 { format!("1 host up") } else { format!("{} hosts up", num_hosts_up) };
+    if num_hosts_scanned == 1 {
+        println!("Onmap done: 1 IP address ({}) scanned in {} seconds", hosts_up_str, elapsed_time);
+    } else {
+        println!("Onmap done: {} IP addresses ({}) scanned in {} seconds", num_hosts_scanned, hosts_up_str, elapsed_time);
     }
     println!("");
-
-
 }
-

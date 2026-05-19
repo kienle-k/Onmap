@@ -157,7 +157,7 @@ pub async fn run_connect_scan(
                         
                         // If port is open, add it to the open ports list
                         if result.port_state == PortStates::Open {
-                            //println!("Found open port: {}:{}", ip_addr, port);
+                            log::info!("Discovered open port {}/tcp on {}", port, ip_addr);
                             let mut open = match open_ports_clone.lock() {
                                 Ok(guard) => guard,
                                 Err(poisoned) => {

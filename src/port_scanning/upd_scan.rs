@@ -82,7 +82,7 @@ async fn udp_probe_with_details(
     match timeout(Duration::from_millis(outer_timeout_ms), task).await {
         Ok(Ok(result)) => result.expect("UDP probe task should return a result"),
         Ok(Err(e)) => {
-            eprintln!("UDP probe failed for {}:{}: {}", target_ip, port, e);
+            log::warn!("UDP probe failed for {}:{}: {}", target_ip, port, e);
             (PortStates::Filtered, PortStateReasons::Timeout)
         }
         Err(_) => (PortStates::OpenOrFiltered, PortStateReasons::Timeout),
@@ -122,6 +122,10 @@ pub async fn run_udp_scan(
             futs.push(async move {
                 let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
                 let (state, reason) = udp_probe_with_details(ip, port, source_ip, timeout_override_ms).await;
+
+                if state == PortStates::Open {
+                    log::info!("Discovered open port {}/udp on {}", port, ip);
+                }
 
                 PortScanSingleResult {
                     ip_address: IpAddr::V4(ip),

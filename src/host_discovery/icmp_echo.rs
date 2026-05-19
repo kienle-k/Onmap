@@ -41,7 +41,7 @@ pub async fn run_icmp_echo(
         futures.push(async move {
             let icmp_result = icmp_ping_host_with_details(&ip, timeout_override_ms).await;
 
-            let mut dns_resolve = None;
+            let dns_resolve = None;
             let mut is_reachable = false;
             let mut latency = None;
             let mut ttl = 0;
@@ -54,8 +54,6 @@ pub async fn run_icmp_echo(
                     ttl = received_ttl.unwrap_or(0);
                     if is_reachable {
                         reply_type = "ICMP echo reply".to_string();
-                        // Only attempt DNS resolution for hosts that responded.
-                        dns_resolve = resolve_hostname(&ip).await;
                     }
                 }
                 Err(e) => {
@@ -83,6 +81,24 @@ pub async fn run_icmp_echo(
         host_results.push(result);
     }
 
+    // DNS phase: resolve hostnames for up hosts in parallel, timed separately.
+    let dns_start = Instant::now();
+    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+        .filter_map(|(i, r)| match r.ip_address {
+            IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
+            _ => None,
+        })
+        .collect();
+    let dns_resolved = futures::future::join_all(
+        dns_tasks.into_iter().map(|(i, ipv4)| async move {
+            (i, resolve_hostname(&ipv4).await)
+        })
+    ).await;
+    for (idx, hostname) in dns_resolved {
+        host_results[idx].dns_resolve = hostname;
+    }
+    let dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
+
     // Calculate summary statistics from the collected results.
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
     let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
@@ -96,6 +112,7 @@ pub async fn run_icmp_echo(
         start_time,
         end_time,
         packets_sent: host_results.len() as u64,
+        dns_elapsed_secs,
     };
 
     Ok((host_results, summary))

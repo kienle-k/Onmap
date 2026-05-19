@@ -112,11 +112,7 @@ pub async fn run_udp_discovery(
             .remove(&ip)
             .expect("Host state missing for IP");
 
-        let dns_resolve = if state.is_up {
-            resolve_hostname(&ip).await
-        } else {
-            None
-        };
+        let dns_resolve = None;
 
         host_results.push(HostDiscoverySingleResult {
             ip_address: IpAddr::V4(ip),
@@ -129,8 +125,24 @@ pub async fn run_udp_discovery(
     }
 
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
-    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
     let end_time = SystemTime::now();
+    let dns_start = Instant::now();
+    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+        .filter_map(|(i, r)| match r.ip_address {
+            IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
+            _ => None,
+        })
+        .collect();
+    let dns_resolved = futures::future::join_all(
+        dns_tasks.into_iter().map(|(i, ipv4)| async move {
+            (i, resolve_hostname(&ipv4).await)
+        })
+    ).await;
+    for (idx, hostname) in dns_resolved {
+        host_results[idx].dns_resolve = hostname;
+    }
+    let dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
+    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
 
     let summary = HostDiscoveryAllResult {
         scanned_addresses: all_ips,
@@ -140,6 +152,7 @@ pub async fn run_udp_discovery(
         start_time,
         end_time,
         packets_sent: (ports.len() * host_results.len()) as u64,
+        dns_elapsed_secs,
     };
 
     Ok((host_results, summary))
