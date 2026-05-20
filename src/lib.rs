@@ -664,7 +664,7 @@ async fn execute_command(
                 print_host_discovery_results(&result);
             }
 
-            log::info!("Read data files from: src/resolving/port_service_mapping.json");
+            log::info!("Loaded embedded port service mapping");
             log::info!("Raw packets sent: {}", result.1.packets_sent);
 
             Ok((Some(result), None))
@@ -735,7 +735,7 @@ async fn execute_command(
                 print_port_scan_results(&result);
             }
 
-            log::info!("Read data files from: src/resolving/port_service_mapping.json");
+            log::info!("Loaded embedded port service mapping");
             log::info!("Raw packets sent: {}", result.1.packets_sent);
 
             if service_version || os_detection || script.is_some() {
@@ -1090,7 +1090,6 @@ mod tests {
         assert_eq!(merged.1.end_time, end_two);
     }
 }
-
 
 
 
