@@ -29,14 +29,14 @@ const DEFAULT_PING_TIMEOUT_MS: u64 = 1000;
 ///   including total hosts up, timing information, and other statistics.
 /// On failure, it returns a `String` error.
 pub async fn run_ping_scan(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     // Start timing the operation
     let start_time = SystemTime::now();
 
     // Ensure IP addresses were parsed correctly before proceeding with the scan.
-    let ips = ip_addresses?; // Propagate the error if parsing failed.
+    let ips = ip_addresses;
 
     // Create a collection to hold all the asynchronous ping tasks.
     let mut futures = FuturesUnordered::new();
@@ -263,11 +263,11 @@ mod tests {
     /// the final summary calculation, ensuring all statistics are correct.
     #[tokio::test]
     async fn test_run_ping_scan_with_valid_and_mixed_ips() {
-        let ips = Ok(vec![
+        let ips = vec![
             Ipv4Addr::new(127, 0, 0, 1),   // Reachable
             Ipv4Addr::new(192, 0, 2, 123), // Unreachable (likely to cause an error from ping_host_with_details)
-        ]);
-        let total_ips = ips.as_ref().expect("Ips could not be resolved").len();
+        ];
+        let total_ips = ips.len();
 
         let scan_result = run_ping_scan(ips, None).await;
         assert!(
@@ -312,20 +312,17 @@ mod tests {
         assert_eq!(unreachable_result.ttl, 0); // No TTL for failed ping
     }
 
-    /// Tests that `run_ping_scan` handles input errors gracefully.
-    ///
-    /// This test ensures that if the function receives an `Err` variant for the
-    /// IP list, it does not panic and instead returns empty/zeroed results.
+    /// Tests that `run_ping_scan` handles empty input gracefully.
     #[tokio::test]
-    async fn test_run_ping_scan_with_input_error() {
-        let ip_addresses = Err("Failed to parse IP range".to_string());
+    async fn test_run_ping_scan_with_empty_input() {
+        let ip_addresses = Vec::new();
         let scan_result = run_ping_scan(ip_addresses, None).await;
 
-        assert!(
-            scan_result.is_err(),
-            "Scan should return an error for invalid input"
-        );
-        let error_message = scan_result.unwrap_err();
-        assert_eq!(error_message, "Failed to parse IP range");
+        assert!(scan_result.is_ok(), "Scan should handle empty input");
+        let (results, summary) = scan_result.expect("Scan result should be available");
+        assert!(results.is_empty());
+        assert!(summary.scanned_addresses.is_empty());
+        assert_eq!(summary.packets_sent, 0);
+        assert_eq!(summary.hosts_up, 0);
     }
 }

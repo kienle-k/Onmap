@@ -20,11 +20,11 @@ use crate::resolving::resolve_hostname;
 /// concurrently and collects the results. It returns a tuple containing detailed
 /// per-host results and a summary of the entire scan.
 pub async fn run_icmp_timestamp(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
-    let ips = ip_addresses?;
+    let ips = ip_addresses;
 
     let mut futures = FuturesUnordered::new();
     let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();

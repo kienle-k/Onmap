@@ -826,7 +826,7 @@ async fn execute_command(
             let result = match method {
                 PortScanOption::SynScan => {
                     port_scanning::run_syn_scan(
-                        Ok(ipv4_targets),
+                        ipv4_targets,
                         ports,
                         local_ip_address,
                         timeout_override_ms,
@@ -834,12 +834,12 @@ async fn execute_command(
                     .await?
                 }
                 PortScanOption::ConnectScan => {
-                    port_scanning::run_connect_scan(Ok(ipv4_targets), ports, timeout_override_ms)
+                    port_scanning::run_connect_scan(ipv4_targets, ports, timeout_override_ms)
                         .await?
                 }
                 PortScanOption::AckScan => {
                     port_scanning::run_ack_scan(
-                        Ok(ipv4_targets),
+                        ipv4_targets,
                         &ports,
                         local_ip_address,
                         timeout_override_ms,
@@ -868,7 +868,7 @@ async fn execute_command(
                 }
                 PortScanOption::UdpScan => {
                     port_scanning::run_udp_scan(
-                        Ok(ipv4_targets),
+                        ipv4_targets,
                         ports,
                         local_ip_address,
                         timeout_override_ms,
@@ -930,14 +930,14 @@ async fn run_host_discovery_spec(
             return Ok(None);
         }
         HostDiscoveryOption::PingScan => {
-            host_discovery::run_ping_scan(Ok(ipv4_targets), timeout_override_ms).await?
+            host_discovery::run_ping_scan(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::TcpSynDiscovery => {
             let ports = spec
                 .ports
                 .ok_or_else(|| "Ports array could not be set".to_string())?;
             host_discovery::run_tcp_syn_discovery(
-                Ok(ipv4_targets),
+                ipv4_targets,
                 ports,
                 local_ip_address,
                 timeout_override_ms,
@@ -949,7 +949,7 @@ async fn run_host_discovery_spec(
                 .ports
                 .ok_or_else(|| "Ports array could not be set".to_string())?;
             host_discovery::run_tcp_ack_discovery(
-                Ok(ipv4_targets),
+                ipv4_targets,
                 ports,
                 local_ip_address,
                 timeout_override_ms,
@@ -961,7 +961,7 @@ async fn run_host_discovery_spec(
                 .ports
                 .ok_or_else(|| "Ports array could not be set".to_string())?;
             host_discovery::run_udp_discovery(
-                Ok(ipv4_targets),
+                ipv4_targets,
                 ports,
                 local_ip_address,
                 timeout_override_ms,
@@ -969,13 +969,13 @@ async fn run_host_discovery_spec(
             .await?
         }
         HostDiscoveryOption::ArpDiscovery => {
-            host_discovery::run_arp(Ok(ipv4_targets), timeout_override_ms).await?
+            host_discovery::run_arp(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::IcmpEcho => {
-            host_discovery::run_icmp_echo(Ok(ipv4_targets), timeout_override_ms).await?
+            host_discovery::run_icmp_echo(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::IcmpTimestamp => {
-            host_discovery::run_icmp_timestamp(Ok(ipv4_targets), timeout_override_ms).await?
+            host_discovery::run_icmp_timestamp(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::IcmpNetmask => {
             run_icmp_netmask();

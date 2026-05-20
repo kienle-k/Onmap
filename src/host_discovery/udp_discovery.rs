@@ -25,13 +25,13 @@ struct HostProbeState {
 
 /// Runs a UDP discovery scan against a list of target IP addresses.
 pub async fn run_udp_discovery(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     ports: Vec<u16>,
     local_ip_address: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
-    let ips = ip_addresses?;
+    let ips = ip_addresses;
 
     if ports.is_empty() {
         return Err("At least one port is required for UDP discovery".to_string());

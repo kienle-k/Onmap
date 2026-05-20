@@ -15,11 +15,11 @@ use crate::resolving::resolve_hostname;
 
 /// Runs an ARP scan against a list of target IP addresses on the local network.
 pub async fn run_arp(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
-    let ips = ip_addresses?;
+    let ips = ip_addresses;
 
     let local_ip = match local_ip() {
         Ok(IpAddr::V4(ip)) => ip,

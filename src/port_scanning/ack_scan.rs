@@ -128,15 +128,12 @@ pub async fn port_ack_scan(
 ///
 /// A `Result` containing a tuple of `(Vec<PortScanSingleResult>, PortScanAllResult)` on success.
 pub async fn run_ack_scan(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     ports: &[u16],
     local_ip: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    let ips = match ip_addresses {
-        Ok(ips) => ips,
-        Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
-    };
+    let ips = ip_addresses;
 
     // Load service name data once, share cheaply across all tasks then.
     let protocols = Arc::new(

@@ -104,15 +104,12 @@ async fn udp_probe_with_details(
 
 /// Runs a concurrent UDP scan against a list of hosts and ports.
 pub async fn run_udp_scan(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     ports: Vec<u16>,
     local_ip: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    let ips = match ip_addresses {
-        Ok(ips) => ips,
-        Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
-    };
+    let ips = ip_addresses;
 
     let protocols = Arc::new(
         load_protocol_map("src/resolving/port_service_mapping.json")

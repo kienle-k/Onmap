@@ -23,13 +23,13 @@ use crate::resolving::resolve_hostname;
 /// a vector of detailed results for each host and a summary of the entire scan.
 /// Should return Result
 pub async fn run_icmp_echo(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     // Start timing the entire scan operation.
     let start_time = SystemTime::now();
 
-    let ips = ip_addresses?; // Propagate the error if initial IP address processing failed.
+    let ips = ip_addresses;
 
     // Use of FuturesUnordered to manage multiple concurrent ping tasks.
     let mut futures = FuturesUnordered::new();
