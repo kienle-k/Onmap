@@ -32,7 +32,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 
 // --- Internal imports (from this crate) ---
-use crate::host_discovery::run_icmp_netmask;
+use crate::host_discovery::run_icmp_netmask_discovery;
 use crate::output::{
     save_to_file_grepable_host_discovery, save_to_file_grepable_port_scan,
     save_to_file_normal_host_discovery, save_to_file_normal_port_scan,
@@ -930,7 +930,7 @@ async fn run_host_discovery_spec(
             return Ok(None);
         }
         HostDiscoveryOption::PingScan => {
-            host_discovery::run_ping_scan(ipv4_targets, timeout_override_ms).await?
+            host_discovery::run_ping_discovery(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::TcpSynDiscovery => {
             let ports = spec
@@ -969,16 +969,17 @@ async fn run_host_discovery_spec(
             .await?
         }
         HostDiscoveryOption::ArpDiscovery => {
-            host_discovery::run_arp(ipv4_targets, timeout_override_ms).await?
+            host_discovery::run_arp_discovery(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::IcmpEcho => {
-            host_discovery::run_icmp_echo(ipv4_targets, timeout_override_ms).await?
+            host_discovery::run_icmp_echo_discovery(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::IcmpTimestamp => {
-            host_discovery::run_icmp_timestamp(ipv4_targets, timeout_override_ms).await?
+            host_discovery::run_icmp_timestamp_discovery(ipv4_targets, timeout_override_ms)
+                .await?
         }
         HostDiscoveryOption::IcmpNetmask => {
-            run_icmp_netmask();
+            run_icmp_netmask_discovery();
             return Ok(None);
         }
     };

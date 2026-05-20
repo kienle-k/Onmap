@@ -14,7 +14,7 @@ use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
 use crate::resolving::resolve_hostname;
 
 /// Runs an ARP scan against a list of target IP addresses on the local network.
-pub async fn run_arp(
+pub async fn run_arp_discovery(
     ip_addresses: Vec<Ipv4Addr>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
