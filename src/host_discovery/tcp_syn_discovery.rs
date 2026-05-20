@@ -26,7 +26,6 @@ pub async fn run_tcp_syn_discovery(
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
-    let ips = ip_addresses;
 
     if ports.is_empty() {
         return Err("At least one port is required for TCP SYN discovery".to_string());
@@ -37,8 +36,8 @@ pub async fn run_tcp_syn_discovery(
             .map_err(|e| format!("Failed to load protocol map: {}", e))?,
     );
 
-    let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
-    let mut host_states: HashMap<Ipv4Addr, HostProbeState> = ips
+    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let mut host_states: HashMap<Ipv4Addr, HostProbeState> = ip_addresses
         .iter()
         .map(|ip| {
             (
@@ -56,7 +55,7 @@ pub async fn run_tcp_syn_discovery(
     let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
     let mut futures = FuturesUnordered::new();
 
-    for ip in &ips {
+    for ip in &ip_addresses {
         for &port in &ports {
             let sem_clone = Arc::clone(&semaphore);
             let protocols_clone = Arc::clone(&protocols);
@@ -115,7 +114,7 @@ pub async fn run_tcp_syn_discovery(
     }
 
     let mut host_results = Vec::new();
-    for ip in ips {
+    for ip in ip_addresses {
         let state = host_states.remove(&ip).expect("Host state missing for IP");
 
         let dns_resolve = None;

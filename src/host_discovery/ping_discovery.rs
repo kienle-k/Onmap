@@ -35,19 +35,16 @@ pub async fn run_ping_discovery(
     // Start timing the operation
     let start_time = SystemTime::now();
 
-    // Ensure IP addresses were parsed correctly before proceeding with the scan.
-    let ips = ip_addresses;
-
     // Create a collection to hold all the asynchronous ping tasks.
     let mut futures = FuturesUnordered::new();
 
     // Convert IPs to the general IpAddr type for use in the results struct.
-    let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|ip| IpAddr::V4(*ip)).collect();
 
     // Add ping tasks to our collection. Each task is an async block.
     let timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_PING_TIMEOUT_MS);
 
-    for ip in ips {
+    for ip in ip_addresses {
         futures.push(async move {
             let ping_result = ping_host_with_details(&ip, timeout_ms).await;
 

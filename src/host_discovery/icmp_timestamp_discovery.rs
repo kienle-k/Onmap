@@ -24,12 +24,11 @@ pub async fn run_icmp_timestamp_discovery(
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
-    let ips = ip_addresses;
 
     let mut futures = FuturesUnordered::new();
-    let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|ip| IpAddr::V4(*ip)).collect();
 
-    for ip in ips {
+    for ip in ip_addresses {
         futures.push(async move {
             let icmp_result = icmp_timestamp_host_with_details(&ip, timeout_override_ms).await;
 

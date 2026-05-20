@@ -29,16 +29,14 @@ pub async fn run_icmp_echo_discovery(
     // Start timing the entire scan operation.
     let start_time = SystemTime::now();
 
-    let ips = ip_addresses;
-
     // Use of FuturesUnordered to manage multiple concurrent ping tasks.
     let mut futures = FuturesUnordered::new();
 
     // Collect all IPs for the final summary report.
-    let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|ip| IpAddr::V4(*ip)).collect();
 
     // Create and spawn a ping task for each IP address.
-    for ip in ips {
+    for ip in ip_addresses {
         futures.push(async move {
             let icmp_result = icmp_ping_host_with_details(&ip, timeout_override_ms).await;
 
