@@ -1,15 +1,17 @@
-use std::net::{IpAddr, Ipv4Addr};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use crate::resolving::get_service_name::{ProtocolMap, get_service_name, load_protocol_map};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::tcp::{MutableTcpPacket, TcpFlags};
-use pnet::transport::{transport_channel, TransportChannelType, TransportProtocol};
-use rand::Rng;
 use pnet::transport::tcp_packet_iter;
+use pnet::transport::{TransportChannelType, TransportProtocol, transport_channel};
+use rand::Rng;
+use std::net::{IpAddr, Ipv4Addr};
 use std::result::Result;
-use crate::resolving::get_service_name::{ProtocolMap, load_protocol_map, get_service_name};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 
-use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResult, PortScanAllResult};
+use crate::models::{
+    PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+};
 
 /// Performs a TCP SYN scan on a single port for a given IP address.
 ///
@@ -53,7 +55,12 @@ pub async fn port_syn_scan(
     let protocol = TransportProtocol::Ipv4(IpNextHeaderProtocols::Tcp);
     let (mut tx, rx) = match transport_channel(4096, TransportChannelType::Layer4(protocol)) {
         Ok((tx, rx)) => (tx, rx),
-        Err(e) => return Err(format!("Error creating transport channel: {}. Try running with sudo.", e)),
+        Err(e) => {
+            return Err(format!(
+                "Error creating transport channel: {}. Try running with sudo.",
+                e
+            ));
+        }
     };
 
     // Create an Arc<Mutex<...>> for the receiver so it can be moved into the blocking task
@@ -64,7 +71,8 @@ pub async fn port_syn_scan(
 
     // Create a SYN packet (header only, no options)
     let mut tcp_buffer = [0u8; 20];
-    let mut tcp_packet = MutableTcpPacket::new(&mut tcp_buffer).expect("Failed to create TCP packet buffer");
+    let mut tcp_packet =
+        MutableTcpPacket::new(&mut tcp_buffer).expect("Failed to create TCP packet buffer");
 
     // Configure TCP header
     tcp_packet.set_source(source_port);
@@ -77,7 +85,8 @@ pub async fn port_syn_scan(
     tcp_packet.set_urgent_ptr(0);
 
     // Calculate checksum using the source and destination IPs
-    let checksum = pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &local_ip_address, &ipv4);
+    let checksum =
+        pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &local_ip_address, &ipv4);
     tcp_packet.set_checksum(checksum);
 
     // Send the packet
@@ -105,22 +114,41 @@ pub async fn port_syn_scan(
 
             match iter.next_with_timeout(remaining_time) {
                 Ok(Some((packet, addr))) => {
-                    if packet.get_destination() == source_port && addr == ip_address && packet.get_source() == port {
+                    if packet.get_destination() == source_port
+                        && addr == ip_address
+                        && packet.get_source() == port
+                    {
                         let flags = packet.get_flags();
                         if (flags & TcpFlags::SYN != 0) && (flags & TcpFlags::ACK != 0) {
                             let ttl = 63; // Placeholder, real TTL extraction is not implemented yet
                             return Ok(PortScanSingleResult {
-                                ip_address, port, protocol: Protocols::TCP,
-                                port_state: PortStates::Open, ttl,
-                                reason: PortStateReasons::SynAck, service: get_service_name(&protocols_clone_for_response, "tcp", port),
+                                ip_address,
+                                port,
+                                protocol: Protocols::TCP,
+                                port_state: PortStates::Open,
+                                ttl,
+                                reason: PortStateReasons::SynAck,
+                                service: get_service_name(
+                                    &protocols_clone_for_response,
+                                    "tcp",
+                                    port,
+                                ),
                             });
                         }
                         if flags & TcpFlags::RST != 0 {
                             let ttl = 63; // Placeholder, real TTL extractions is not implemented yet
                             return Ok(PortScanSingleResult {
-                                ip_address, port, protocol: Protocols::TCP,
-                                port_state: PortStates::Closed, ttl,
-                                reason: PortStateReasons::Reset, service: get_service_name(&protocols_clone_for_response, "tcp", port),
+                                ip_address,
+                                port,
+                                protocol: Protocols::TCP,
+                                port_state: PortStates::Closed,
+                                ttl,
+                                reason: PortStateReasons::Reset,
+                                service: get_service_name(
+                                    &protocols_clone_for_response,
+                                    "tcp",
+                                    port,
+                                ),
                             });
                         }
                     }
@@ -136,8 +164,11 @@ pub async fn port_syn_scan(
         }
 
         Ok(PortScanSingleResult {
-            ip_address, port, protocol: Protocols::TCP,
-            port_state: PortStates::Filtered, ttl: 0,
+            ip_address,
+            port,
+            protocol: Protocols::TCP,
+            port_state: PortStates::Filtered,
+            ttl: 0,
             reason: PortStateReasons::Timeout,
             service: get_service_name(&protocols_clone_for_response, "tcp", port),
         })
@@ -183,7 +214,10 @@ pub async fn run_syn_scan(
     };
 
     // Load the protocol/service data from the json file
-    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json").expect("Failed to load protocol map"));
+    let protocols = Arc::new(
+        load_protocol_map("src/resolving/port_service_mapping.json")
+            .expect("Failed to load protocol map"),
+    );
 
     // Record the start time to calculate total scan duration later.
     let start_time = SystemTime::now();
@@ -207,24 +241,41 @@ pub async fn run_syn_scan(
             let packets_sent_clone = Arc::clone(&packets_sent);
             let sem_clone = Arc::clone(&semaphore);
             let protocols_clone = Arc::clone(&protocols);
-            
+
             // Spawn a Tokio task for each scan
             let task = tokio::spawn(async move {
                 // Acquire a permit from the semaphore before scanning
-                let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
-                
+                let _permit = sem_clone
+                    .acquire()
+                    .await
+                    .expect("Semaphore should not be closed");
+
                 // Increment packets sent counter safely
                 *packets_sent_clone.lock().expect("Mutex was poisoned") += 1;
-                
-                match port_syn_scan(IpAddr::V4(ip), port, local_ip_address, protocols_clone, timeout_override_ms).await {
+
+                match port_syn_scan(
+                    IpAddr::V4(ip),
+                    port,
+                    local_ip_address,
+                    protocols_clone,
+                    timeout_override_ms,
+                )
+                .await
+                {
                     Ok(result) => {
                         // If port is open, add it to the shared list of open ports
                         if result.port_state == PortStates::Open {
-                            open_ports_clone.lock().expect("Mutex was poisoned").push(port);
+                            open_ports_clone
+                                .lock()
+                                .expect("Mutex was poisoned")
+                                .push(port);
                             log::info!("Discovered open port {}/tcp on {}", port, ip);
                         }
                         // Add the detailed result to the shared list of all results
-                        single_results_clone.lock().expect("Mutex was poisoned").push(result);
+                        single_results_clone
+                            .lock()
+                            .expect("Mutex was poisoned")
+                            .push(result);
                     }
                     Err(e) => {
                         log::warn!("Error scanning {}:{}: {}", ip, port, e);
@@ -241,11 +292,20 @@ pub async fn run_syn_scan(
     }
 
     let end_time = SystemTime::now();
-    
+
     // Unwrap the results from their thread-safe containers
-    let single_results = Arc::try_unwrap(single_results).expect("Mutex still has references").into_inner().expect("Mutex was poisoned");
-    let open_ports = Arc::try_unwrap(open_ports).expect("Mutex still has references").into_inner().expect("Mutex was poisoned");
-    let packets_sent = Arc::try_unwrap(packets_sent).expect("Mutex still has references").into_inner().expect("Mutex was poisoned");
+    let single_results = Arc::try_unwrap(single_results)
+        .expect("Mutex still has references")
+        .into_inner()
+        .expect("Mutex was poisoned");
+    let open_ports = Arc::try_unwrap(open_ports)
+        .expect("Mutex still has references")
+        .into_inner()
+        .expect("Mutex was poisoned");
+    let packets_sent = Arc::try_unwrap(packets_sent)
+        .expect("Mutex still has references")
+        .into_inner()
+        .expect("Mutex was poisoned");
 
     // Create the final summary result
     let all_result = PortScanAllResult {
@@ -255,7 +315,7 @@ pub async fn run_syn_scan(
         start_time,
         end_time,
     };
-    
+
     Ok((single_results, all_result))
 }
 
@@ -278,6 +338,9 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.expect_err("Expected run_syn_scan to fail");
 
-        assert_eq!(err_msg, "Failed to get IP addresses: Failed to resolve hostname");
+        assert_eq!(
+            err_msg,
+            "Failed to get IP addresses: Failed to resolve hostname"
+        );
     }
 }

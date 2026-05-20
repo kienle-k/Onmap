@@ -38,7 +38,14 @@ pub async fn run_arp(
     for ip in ips {
         let interface = interface.clone();
         futures.push(async move {
-            let arp_result = arp_ping_host_with_details(interface, source_mac, local_ip, ip, timeout_override_ms).await;
+            let arp_result = arp_ping_host_with_details(
+                interface,
+                source_mac,
+                local_ip,
+                ip,
+                timeout_override_ms,
+            )
+            .await;
 
             let dns_resolve = None;
             let mut is_reachable = false;
@@ -76,24 +83,30 @@ pub async fn run_arp(
     }
 
     let dns_start = Instant::now();
-    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+    let dns_tasks: Vec<_> = host_results
+        .iter()
+        .enumerate()
         .filter_map(|(i, r)| match r.ip_address {
             IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
             _ => None,
         })
         .collect();
     let dns_resolved = futures::future::join_all(
-        dns_tasks.into_iter().map(|(i, ipv4)| async move {
-            (i, resolve_hostname(&ipv4).await)
-        })
-    ).await;
+        dns_tasks
+            .into_iter()
+            .map(|(i, ipv4)| async move { (i, resolve_hostname(&ipv4).await) }),
+    )
+    .await;
     for (idx, hostname) in dns_resolved {
         host_results[idx].dns_resolve = hostname;
     }
     let dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
 
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
-    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
+    let hosts_dns_resolution = host_results
+        .iter()
+        .filter(|r| r.dns_resolve.is_some())
+        .count() as u64;
     let end_time = SystemTime::now();
 
     let summary = HostDiscoveryAllResult {
@@ -162,7 +175,9 @@ async fn arp_ping_host_with_details(
         arp_packet.set_target_proto_addr(target_ip);
 
         let start_time = Instant::now();
-        let _ = tx.send_to(ethernet_packet.packet(), None).expect("Failed to send ARP request");
+        let _ = tx
+            .send_to(ethernet_packet.packet(), None)
+            .expect("Failed to send ARP request");
 
         let timeout_duration = Duration::from_millis(scan_window_ms);
         while start_time.elapsed() < timeout_duration {

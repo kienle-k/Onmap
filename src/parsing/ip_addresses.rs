@@ -1,6 +1,6 @@
+use dns_lookup::lookup_host;
 use std::net::{IpAddr, Ipv4Addr};
-use std::str::FromStr;
-use dns_lookup::lookup_host; // For DNS resolution
+use std::str::FromStr; // For DNS resolution
 
 /// Parses a string representation of one or more IPv4 addresses into a vector of `Ipv4Addr`.
 ///
@@ -81,8 +81,6 @@ pub fn parse_ip_addresses(input: &str) -> Result<Vec<Ipv4Addr>, String> {
     Ok(result)
 }
 
-
-
 fn is_potential_hostname(s: &str) -> bool {
     let re = regex::Regex::new(r"^[a-zA-Z0-9.-]+$").unwrap();
     re.is_match(s)
@@ -96,24 +94,27 @@ fn is_potential_hostname(s: &str) -> bool {
 fn resolve_hostname_to_ipv4(hostname: &str) -> Result<Vec<Ipv4Addr>, String> {
     match lookup_host(hostname) {
         Ok(ips) => {
-            let ipv4_ips: Vec<Ipv4Addr> = ips.into_iter()
+            let ipv4_ips: Vec<Ipv4Addr> = ips
+                .into_iter()
                 .filter_map(|ip| {
                     match ip {
                         IpAddr::V4(ipv4) => Some(ipv4), // Correctly extract Ipv4Addr
-                        _ => None, // Discard IPv6 or other variants
+                        _ => None,                      // Discard IPv6 or other variants
                     }
                 })
                 .collect();
             if ipv4_ips.is_empty() {
-                Err(format!("No IPv4 addresses found for hostname: {}", hostname))
+                Err(format!(
+                    "No IPv4 addresses found for hostname: {}",
+                    hostname
+                ))
             } else {
                 Ok(ipv4_ips)
             }
-        },
+        }
         Err(e) => Err(format!("DNS resolution failed for {}: {}", hostname, e)),
     }
 }
-
 
 /// Parses an IP address range from a string in the format "start_ip - end_ip".
 ///
@@ -161,7 +162,9 @@ fn parse_ip_range(range_str: &str) -> Result<Vec<Ipv4Addr>, String> {
 
     // Check that the start of the range is not after the end.
     if start_u32 > end_u32 {
-        return Err("Starting IP address must be less than or equal to ending IP address".to_string());
+        return Err(
+            "Starting IP address must be less than or equal to ending IP address".to_string(),
+        );
     }
 
     // Create a vector to hold the generated IP addresses.
@@ -225,7 +228,6 @@ fn parse_cidr(cidr_str: &str) -> Result<Vec<Ipv4Addr>, String> {
     Ok(result)
 }
 
-
 #[cfg(test)]
 mod tests {
     //! Unit tests for the IP address parsing functions.
@@ -247,7 +249,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], Ipv4Addr::new(192, 168, 1, 1));
     }
-    
+
     /// Verifies that leading/trailing whitespace is correctly handled.
     #[test]
     fn test_parse_single_valid_ip_with_whitespace() {
@@ -264,10 +266,14 @@ mod tests {
         assert!(result.is_err());
         // Updated assertion to expect DNS resolution failure for the "invalid IP" string
         let err_msg = result.unwrap_err();
-        assert!(err_msg.contains("DNS resolution failed for 192.168.1.256") || err_msg.contains("Invalid IP address: 192.168.1.256"),
-                "Expected DNS failure or Invalid IP error, got: {}", err_msg);
+        assert!(
+            err_msg.contains("DNS resolution failed for 192.168.1.256")
+                || err_msg.contains("Invalid IP address: 192.168.1.256"),
+            "Expected DNS failure or Invalid IP error, got: {}",
+            err_msg
+        );
     }
-    
+
     /// Verifies that a non-IP string returns an error.
     #[test]
     fn test_parse_single_gibberish_input() {
@@ -276,8 +282,12 @@ mod tests {
         assert!(result.is_err());
         // Updated assertion to expect DNS resolution failure
         let err_msg = result.unwrap_err();
-        assert!(err_msg.contains("DNS resolution failed for not an ip") || err_msg.contains("Invalid IP address: not an ip"),
-                "Expected DNS failure or Invalid IP error, got: {}", err_msg);
+        assert!(
+            err_msg.contains("DNS resolution failed for not an ip")
+                || err_msg.contains("Invalid IP address: not an ip"),
+            "Expected DNS failure or Invalid IP error, got: {}",
+            err_msg
+        );
     }
 
     // --- Tests for CIDR parsing functionality ---
@@ -285,8 +295,8 @@ mod tests {
     /// Verifies that a standard /24 CIDR block is parsed correctly.
     #[test]
     fn test_parse_cidr_valid_24() {
-        let result = parse_ip_addresses("192.168.1.0/24")
-            .expect("Parsing a valid /24 CIDR should succeed");
+        let result =
+            parse_ip_addresses("192.168.1.0/24").expect("Parsing a valid /24 CIDR should succeed");
         assert_eq!(result.len(), 256);
         assert_eq!(result.first(), Some(&Ipv4Addr::new(192, 168, 1, 0)));
         assert_eq!(result.last(), Some(&Ipv4Addr::new(192, 168, 1, 255)));
@@ -305,16 +315,16 @@ mod tests {
     /// Verifies that a /32 CIDR block (a single host) is parsed correctly.
     #[test]
     fn test_parse_cidr_valid_32() {
-        let result = parse_ip_addresses("203.0.113.42/32")
-            .expect("Parsing a valid /32 CIDR should succeed");
+        let result =
+            parse_ip_addresses("203.0.113.42/32").expect("Parsing a valid /32 CIDR should succeed");
         assert_eq!(result, vec![Ipv4Addr::new(203, 0, 113, 42)]);
     }
 
     /// Verifies that a /31 CIDR block (two hosts, as per RFC 3021) is parsed correctly.
     #[test]
     fn test_parse_cidr_valid_31() {
-        let result = parse_ip_addresses("192.0.2.0/31")
-            .expect("Parsing a valid /31 CIDR should succeed");
+        let result =
+            parse_ip_addresses("192.0.2.0/31").expect("Parsing a valid /31 CIDR should succeed");
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], Ipv4Addr::new(192, 0, 2, 0));
         assert_eq!(result[1], Ipv4Addr::new(192, 0, 2, 1));
@@ -327,16 +337,13 @@ mod tests {
             .expect_err("A prefix length greater than 32 should result in an error");
         assert_eq!(err_message, "Invalid prefix length in CIDR: 33");
     }
-    
+
     /// Verifies that a CIDR block with an invalid IP part returns an error.
     #[test]
     fn test_parse_cidr_invalid_ip_part() {
         let err_message = parse_ip_addresses("192.168.abc.1/24")
             .expect_err("A CIDR with an invalid IP part should result in an error");
-        assert_eq!(
-            err_message,
-            "Invalid IP address in CIDR: 192.168.abc.1"
-        );
+        assert_eq!(err_message, "Invalid IP address in CIDR: 192.168.abc.1");
     }
 
     /// Verifies that a malformed CIDR string returns an error.
@@ -364,7 +371,7 @@ mod tests {
             ]
         );
     }
-    
+
     /// Verifies that a range that spans across an octet boundary is parsed correctly.
     #[test]
     fn test_parse_range_crossing_octet() {
@@ -374,7 +381,7 @@ mod tests {
         assert_eq!(result.first(), Some(&Ipv4Addr::new(192, 168, 1, 254)));
         assert_eq!(result.last(), Some(&Ipv4Addr::new(192, 168, 2, 2)));
     }
-    
+
     /// Verifies that a range with extra whitespace is handled correctly.
     #[test]
     fn test_parse_range_with_whitespace() {
@@ -382,13 +389,10 @@ mod tests {
             .expect("Parsing a valid IP range with extra whitespace should succeed");
         assert_eq!(
             result,
-            vec![
-                Ipv4Addr::new(10, 0, 0, 1),
-                Ipv4Addr::new(10, 0, 0, 2),
-            ]
+            vec![Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2),]
         );
     }
-    
+
     /// Verifies that a range with the same start and end IP produces a single IP.
     #[test]
     fn test_parse_range_single_ip() {
@@ -423,14 +427,15 @@ mod tests {
             .expect_err("A range with an invalid end IP should fail");
         assert_eq!(err_message, "Invalid ending IP address: 192.168.1.xyz");
     }
-    
+
     /// Verifies that a malformed range string returns an error.
     #[test]
     fn test_parse_range_invalid_format() {
         let err_message = parse_ip_addresses("192.168.1.1 - 192.168.1.2 - 192.168.1.3")
             .expect_err("A range with an invalid format should fail");
-        assert_eq!(err_message, "Invalid IP range format: 192.168.1.1 - 192.168.1.2 - 192.168.1.3");
+        assert_eq!(
+            err_message,
+            "Invalid IP range format: 192.168.1.1 - 192.168.1.2 - 192.168.1.3"
+        );
     }
-
-
 }

@@ -1,8 +1,10 @@
-use prettytable::{Table, Row, Cell, format};
+use super::format_duration;
+use crate::models::{
+    PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+};
+use prettytable::{Cell, Row, Table, format};
 use std::collections::HashMap;
 use std::net::IpAddr;
-use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols, PortStateReasons};
-use super::format_duration;
 
 /// Formats and prints the results of a port scan to the console.
 ///
@@ -37,15 +39,15 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
     // Print different rows for every field in the PortScanAllResult struct
     summary_table.add_row(Row::new(vec![
         Cell::new("Ports scanned per host"),
-        Cell::new(&all_results.ports_scanned.to_string())
+        Cell::new(&all_results.ports_scanned.to_string()),
     ]));
     summary_table.add_row(Row::new(vec![
         Cell::new("Total packets sent"),
-        Cell::new(&all_results.packets_sent.to_string())
+        Cell::new(&all_results.packets_sent.to_string()),
     ]));
     summary_table.add_row(Row::new(vec![
         Cell::new("Open ports discovered"),
-        Cell::new(&all_results.open_ports.len().to_string())
+        Cell::new(&all_results.open_ports.len().to_string()),
     ]));
 
     // Calculate and add scan duration
@@ -55,7 +57,7 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
     };
     summary_table.add_row(Row::new(vec![
         Cell::new("Scan duration"),
-        Cell::new(&duration_str)
+        Cell::new(&duration_str),
     ]));
 
     summary_table.printstd();
@@ -74,7 +76,8 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
         println!("\n=== Host: {} ===", ip_address);
 
         // Filter for only open or open|filtered ports to display them
-        let open_ports: Vec<&PortScanSingleResult> = host_results.iter()
+        let open_ports: Vec<&PortScanSingleResult> = host_results
+            .iter()
             .filter(|r| {
                 r.port_state == PortStates::Open
                     || r.port_state == PortStates::Unfiltered
@@ -98,7 +101,7 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
                 Cell::new("Protocol"),
                 Cell::new("Service"),
                 Cell::new("TTL"),
-                Cell::new("Reason")
+                Cell::new("Reason"),
             ]));
 
             // Add each open port as a row, sorted by port number for consistency
@@ -106,14 +109,13 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
             sorted_open_ports.sort_by_key(|r| r.port);
 
             for port_result in sorted_open_ports {
-
                 let state_str = match port_result.port_state {
-                PortStates::Open => "open",
-                PortStates::Unfiltered => "unfiltered",
-                PortStates::Closed => "closed",
-                PortStates::Filtered => "filtered",
-                PortStates::OpenOrFiltered => "open|filtered",
-                PortStates::ClosedOrFiltered => "closed|filtered",
+                    PortStates::Open => "open",
+                    PortStates::Unfiltered => "unfiltered",
+                    PortStates::Closed => "closed",
+                    PortStates::Filtered => "filtered",
+                    PortStates::OpenOrFiltered => "open|filtered",
+                    PortStates::ClosedOrFiltered => "closed|filtered",
                 };
 
                 // Convert enum values to strings for display
@@ -138,7 +140,7 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
                     Cell::new(protocol_str),
                     Cell::new(&port_result.service),
                     Cell::new(&port_result.ttl.to_string()),
-                    Cell::new(reason_str)
+                    Cell::new(reason_str),
                 ]));
             }
 

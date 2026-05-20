@@ -1,4 +1,3 @@
-
 use std::io::ErrorKind;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::Arc;
@@ -9,7 +8,9 @@ use tokio::sync::Semaphore;
 use tokio::task;
 use tokio::time::timeout;
 
-use crate::models::{PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols};
+use crate::models::{
+    PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+};
 use crate::resolving::get_service_name::{get_service_name, load_protocol_map};
 
 async fn udp_probe_with_details(
@@ -24,7 +25,8 @@ async fn udp_probe_with_details(
     const RETRY_DELAY_MS: u64 = 50;
     const OUTER_PADDING_MS: u64 = 200;
     let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
-    let outer_timeout_ms = (ATTEMPTS as u64 * (read_timeout_ms + RETRY_DELAY_MS)) + OUTER_PADDING_MS;
+    let outer_timeout_ms =
+        (ATTEMPTS as u64 * (read_timeout_ms + RETRY_DELAY_MS)) + OUTER_PADDING_MS;
 
     let task = task::spawn_blocking(move || {
         let mut success_count = 0usize;
@@ -35,9 +37,12 @@ async fn udp_probe_with_details(
                 .map_err(|e| format!("Failed to bind UDP socket: {}", e))?;
 
             let dest_addr = SocketAddr::new(IpAddr::V4(target_ip), port);
-            socket
-                .connect(dest_addr)
-                .map_err(|e| format!("Failed to connect UDP socket to {}:{}: {}", target_ip, port, e))?;
+            socket.connect(dest_addr).map_err(|e| {
+                format!(
+                    "Failed to connect UDP socket to {}:{}: {}",
+                    target_ip, port, e
+                )
+            })?;
 
             socket
                 .set_read_timeout(Some(Duration::from_millis(read_timeout_ms)))
@@ -50,7 +55,10 @@ async fn udp_probe_with_details(
                     if e.kind() == ErrorKind::ConnectionRefused {
                         return Ok((PortStates::Closed, PortStateReasons::IcmpPortUnreachable));
                     }
-                    return Err(format!("Failed to send UDP probe to {}:{}: {}", target_ip, port, e));
+                    return Err(format!(
+                        "Failed to send UDP probe to {}:{}: {}",
+                        target_ip, port, e
+                    ));
                 }
             }
 
@@ -67,7 +75,12 @@ async fn udp_probe_with_details(
                         return Ok((PortStates::Closed, PortStateReasons::IcmpPortUnreachable));
                     }
                     ErrorKind::WouldBlock | ErrorKind::TimedOut => {}
-                    _ => return Err(format!("UDP receive failed for {}:{}: {}", target_ip, port, e)),
+                    _ => {
+                        return Err(format!(
+                            "UDP receive failed for {}:{}: {}",
+                            target_ip, port, e
+                        ));
+                    }
                 },
             }
 
@@ -101,8 +114,10 @@ pub async fn run_udp_scan(
         Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
     };
 
-    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json")
-        .map_err(|e| format!("Failed to load service names: {}", e))?);
+    let protocols = Arc::new(
+        load_protocol_map("src/resolving/port_service_mapping.json")
+            .map_err(|e| format!("Failed to load service names: {}", e))?,
+    );
 
     let start_time = SystemTime::now();
     let semaphore = Arc::new(Semaphore::new(200));
@@ -120,8 +135,12 @@ pub async fn run_udp_scan(
             };
 
             futs.push(async move {
-                let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
-                let (state, reason) = udp_probe_with_details(ip, port, source_ip, timeout_override_ms).await;
+                let _permit = sem_clone
+                    .acquire()
+                    .await
+                    .expect("Semaphore should not be closed");
+                let (state, reason) =
+                    udp_probe_with_details(ip, port, source_ip, timeout_override_ms).await;
 
                 if state == PortStates::Open {
                     log::info!("Discovered open port {}/udp on {}", port, ip);

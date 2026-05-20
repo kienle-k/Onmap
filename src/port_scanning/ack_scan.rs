@@ -3,17 +3,19 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use futures::stream::{FuturesUnordered, StreamExt};
-use pnet::packet::tcp::{MutableTcpPacket, TcpFlags};
-use pnet::transport::{transport_channel, TransportChannelType, TransportProtocol};
 use pnet::packet::ip::IpNextHeaderProtocols;
+use pnet::packet::tcp::{MutableTcpPacket, TcpFlags};
 use pnet::transport::tcp_packet_iter;
+use pnet::transport::{TransportChannelType, TransportProtocol, transport_channel};
 use rand::Rng;
 use tokio::sync::Semaphore;
-use tokio::time::timeout;
 use tokio::task;
+use tokio::time::timeout;
 
-use crate::resolving::get_service_name::{load_protocol_map, get_service_name};
-use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols, PortStateReasons};
+use crate::models::{
+    PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+};
+use crate::resolving::get_service_name::{get_service_name, load_protocol_map};
 
 /// Sends a single TCP ACK packet using a Layer 4 channel and returns its status.
 ///
@@ -44,20 +46,20 @@ pub async fn port_ack_scan(
     let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
     let outer_timeout_ms = read_timeout_ms + DEFAULT_OUTER_PADDING_MS;
 
-     // Entire pnet operation is synchronous and blocking.
-     // -> Spawn a blocking task, to move off the main thread.
-     // -> Prevents from stalling other concurrent tasks.
+    // Entire pnet operation is synchronous and blocking.
+    // -> Spawn a blocking task, to move off the main thread.
+    // -> Prevents from stalling other concurrent tasks.
     let send_and_recv = task::spawn_blocking(move || {
-
         let protocol = TransportProtocol::Ipv4(IpNextHeaderProtocols::Tcp);
-        let (mut tx, mut rx) = match transport_channel(4096, TransportChannelType::Layer4(protocol)) {
+        let (mut tx, mut rx) = match transport_channel(4096, TransportChannelType::Layer4(protocol))
+        {
             Ok((tx, rx)) => (tx, rx),
             Err(_) => return (false, None),
         };
 
         let mut tcp_buffer = [0u8; 66];
         let mut tcp_packet = MutableTcpPacket::new(&mut tcp_buffer).unwrap();
-        
+
         // Generate a random source port to check against the reply.
         let source_port = rand::thread_rng().gen_range(49152..65535);
 
@@ -70,20 +72,21 @@ pub async fn port_ack_scan(
         tcp_packet.set_window(64240);
         tcp_packet.set_urgent_ptr(0);
 
-        let checksum = pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &local_ip, &ip_address);
+        let checksum =
+            pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &local_ip, &ip_address);
         tcp_packet.set_checksum(checksum);
 
         if tx.send_to(tcp_packet, target_ip).is_err() {
             return (false, None);
         };
-        
+
         let mut iter = tcp_packet_iter(&mut rx);
         let start_time = Instant::now();
         let timeout_duration = Duration::from_millis(read_timeout_ms);
 
         while start_time.elapsed() < timeout_duration {
             let remaining_time = timeout_duration.saturating_sub(start_time.elapsed());
-            
+
             match iter.next_with_timeout(remaining_time) {
                 Ok(Some((packet, addr))) => {
                     if packet.get_destination() == source_port && addr == target_ip {
@@ -94,7 +97,7 @@ pub async fn port_ack_scan(
                     }
                 }
                 // A timeout or error on a single receive attempt is fine -> loop and try again.
-                Ok(None) => {},
+                Ok(None) => {}
                 Err(_) => {}
             }
         }
@@ -136,22 +139,20 @@ pub async fn run_ack_scan(
     };
 
     // Load service name data once, share cheaply across all tasks then.
-    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json")
-        .map_err(|e| format!("Failed to load service names: {}", e))?);
-
+    let protocols = Arc::new(
+        load_protocol_map("src/resolving/port_service_mapping.json")
+            .map_err(|e| format!("Failed to load service names: {}", e))?,
+    );
 
     let start_time = SystemTime::now();
     // Semaphore limits the number of concurrent in-flight scans.
     let semaphore = Arc::new(Semaphore::new(200));
     let mut futs = FuturesUnordered::new();
 
-
-
     for &ip in &ips {
         for &port in ports {
             let sem_clone = semaphore.clone();
             let protocols_clone = Arc::clone(&protocols);
-
 
             // CRITICAL: If scanning a loopback address, the source IP *must* also be a
             // loopback address for the OS to correctly route and receive the reply.
@@ -160,11 +161,12 @@ pub async fn run_ack_scan(
             } else {
                 local_ip
             };
-   
+
             futs.push(async move {
                 // Wait for a permit from the semaphore before starting the scan.
                 let _permit = sem_clone.acquire().await.unwrap();
-                let (is_unfiltered, ttl_option) = port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
+                let (is_unfiltered, ttl_option) =
+                    port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
 
                 if is_unfiltered {
                     log::info!("Discovered unfiltered port {}/tcp on {}", port, ip);
@@ -174,9 +176,17 @@ pub async fn run_ack_scan(
                     ip_address: IpAddr::V4(ip),
                     port,
                     protocol: Protocols::TCP,
-                    port_state: if is_unfiltered { PortStates::Unfiltered } else { PortStates::Filtered },
+                    port_state: if is_unfiltered {
+                        PortStates::Unfiltered
+                    } else {
+                        PortStates::Filtered
+                    },
                     ttl: ttl_option.unwrap_or(0),
-                    reason: if is_unfiltered { PortStateReasons::Unfiltered } else { PortStateReasons::Timeout },
+                    reason: if is_unfiltered {
+                        PortStateReasons::Unfiltered
+                    } else {
+                        PortStateReasons::Timeout
+                    },
                     service: get_service_name(&protocols_clone, "tcp", port),
                 }
             });
@@ -187,7 +197,7 @@ pub async fn run_ack_scan(
     while let Some(result) = futs.next().await {
         single_results.push(result);
     }
-    
+
     let all_results = PortScanAllResult {
         ports_scanned: ports.len() as u16,
         packets_sent: (ips.len() * ports.len()) as u32,

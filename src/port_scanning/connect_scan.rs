@@ -1,17 +1,18 @@
+use std::time::{Duration, SystemTime};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
-use std::time::{Duration, SystemTime};
 
-use std::net::SocketAddr;
 use std::io::ErrorKind;
+use std::net::SocketAddr;
 
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::{Arc, Mutex};
 use std::result::Result;
+use std::sync::{Arc, Mutex};
 
-use crate::resolving::get_service_name::{ProtocolMap, load_protocol_map, get_service_name};
-use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResult, PortScanAllResult};
-
+use crate::models::{
+    PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+};
+use crate::resolving::get_service_name::{ProtocolMap, get_service_name, load_protocol_map};
 
 /// Performs a TCP connect scan on a single IP address and port.
 ///
@@ -34,15 +35,12 @@ use crate::models::{Protocols, PortStates, PortStateReasons, PortScanSingleResul
 /// * `Closed` - Connection refused (RST).
 /// * `Filtered` - Timed out or dropped by a firewall.
 pub async fn port_tcp_connect_scan(
-    ip_address: IpAddr, 
-    port: u16, 
+    ip_address: IpAddr,
+    port: u16,
     timeout_duration: Duration,
-    protocols: &ProtocolMap
+    protocols: &ProtocolMap,
 ) -> Result<PortScanSingleResult, String> {
-    
-
-
-// Function to automatically create the struct
+    // Function to automatically create the struct
     let make_result = |state, reason| PortScanSingleResult {
         ip_address,
         port,
@@ -59,13 +57,19 @@ pub async fn port_tcp_connect_scan(
     match timeout(timeout_duration, TcpStream::connect(socket_addr)).await {
         Ok(Ok(_)) => Ok(make_result(PortStates::Open, PortStateReasons::SynAck)),
         Ok(Err(e)) => match e.kind() {
-            ErrorKind::ConnectionRefused => Ok(make_result(PortStates::Closed, PortStateReasons::Reset)),
-            _ => Err(format!("Error connecting to {}:{}: {:?}", ip_address, port, e.kind())),
+            ErrorKind::ConnectionRefused => {
+                Ok(make_result(PortStates::Closed, PortStateReasons::Reset))
+            }
+            _ => Err(format!(
+                "Error connecting to {}:{}: {:?}",
+                ip_address,
+                port,
+                e.kind()
+            )),
         },
         Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::Timeout)), // timeout
     }
 }
-
 
 /// Runs a full TCP connect scan on multiple IP addresses and ports concurrently.
 ///
@@ -86,9 +90,9 @@ pub async fn port_tcp_connect_scan(
 /// * Uses `Arc<Mutex<...>>` to collect shared scan results safely across tasks.
 /// * Accurately counts packets sent (connect + response for open ports).
 pub async fn run_connect_scan(
-    ip_address_arr: Result<Vec<Ipv4Addr>, String>, 
+    ip_address_arr: Result<Vec<Ipv4Addr>, String>,
     ports_arr: Vec<u16>,
-    timeout_override_ms: Option<u64>
+    timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     const DEFAULT_TIMEOUT_MS: u64 = 300;
     let timeout = Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
@@ -99,9 +103,11 @@ pub async fn run_connect_scan(
     };
 
     // let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json").expect("Failed to load service names"));
-    let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json")
-        .map_err(|e| format!("Failed to load service names: {}", e))?);
-    
+    let protocols = Arc::new(
+        load_protocol_map("src/resolving/port_service_mapping.json")
+            .map_err(|e| format!("Failed to load service names: {}", e))?,
+    );
+
     let start_time = SystemTime::now();
     let mut tasks = Vec::new();
     let single_results = Arc::new(Mutex::new(Vec::<PortScanSingleResult>::new()));
@@ -121,7 +127,7 @@ pub async fn run_connect_scan(
             let packets_sent_clone = Arc::clone(&packets_sent);
             let sem_clone = Arc::clone(&semaphore);
             let protocols_clone = Arc::clone(&protocols);
-            
+
             // Spawn a task for each scan
             let task = tokio::spawn(async move {
                 // Acquire a permit from the semaphore before scanning
@@ -132,7 +138,7 @@ pub async fn run_connect_scan(
                         return; // exit this task
                     }
                 };
-                
+
                 // Increment packets sent counter (Cause every check sends a SYN packet)
                 {
                     let mut counter = match packets_sent_clone.lock() {
@@ -144,7 +150,7 @@ pub async fn run_connect_scan(
                     };
                     *counter += 1;
                 }
-                
+
                 match port_tcp_connect_scan(ip_addr, port, timeout, &protocols_clone).await {
                     Ok(result) => {
                         let mut results = match single_results_clone.lock() {
@@ -154,7 +160,7 @@ pub async fn run_connect_scan(
                                 poisoned.into_inner()
                             }
                         };
-                        
+
                         // If port is open, add it to the open ports list
                         if result.port_state == PortStates::Open {
                             log::info!("Discovered open port {}/tcp on {}", port, ip_addr);
@@ -179,13 +185,11 @@ pub async fn run_connect_scan(
                             }
                         }
                         results.push(result);
-
                     }
-                    Err(_e) => {
-                    }
+                    Err(_e) => {}
                 }
             });
-            
+
             tasks.push(task);
         }
     }
@@ -194,15 +198,15 @@ pub async fn run_connect_scan(
     for task in tasks {
         let _ = task.await;
     }
-    
+
     let end_time = SystemTime::now();
-    
+
     // Final results
     let single_results = Arc::try_unwrap(single_results)
         .map_err(|_| "References still exist to single_results")?
         .into_inner()
         .map_err(|_| "Mutex is poisoned: single_results")?;
-        
+
     let open_ports = Arc::try_unwrap(open_ports)
         .map_err(|_| "References still exist to open_ports")?
         .into_inner()
@@ -212,7 +216,7 @@ pub async fn run_connect_scan(
         .map_err(|_| "References still exist to packets_sent")?
         .into_inner()
         .map_err(|_| "Mutex is poisoned: packets_sent")?;
-    
+
     // Create the PortScanAllResult
     let all_result = PortScanAllResult {
         ports_scanned: ports_arr.len() as u16,
@@ -221,7 +225,7 @@ pub async fn run_connect_scan(
         start_time,
         end_time,
     };
-    
+
     // Return both result types
     Ok((single_results, all_result))
 }

@@ -4,14 +4,12 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-
-
 /// Represents a network service mapped to a port.
 #[derive(Deserialize)]
 pub struct PortService {
     /// Name of the service (e.g., "http", "ssh").
     service: String,
-    // pservice: String, // Optional protocol service name (but not used 
+    // pservice: String, // Optional protocol service name (but not used
     //-> can be added in the future, as it is present a a parameter in the file)
 }
 
@@ -23,7 +21,6 @@ pub struct ProtocolMap {
     /// UDP port to service mapping.
     udp: HashMap<String, PortService>,
 }
-
 
 /// Loads the protocol map from a JSON file at the given path.
 ///
@@ -51,7 +48,6 @@ pub fn load_protocol_map(path: &str) -> Result<ProtocolMap, Box<dyn std::error::
 //     let protocols: ProtocolMap = serde_json::from_str(&json_str)?;
 //     Ok(protocols)
 // }
-
 
 /// Returns the service name for a given protocol and port.
 /// If not found or unsupported protocol, returns "unknown".

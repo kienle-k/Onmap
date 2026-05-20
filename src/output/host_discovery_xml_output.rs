@@ -1,8 +1,8 @@
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
 use std::fs::File;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::UNIX_EPOCH;
-use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
 
 fn format_ipv4_ranges(addresses: &mut Vec<Ipv4Addr>) -> Vec<String> {
     if addresses.is_empty() {
@@ -26,7 +26,11 @@ fn format_ipv4_ranges(addresses: &mut Vec<Ipv4Addr>) -> Vec<String> {
         if range_start == range_end {
             ranges.push(Ipv4Addr::from(range_start).to_string());
         } else {
-            ranges.push(format!("{}-{}", Ipv4Addr::from(range_start), Ipv4Addr::from(range_end)));
+            ranges.push(format!(
+                "{}-{}",
+                Ipv4Addr::from(range_start),
+                Ipv4Addr::from(range_end)
+            ));
         }
 
         range_start = value;
@@ -36,24 +40,36 @@ fn format_ipv4_ranges(addresses: &mut Vec<Ipv4Addr>) -> Vec<String> {
     if range_start == range_end {
         ranges.push(Ipv4Addr::from(range_start).to_string());
     } else {
-        ranges.push(format!("{}-{}", Ipv4Addr::from(range_start), Ipv4Addr::from(range_end)));
+        ranges.push(format!(
+            "{}-{}",
+            Ipv4Addr::from(range_start),
+            Ipv4Addr::from(range_end)
+        ));
     }
 
     ranges
 }
 
 pub fn save_to_file_xml_host_discovery(
-    path: &str, 
-    results: (&Vec<HostDiscoverySingleResult>, &HostDiscoveryAllResult)
+    path: &str,
+    results: (&Vec<HostDiscoverySingleResult>, &HostDiscoveryAllResult),
 ) -> std::io::Result<()> {
     let (single_results, summary) = results;
     let mut file = File::create(path)?;
 
     // Start header
-    let start_timestamp = summary.start_time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let start_timestamp = summary
+        .start_time
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     writeln!(file, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>")?;
     writeln!(file, "<!DOCTYPE onmap>")?;
-    writeln!(file, "<onmap start=\"{}\" version=\"1.0\">", start_timestamp)?;
+    writeln!(
+        file,
+        "<onmap start=\"{}\" version=\"1.0\">",
+        start_timestamp
+    )?;
 
     let mut down_ipv4: Vec<Ipv4Addr> = Vec::new();
     let mut down_other: Vec<IpAddr> = Vec::new();
@@ -68,15 +84,31 @@ pub fn save_to_file_xml_host_discovery(
         }
 
         writeln!(file, "  <host>")?;
-        writeln!(file, "    <status state=\"up\" reason=\"{}\" reason_ttl=\"{}\"/>", host.reply_type, host.ttl)?;
-        writeln!(file, "    <address addr=\"{}\" addrtype=\"ipv4\"/>", host.ip_address)?;
+        writeln!(
+            file,
+            "    <status state=\"up\" reason=\"{}\" reason_ttl=\"{}\"/>",
+            host.reply_type, host.ttl
+        )?;
+        writeln!(
+            file,
+            "    <address addr=\"{}\" addrtype=\"ipv4\"/>",
+            host.ip_address
+        )?;
 
         if let Some(dns) = &host.dns_resolve {
-            writeln!(file, "    <hostnames><hostname name=\"{}\" type=\"PTR\"/></hostnames>", dns)?;
+            writeln!(
+                file,
+                "    <hostnames><hostname name=\"{}\" type=\"PTR\"/></hostnames>",
+                dns
+            )?;
         }
 
         if let Some(latency) = host.latency {
-            writeln!(file, "    <times srtt=\"{}\" rttvar=\"0\" to=\"100000\"/>", latency.as_micros())?;
+            writeln!(
+                file,
+                "    <times srtt=\"{}\" rttvar=\"0\" to=\"100000\"/>",
+                latency.as_micros()
+            )?;
         }
         writeln!(file, "  </host>")?;
     }
@@ -97,7 +129,11 @@ pub fn save_to_file_xml_host_discovery(
     }
 
     // Footer stats
-    let end_timestamp = summary.end_time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let end_timestamp = summary
+        .end_time
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let elapsed = summary
         .end_time
         .duration_since(summary.start_time)
@@ -107,11 +143,15 @@ pub fn save_to_file_xml_host_discovery(
     writeln!(
         file,
         "    <finished time=\"{}\" elapsed=\"{:.3}\" summary=\"Onmap done; {} hosts up\"/>",
-        end_timestamp,
-        elapsed,
-        summary.hosts_up
+        end_timestamp, elapsed, summary.hosts_up
     )?;
-    writeln!(file, "    <hosts up=\"{}\" down=\"{}\" total=\"{}\"/>", summary.hosts_up, summary.scanned_addresses.len() as u64 - summary.hosts_up, summary.scanned_addresses.len())?;
+    writeln!(
+        file,
+        "    <hosts up=\"{}\" down=\"{}\" total=\"{}\"/>",
+        summary.hosts_up,
+        summary.scanned_addresses.len() as u64 - summary.hosts_up,
+        summary.scanned_addresses.len()
+    )?;
     writeln!(file, "  </runstats>")?;
     writeln!(file, "</onmap>")?;
 

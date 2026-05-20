@@ -1,19 +1,20 @@
+use futures::stream::{FuturesUnordered, StreamExt};
+use pnet::packet::Packet;
 use pnet::packet::icmp::{
-    echo_request::MutableEchoRequestPacket, echo_reply::EchoReplyPacket, IcmpPacket,
-    IcmpTypes,
+    IcmpPacket, IcmpTypes, echo_reply::EchoReplyPacket, echo_request::MutableEchoRequestPacket,
 };
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet; // Added for TTL extraction
-use pnet::packet::Packet;
-use pnet::transport::{icmp_packet_iter, transport_channel, TransportChannelType, TransportProtocol};
+use pnet::transport::{
+    TransportChannelType, TransportProtocol, icmp_packet_iter, transport_channel,
+};
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant, SystemTime};
 use tokio::task;
 use tokio::time::timeout;
-use futures::stream::{FuturesUnordered, StreamExt};
 
-use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
-use crate::resolving::{resolve_hostname};
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::resolving::resolve_hostname;
 
 /// Runs an ICMP echo (ping) scan against a list of target IP addresses.
 ///
@@ -83,17 +84,20 @@ pub async fn run_icmp_echo(
 
     // DNS phase: resolve hostnames for up hosts in parallel, timed separately.
     let dns_start = Instant::now();
-    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+    let dns_tasks: Vec<_> = host_results
+        .iter()
+        .enumerate()
         .filter_map(|(i, r)| match r.ip_address {
             IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
             _ => None,
         })
         .collect();
     let dns_resolved = futures::future::join_all(
-        dns_tasks.into_iter().map(|(i, ipv4)| async move {
-            (i, resolve_hostname(&ipv4).await)
-        })
-    ).await;
+        dns_tasks
+            .into_iter()
+            .map(|(i, ipv4)| async move { (i, resolve_hostname(&ipv4).await) }),
+    )
+    .await;
     for (idx, hostname) in dns_resolved {
         host_results[idx].dns_resolve = hostname;
     }
@@ -101,7 +105,10 @@ pub async fn run_icmp_echo(
 
     // Calculate summary statistics from the collected results.
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
-    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
+    let hosts_dns_resolution = host_results
+        .iter()
+        .filter(|r| r.dns_resolve.is_some())
+        .count() as u64;
     let end_time = SystemTime::now();
 
     let summary = HostDiscoveryAllResult {
@@ -138,20 +145,27 @@ async fn icmp_ping_host_with_details(
 
     let task = task::spawn_blocking(move || {
         // Layer 4 protocol channel for ICMP.
-        let protocol = TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp));
+        let protocol =
+            TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp));
         let (mut tx, mut rx) = match transport_channel(1024, protocol) {
             Ok(channels) => channels,
             Err(e) => {
                 // For Permissions errors.
-                let error_msg = format!("Failed to create transport channel for {}: {}. Try running with sudo.", ip, e);
+                let error_msg = format!(
+                    "Failed to create transport channel for {}: {}. Try running with sudo.",
+                    ip, e
+                );
                 eprintln!("{}", error_msg);
                 return Err(error_msg);
             }
         };
 
         let mut packet_buffer = [0u8; 64];
-        let mut echo_packet = MutableEchoRequestPacket::new(&mut packet_buffer)
-            .ok_or_else(|| "Failed to create mutable echo request packet. The buffer might be too small.".to_string())?;
+        let mut echo_packet =
+            MutableEchoRequestPacket::new(&mut packet_buffer).ok_or_else(|| {
+                "Failed to create mutable echo request packet. The buffer might be too small."
+                    .to_string()
+            })?;
 
         // Manually construct the ICMP Echo Request packet.
         echo_packet.set_icmp_type(IcmpTypes::EchoRequest);
@@ -163,8 +177,12 @@ async fn icmp_ping_host_with_details(
         echo_packet.set_payload(&payload_data);
 
         // ICMP checksum is mandatory.
-        let checksum = pnet::packet::icmp::checksum(&IcmpPacket::new(echo_packet.packet())
-            .ok_or_else(|| "Failed to create an immutable ICMP packet view for checksum calculation.".to_string())?);
+        let checksum = pnet::packet::icmp::checksum(
+            &IcmpPacket::new(echo_packet.packet()).ok_or_else(|| {
+                "Failed to create an immutable ICMP packet view for checksum calculation."
+                    .to_string()
+            })?,
+        );
         echo_packet.set_checksum(checksum);
 
         let destination = IpAddr::V4(ip);
@@ -182,7 +200,6 @@ async fn icmp_ping_host_with_details(
         let timeout_duration = Duration::from_millis(receive_timeout_ms);
 
         while receive_start_time.elapsed() < timeout_duration {
-
             let remaining_time = timeout_duration.saturating_sub(receive_start_time.elapsed());
             if remaining_time.is_zero() {
                 break;

@@ -1,6 +1,6 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use trust_dns_resolver::config::{NameServerConfig, Protocol};
 
 /// Parses DNS nameserver configurations from any readable source.
@@ -57,7 +57,7 @@ pub fn parse_resolv_conf<R: BufRead>(reader: R) -> Vec<NameServerConfig> {
             if let Some(ip_str) = line.strip_prefix("nameserver ") {
                 // Trim whitespace from the IP string itself, e.g., " nameserver   8.8.8.8  ".
                 let ip_str = ip_str.trim();
-                
+
                 // First, try to parse the string as an IPv4 address.
                 if let Ok(ipv4) = ip_str.parse::<Ipv4Addr>() {
                     // If successful, create a standard UDP nameserver configuration on port 53.
@@ -66,7 +66,7 @@ pub fn parse_resolv_conf<R: BufRead>(reader: R) -> Vec<NameServerConfig> {
                         protocol: Protocol::Udp,
                         tls_dns_name: None,
                         trust_negative_responses: true,
-                        bind_addr: None
+                        bind_addr: None,
                     });
                 // If it's not IPv4, try parsing it as an IPv6 address.
                 } else if let Ok(ipv6) = ip_str.parse::<Ipv6Addr>() {
@@ -76,7 +76,7 @@ pub fn parse_resolv_conf<R: BufRead>(reader: R) -> Vec<NameServerConfig> {
                         protocol: Protocol::Udp,
                         tls_dns_name: None,
                         trust_negative_responses: true,
-                        bind_addr: None
+                        bind_addr: None,
                     });
                 }
                 // If the string after "nameserver " is not a valid IPv4 or IPv6, it's ignored.
@@ -93,7 +93,7 @@ pub fn parse_resolv_conf<R: BufRead>(reader: R) -> Vec<NameServerConfig> {
             protocol: Protocol::Udp,
             tls_dns_name: None,
             trust_negative_responses: true,
-            bind_addr: None
+            bind_addr: None,
         });
     }
 
@@ -121,7 +121,6 @@ pub fn get_resolv_conf_nameservers() -> Vec<NameServerConfig> {
         parse_resolv_conf(BufReader::new("".as_bytes()))
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -162,9 +161,9 @@ mod tests {
             nameservers[0].socket_addr,
             SocketAddr::new(
                 IpAddr::V6(
-                    "2001:4860:4860::8888"
-                        .parse::<Ipv6Addr>()
-                        .expect("Parsing a hardcoded IPv6 literal for a test should always succeed")
+                    "2001:4860:4860::8888".parse::<Ipv6Addr>().expect(
+                        "Parsing a hardcoded IPv6 literal for a test should always succeed"
+                    )
                 ),
                 53
             )
@@ -191,9 +190,9 @@ mod tests {
             nameservers[1].socket_addr,
             SocketAddr::new(
                 IpAddr::V6(
-                    "2606:4700:4700::1111"
-                        .parse::<Ipv6Addr>()
-                        .expect("Parsing a hardcoded IPv6 literal for a test should always succeed")
+                    "2606:4700:4700::1111".parse::<Ipv6Addr>().expect(
+                        "Parsing a hardcoded IPv6 literal for a test should always succeed"
+                    )
                 ),
                 53
             )

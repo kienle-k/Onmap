@@ -1,14 +1,15 @@
-
+use futures::stream::{FuturesUnordered, StreamExt};
+use pnet::packet::Packet;
 use pnet::packet::icmp::{IcmpCode, IcmpPacket, IcmpTypes, MutableIcmpPacket};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
-use pnet::packet::Packet;
-use pnet::transport::{icmp_packet_iter, transport_channel, TransportChannelType, TransportProtocol};
+use pnet::transport::{
+    TransportChannelType, TransportProtocol, icmp_packet_iter, transport_channel,
+};
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::task;
 use tokio::time::timeout;
-use futures::stream::{FuturesUnordered, StreamExt};
 
 use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
 use crate::resolving::resolve_hostname;
@@ -69,24 +70,30 @@ pub async fn run_icmp_timestamp(
     }
 
     let dns_start = Instant::now();
-    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+    let dns_tasks: Vec<_> = host_results
+        .iter()
+        .enumerate()
         .filter_map(|(i, r)| match r.ip_address {
             IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
             _ => None,
         })
         .collect();
     let dns_resolved = futures::future::join_all(
-        dns_tasks.into_iter().map(|(i, ipv4)| async move {
-            (i, resolve_hostname(&ipv4).await)
-        })
-    ).await;
+        dns_tasks
+            .into_iter()
+            .map(|(i, ipv4)| async move { (i, resolve_hostname(&ipv4).await) }),
+    )
+    .await;
     for (idx, hostname) in dns_resolved {
         host_results[idx].dns_resolve = hostname;
     }
     let dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
 
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
-    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
+    let hosts_dns_resolution = host_results
+        .iter()
+        .filter(|r| r.dns_resolve.is_some())
+        .count() as u64;
     let end_time = SystemTime::now();
 
     let summary = HostDiscoveryAllResult {
@@ -104,7 +111,9 @@ pub async fn run_icmp_timestamp(
 }
 
 fn icmp_timestamp_origin_ms() -> u32 {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     let millis = (now.as_secs() % 86_400) * 1_000 + u64::from(now.subsec_millis());
     millis as u32
 }
@@ -122,19 +131,24 @@ async fn icmp_timestamp_host_with_details(
     let outer_timeout_ms = receive_timeout_ms + DEFAULT_OUTER_PADDING_MS;
 
     let task = task::spawn_blocking(move || {
-        let protocol = TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp));
+        let protocol =
+            TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp));
         let (mut tx, mut rx) = match transport_channel(1024, protocol) {
             Ok(channels) => channels,
             Err(e) => {
-                let error_msg = format!("Failed to create transport channel for {}: {}. Try running with sudo.", ip, e);
+                let error_msg = format!(
+                    "Failed to create transport channel for {}: {}. Try running with sudo.",
+                    ip, e
+                );
                 eprintln!("{}", error_msg);
                 return Err(error_msg);
             }
         };
 
         let mut packet_buffer = [0u8; 20];
-        let mut ts_packet = MutableIcmpPacket::new(&mut packet_buffer)
-            .ok_or_else(|| "Failed to create mutable ICMP packet for timestamp request.".to_string())?;
+        let mut ts_packet = MutableIcmpPacket::new(&mut packet_buffer).ok_or_else(|| {
+            "Failed to create mutable ICMP packet for timestamp request.".to_string()
+        })?;
 
         ts_packet.set_icmp_type(IcmpTypes::Timestamp);
         ts_packet.set_icmp_code(IcmpCode(0));
@@ -150,8 +164,10 @@ async fn icmp_timestamp_host_with_details(
         payload.extend_from_slice(&0u32.to_be_bytes());
         ts_packet.set_payload(&payload);
 
-        let checksum = pnet::packet::icmp::checksum(&IcmpPacket::new(ts_packet.packet())
-            .ok_or_else(|| "Failed to create ICMP packet view for checksum calculation.".to_string())?);
+        let checksum =
+            pnet::packet::icmp::checksum(&IcmpPacket::new(ts_packet.packet()).ok_or_else(
+                || "Failed to create ICMP packet view for checksum calculation.".to_string(),
+            )?);
         ts_packet.set_checksum(checksum);
 
         let destination = IpAddr::V4(ip);

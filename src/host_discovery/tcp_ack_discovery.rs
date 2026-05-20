@@ -1,4 +1,3 @@
-
 use futures::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
@@ -33,12 +32,17 @@ pub async fn run_tcp_ack_discovery(
     let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
     let mut host_states: HashMap<Ipv4Addr, HostProbeState> = ips
         .iter()
-        .map(|ip| (*ip, HostProbeState {
-            is_up: false,
-            latency: None,
-            ttl: 0,
-            reply_type: "no response".to_string(),
-        }))
+        .map(|ip| {
+            (
+                *ip,
+                HostProbeState {
+                    is_up: false,
+                    latency: None,
+                    ttl: 0,
+                    reply_type: "no response".to_string(),
+                },
+            )
+        })
         .collect();
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
@@ -55,9 +59,13 @@ pub async fn run_tcp_ack_discovery(
             };
 
             futures.push(async move {
-                let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
+                let _permit = sem_clone
+                    .acquire()
+                    .await
+                    .expect("Semaphore should not be closed");
                 let start = Instant::now();
-                let (is_unfiltered, ttl) = port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
+                let (is_unfiltered, ttl) =
+                    port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
                 let latency = start.elapsed();
                 (ip, port, latency, is_unfiltered, ttl)
             });
@@ -65,9 +73,7 @@ pub async fn run_tcp_ack_discovery(
     }
 
     while let Some((ip, port, latency, is_unfiltered, ttl)) = futures.next().await {
-        let entry = host_states
-            .get_mut(&ip)
-            .expect("Host state missing for IP");
+        let entry = host_states.get_mut(&ip).expect("Host state missing for IP");
 
         if is_unfiltered {
             let should_update = match entry.latency {
@@ -86,9 +92,7 @@ pub async fn run_tcp_ack_discovery(
 
     let mut host_results = Vec::new();
     for ip in ips {
-        let state = host_states
-            .remove(&ip)
-            .expect("Host state missing for IP");
+        let state = host_states.remove(&ip).expect("Host state missing for IP");
 
         let dns_resolve = None;
 
@@ -105,22 +109,28 @@ pub async fn run_tcp_ack_discovery(
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
     let end_time = SystemTime::now();
     let dns_start = Instant::now();
-    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+    let dns_tasks: Vec<_> = host_results
+        .iter()
+        .enumerate()
         .filter_map(|(i, r)| match r.ip_address {
             IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
             _ => None,
         })
         .collect();
     let dns_resolved = futures::future::join_all(
-        dns_tasks.into_iter().map(|(i, ipv4)| async move {
-            (i, resolve_hostname(&ipv4).await)
-        })
-    ).await;
+        dns_tasks
+            .into_iter()
+            .map(|(i, ipv4)| async move { (i, resolve_hostname(&ipv4).await) }),
+    )
+    .await;
     for (idx, hostname) in dns_resolved {
         host_results[idx].dns_resolve = hostname;
     }
     let dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
-    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
+    let hosts_dns_resolution = host_results
+        .iter()
+        .filter(|r| r.dns_resolve.is_some())
+        .count() as u64;
 
     let summary = HostDiscoveryAllResult {
         scanned_addresses: all_ips,

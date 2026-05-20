@@ -57,7 +57,6 @@ pub fn extract_ttl(output: &str) -> Option<u8> {
     None
 }
 
-
 #[cfg(test)]
 mod tests {
     //! Unit tests for the `extract_ttl` function.

@@ -1,6 +1,6 @@
-use prettytable::{Table, Row, Cell, format};
-use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
 use super::format_duration;
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use prettytable::{Cell, Row, Table, format};
 
 /// Formats and prints the results of a host discovery scan to the console.
 ///
@@ -20,7 +20,9 @@ use super::format_duration;
 /// * `results` - A tuple containing:
 ///   * A `Vec<HostDiscoverySingleResult>`: The detailed results for each host probed.
 ///   * A `HostDiscoveryAllResult`: The summary statistics for the entire scan.
-pub fn print_host_discovery_results(results: &(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
+pub fn print_host_discovery_results(
+    results: &(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult),
+) {
     println!();
     let (single_results, all_results) = results;
 
@@ -34,23 +36,23 @@ pub fn print_host_discovery_results(results: &(Vec<HostDiscoverySingleResult>, H
     // Print different rows for every field in the HostDiscoveryAllResult struct
     summary_table.add_row(Row::new(vec![
         Cell::new("Hosts scanned"),
-        Cell::new(&all_results.scanned_addresses.len().to_string())
+        Cell::new(&all_results.scanned_addresses.len().to_string()),
     ]));
     summary_table.add_row(Row::new(vec![
         Cell::new("Hosts up"),
-        Cell::new(&all_results.hosts_up.to_string())
+        Cell::new(&all_results.hosts_up.to_string()),
     ]));
     summary_table.add_row(Row::new(vec![
         Cell::new("Hosts with DNS resolution"),
-        Cell::new(&all_results.hosts_dns_resolution.to_string())
+        Cell::new(&all_results.hosts_dns_resolution.to_string()),
     ]));
     summary_table.add_row(Row::new(vec![
         Cell::new("Port probes per host"),
-        Cell::new(&all_results.ports_per_host.to_string())
+        Cell::new(&all_results.ports_per_host.to_string()),
     ]));
     summary_table.add_row(Row::new(vec![
         Cell::new("Total packets sent"),
-        Cell::new(&all_results.packets_sent.to_string())
+        Cell::new(&all_results.packets_sent.to_string()),
     ]));
 
     // Calculate and add scan duration
@@ -60,7 +62,7 @@ pub fn print_host_discovery_results(results: &(Vec<HostDiscoverySingleResult>, H
     };
     summary_table.add_row(Row::new(vec![
         Cell::new("Scan duration"),
-        Cell::new(&duration_str)
+        Cell::new(&duration_str),
     ]));
 
     summary_table.printstd();
@@ -69,9 +71,8 @@ pub fn print_host_discovery_results(results: &(Vec<HostDiscoverySingleResult>, H
     println!("\n=== Host Details ===");
 
     // Filter for hosts that are reachable to display in the details table
-    let reachable_hosts: Vec<&HostDiscoverySingleResult> = single_results.iter()
-        .filter(|host| host.is_up)
-        .collect();
+    let reachable_hosts: Vec<&HostDiscoverySingleResult> =
+        single_results.iter().filter(|host| host.is_up).collect();
 
     if reachable_hosts.is_empty() {
         println!("No hosts discovered.");
@@ -86,7 +87,7 @@ pub fn print_host_discovery_results(results: &(Vec<HostDiscoverySingleResult>, H
             Cell::new("Latency"),
             Cell::new("Hostname"),
             Cell::new("Reply Type"),
-            Cell::new("TTL")
+            Cell::new("TTL"),
         ]));
 
         // Add each host as a row
@@ -105,7 +106,7 @@ pub fn print_host_discovery_results(results: &(Vec<HostDiscoverySingleResult>, H
                 Cell::new(&latency),
                 Cell::new(hostname),
                 Cell::new(&host.reply_type),
-                Cell::new(&host.ttl.to_string())
+                Cell::new(&host.ttl.to_string()),
             ]));
         }
 

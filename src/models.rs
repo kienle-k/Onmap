@@ -1,8 +1,7 @@
+use clap::{ArgAction, Parser, Subcommand};
 use std::ffi::OsString;
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
-use clap::{Parser, Subcommand, ArgAction};
-
 
 #[derive(Parser, Debug)]
 #[command(
@@ -85,7 +84,7 @@ pub struct Cli {
         name = "output_normal",
         short = 'N',
         long = "oN",
-        global = true, 
+        global = true,
         value_name = "file",
         help = "Output scan in normal format"
     )]
@@ -95,7 +94,7 @@ pub struct Cli {
         name = "output_xml",
         short = 'X',
         long = "oX",
-        global = true, 
+        global = true,
         value_name = "file",
         help = "Output scan in XML format"
     )]
@@ -130,7 +129,12 @@ pub struct Cli {
     pub os_detection: bool,
 
     /// Run nmap scripts on open ports after scan (e.g. --script=default, --script=http-title, --script="vuln,safe")
-    #[arg(long = "script", global = true, value_name = "SCRIPTS", help = "Run nmap script(s) on open ports after scan")]
+    #[arg(
+        long = "script",
+        global = true,
+        value_name = "SCRIPTS",
+        help = "Run nmap script(s) on open ports after scan"
+    )]
     pub script: Option<String>,
 }
 
@@ -140,7 +144,7 @@ pub enum ScanCommand {
     #[command(name = "-sS", aliases = ["sS"])]
     SynScan {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long="ports")]
+        #[arg(short = 'p', long = "ports")]
         ports: Option<String>,
         /// Override scan timeout in milliseconds
         #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
@@ -153,7 +157,7 @@ pub enum ScanCommand {
     #[command(name = "-sT", aliases = ["sT"])]
     ConnectScan {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long="ports")]
+        #[arg(short = 'p', long = "ports")]
         ports: Option<String>,
         /// Override scan timeout in milliseconds
         #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
@@ -166,7 +170,7 @@ pub enum ScanCommand {
     #[command(name = "-sU", aliases = ["sU"])]
     UdpScan {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long="ports")]
+        #[arg(short = 'p', long = "ports")]
         ports: Option<String>,
         /// Override scan timeout in milliseconds
         #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
@@ -179,7 +183,7 @@ pub enum ScanCommand {
     #[command(name = "-sA", aliases = ["sA"])]
     AckScan {
         /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long="ports")]
+        #[arg(short = 'p', long = "ports")]
         ports: Option<String>,
         /// Override scan timeout in milliseconds
         #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
@@ -210,7 +214,7 @@ impl Cli {
                 Some("-PA") => normalized.push(OsString::from("--PA")),
                 Some("-PU") => normalized.push(OsString::from("--PU")),
                 Some("-sV") => normalized.push(OsString::from("--sV")),
-                Some("-O")  => normalized.push(OsString::from("--sO")),
+                Some("-O") => normalized.push(OsString::from("--sO")),
                 Some("-sC") => {
                     normalized.push(OsString::from("--script"));
                     normalized.push(OsString::from("default"));
@@ -319,7 +323,7 @@ pub enum AppState {
     /// The view for selecting high-level port options (e.g., fast mode).
     PortOptions,
     /// The view for entering a specific range of ports to scan.
-    PortRangeInput
+    PortRangeInput,
 }
 
 /// Represents a selectable option within the main menu.
@@ -387,7 +391,7 @@ pub enum PortOptions {
     /// Scan the top 100 most common ports for a faster scan.
     FastMode,
     /// Scan all ports from 1 to 65535 sequentially.
-    SequentialMode
+    SequentialMode,
 }
 
 /// Represents the determined state of a scanned network port.
@@ -404,8 +408,7 @@ pub enum PortStates {
     /// The port is open or filtered, but the exact state cannot be determined.
     OpenOrFiltered,
     /// The port is closed or filtered, but the exact state cannot be determined.
-    ClosedOrFiltered
-
+    ClosedOrFiltered,
 }
 
 /// The reason for a port's determined state, based on the network response.
@@ -422,10 +425,8 @@ pub enum PortStateReasons {
     /// A RST-ACK packet was received from an ACK scan, indicating an unfiltered port.
     Unfiltered,
     /// No response was received, indicating a filtered port or dropped packet.
-    Timeout
+    Timeout,
 }
-
-
 
 /// The network protocol used for a scan.
 #[derive(Clone, Copy, Debug)]
@@ -433,7 +434,7 @@ pub enum Protocols {
     /// Transmission Control Protocol.
     TCP,
     /// User Datagram Protocol.
-    UDP
+    UDP,
 }
 
 /// Holds the detailed result of a scan on a single port of a single host.
@@ -452,7 +453,7 @@ pub struct PortScanSingleResult {
     /// The network reason for the determined port state (e.g., SynAck).
     pub reason: PortStateReasons,
     /// The potential service running on the port (e.g., "http").
-    pub service: String
+    pub service: String,
 }
 
 /// Holds the summary and aggregate results of a port scan operation across multiple ports.
@@ -467,7 +468,7 @@ pub struct PortScanAllResult {
     /// The timestamp when the scan began.
     pub start_time: SystemTime,
     /// The timestamp when the scan completed.
-    pub end_time: SystemTime
+    pub end_time: SystemTime,
 }
 
 impl PortScanAllResult {
@@ -478,7 +479,7 @@ impl PortScanAllResult {
             packets_sent: 0,
             open_ports: Vec::new(),
             start_time: SystemTime::now(),
-            end_time: SystemTime::now()
+            end_time: SystemTime::now(),
         }
     }
 }
@@ -497,7 +498,7 @@ pub struct HostDiscoverySingleResult {
     /// A string describing the type of reply received (e.g., "echo-reply").
     pub reply_type: String,
     /// The Time-To-Live value from the response packet.
-    pub ttl: u8
+    pub ttl: u8,
 }
 
 /// Holds the summary and aggregate results of a host discovery scan across multiple targets.

@@ -4,17 +4,17 @@
 //! built with the `ratatui` and `crossterm` crates. It manages the application's state,
 //! handles user input through an event loop, and renders all the widgets to the terminal.
 
-use std::io;
-use crate::models::{MainMenuItem, HostDiscoveryOption, PortScanOption, AppState, PortOptions};
+use crate::models::{AppState, HostDiscoveryOption, MainMenuItem, PortOptions, PortScanOption};
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
+    Frame, Terminal,
     backend::Backend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Paragraph},
-    Frame, Terminal,
 };
+use std::io;
 
 /// Represents the state and data of the interactive TUI application.
 ///
@@ -44,7 +44,7 @@ pub struct App {
 impl App {
     /// Creates a new `App` instance in its initial state.
     pub fn new() -> App {
-        App { 
+        App {
             state: AppState::MainMenu,
             main_selected: None,
             host_discovery_selected: None,
@@ -66,7 +66,7 @@ impl App {
     fn select_host_discovery(&mut self, item: HostDiscoveryOption) {
         self.host_discovery_selected = Some(item);
     }
-    
+
     /// Sets the selected port scan option.
     fn select_port_scan(&mut self, item: PortScanOption) {
         self.port_scan_selected = Some(item);
@@ -110,12 +110,13 @@ impl App {
     /// Moves the cursor one position to the right in the current input field.
     fn move_cursor_right(&mut self) {
         // The condition should check against the length of the relevant input field.
-        if self.cursor_position < self.ip_input.len() || self.cursor_position < self.port_input.len() {
+        if self.cursor_position < self.ip_input.len()
+            || self.cursor_position < self.port_input.len()
+        {
             self.cursor_position += 1;
         }
     }
 }
-
 
 /// Runs the main event loop for the terminal user interface.
 ///
@@ -137,13 +138,15 @@ impl App {
 pub fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
-) -> io::Result<(Option<MainMenuItem>,
-                Option<HostDiscoveryOption>,
-                Option<PortScanOption>,
-                String,
-                bool,
-                Option<PortOptions>,
-                String)> {
+) -> io::Result<(
+    Option<MainMenuItem>,
+    Option<HostDiscoveryOption>,
+    Option<PortScanOption>,
+    String,
+    bool,
+    Option<PortOptions>,
+    String,
+)> {
     //Loop that has the main functionality of the tui
     //Depending on the options selected the App struct is set
     //And returned if all options are set
@@ -152,23 +155,30 @@ pub fn run_app<B: Backend>(
 
         if let Event::Key(key) = event::read()? {
             match app.state {
-
                 //Options that can be selected in the main menu,
                 //can either quit with q or go to a submenu
-                AppState::MainMenu => {
-                    match key.code {
-                        KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
-                        KeyCode::Char('1') => {
-                            app.select(MainMenuItem::SubMenuHostDiscovery);
-                            app.state = AppState::SubMenuHostDiscovery;
-                        }
-                        KeyCode::Char('2') => {
-                            app.select(MainMenuItem::SubMenuPortScan);
-                            app.state = AppState::SubMenuPortScan;
-                        }
-                        _ => {}
+                AppState::MainMenu => match key.code {
+                    KeyCode::Char('q') => {
+                        return Ok((
+                            None,
+                            None,
+                            None,
+                            "".to_string(),
+                            false,
+                            None,
+                            "".to_string(),
+                        ));
                     }
-                }
+                    KeyCode::Char('1') => {
+                        app.select(MainMenuItem::SubMenuHostDiscovery);
+                        app.state = AppState::SubMenuHostDiscovery;
+                    }
+                    KeyCode::Char('2') => {
+                        app.select(MainMenuItem::SubMenuPortScan);
+                        app.state = AppState::SubMenuPortScan;
+                    }
+                    _ => {}
+                },
                 //Options that can be selected in the submenu for host discovery
                 //Menu will continue with ip address input after
                 AppState::SubMenuHostDiscovery => {
@@ -179,7 +189,17 @@ pub fn run_app<B: Backend>(
                             app.host_discovery_selected = None;
                         }
                         //q to quit
-                        KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
+                        KeyCode::Char('q') => {
+                            return Ok((
+                                None,
+                                None,
+                                None,
+                                "".to_string(),
+                                false,
+                                None,
+                                "".to_string(),
+                            ));
+                        }
                         //The following options select the host discovery method
                         KeyCode::Char('1') => {
                             app.select_host_discovery(HostDiscoveryOption::ListScan);
@@ -233,7 +253,17 @@ pub fn run_app<B: Backend>(
                             app.port_scan_selected = None;
                         }
                         //q to quit
-                        KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
+                        KeyCode::Char('q') => {
+                            return Ok((
+                                None,
+                                None,
+                                None,
+                                "".to_string(),
+                                false,
+                                None,
+                                "".to_string(),
+                            ));
+                        }
                         //The following options select the scan method
                         KeyCode::Char('1') => {
                             app.select_port_scan(PortScanOption::SynScan);
@@ -294,10 +324,9 @@ pub fn run_app<B: Backend>(
                             app.cursor_position = 0;
                             if app.port_needed {
                                 app.state = AppState::PortOptions;
-                            }
-                            else {
+                            } else {
                                 return Ok((
-                                    app.main_selected, 
+                                    app.main_selected,
                                     app.host_discovery_selected,
                                     app.port_scan_selected,
                                     app.ip_input.clone(),
@@ -342,12 +371,22 @@ pub fn run_app<B: Backend>(
                             app.port_scan_selected = None;
                         }
                         //q to quit
-                        KeyCode::Char('q') => return Ok((None, None, None, "".to_string(), false, None, "".to_string())),
+                        KeyCode::Char('q') => {
+                            return Ok((
+                                None,
+                                None,
+                                None,
+                                "".to_string(),
+                                false,
+                                None,
+                                "".to_string(),
+                            ));
+                        }
                         //Ports: 1-1000 are selected for the scan
                         KeyCode::Char('1') => {
                             app.port_mode = Some(PortOptions::NormalMode);
                             return Ok((
-                                app.main_selected, 
+                                app.main_selected,
                                 app.host_discovery_selected,
                                 app.port_scan_selected,
                                 app.ip_input.clone(),
@@ -365,7 +404,7 @@ pub fn run_app<B: Backend>(
                         KeyCode::Char('3') => {
                             app.port_mode = Some(PortOptions::FastMode);
                             return Ok((
-                                app.main_selected, 
+                                app.main_selected,
                                 app.host_discovery_selected,
                                 app.port_scan_selected,
                                 app.ip_input.clone(),
@@ -373,13 +412,12 @@ pub fn run_app<B: Backend>(
                                 app.port_mode,
                                 app.port_input.clone(),
                             ));
-
                         }
                         //All 65535 ports starting from 1 are selected for the scans
                         KeyCode::Char('4') => {
                             app.port_mode = Some(PortOptions::SequentialMode);
                             return Ok((
-                                app.main_selected, 
+                                app.main_selected,
                                 app.host_discovery_selected,
                                 app.port_scan_selected,
                                 app.ip_input.clone(),
@@ -396,22 +434,22 @@ pub fn run_app<B: Backend>(
                     match key.code {
                         //Submit with enter
                         KeyCode::Enter => {
-                                app.cursor_position = 0;
-                                return Ok((
-                                    app.main_selected, 
-                                    app.host_discovery_selected,
-                                    app.port_scan_selected,
-                                    app.ip_input.clone(),
-                                    app.port_needed,
-                                    app.port_mode,
-                                    app.port_input.clone(),
-                                ));
+                            app.cursor_position = 0;
+                            return Ok((
+                                app.main_selected,
+                                app.host_discovery_selected,
+                                app.port_scan_selected,
+                                app.ip_input.clone(),
+                                app.port_needed,
+                                app.port_mode,
+                                app.port_input.clone(),
+                            ));
                         }
                         //Only allow characters for valid port ranges
                         KeyCode::Char(c) => {
-                        if c.is_digit(10) || c == '-' {
-                            app.input_port(c);
-                        }
+                            if c.is_digit(10) || c == '-' {
+                                app.input_port(c);
+                            }
                         }
                         //Normal backspace behaviour
                         KeyCode::Backspace => {
@@ -432,519 +470,399 @@ pub fn run_app<B: Backend>(
                         _ => {}
                     }
                 }
-    }
-}
+            }
+        }
 
+        /// Renders the user interface based on the current application state.
+        ///
+        /// This function acts as the main drawing dispatcher. It checks the `app.state`
+        /// and calls the appropriate rendering function for the current view, whether it's
+        /// the main menu, a sub-menu, or an input screen.
+        fn ui(f: &mut Frame, app: &App) {
+            // Get full size of the frame
+            let size = f.size();
 
-
-/// Renders the user interface based on the current application state.
-///
-/// This function acts as the main drawing dispatcher. It checks the `app.state`
-/// and calls the appropriate rendering function for the current view, whether it's
-/// the main menu, a sub-menu, or an input screen.
-fn ui(f: &mut Frame, app: &App) {
-    // Get full size of the frame
-    let size = f.size();
-    
-    // Create the horizontal layout, make margins left and right 0
-    // so the TUI is on the left of the screen
-    let horizontal_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(
-            [
-                Constraint::Percentage(0),   // Left margin
-                Constraint::Percentage(30),   // Center content (30% width)
-                Constraint::Percentage(0),   // Right margin
-            ]
-            .as_ref(),
-        )
-        .split(size);
-    
-    // Now create a vertical layout within the center horizontal section
-    let vertical_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1) 
-        .constraints(
-            [
-                Constraint::Length(3),       // Title
-                Constraint::Min(10),         // Menu content
-                Constraint::Length(5),       // Instructions
-            ]
-            .as_ref(),
-        )
-        .split(horizontal_layout[1]);
-    
-    // Center section for content
-    let content_area = vertical_chunks[1];
-
-    // The following code defines how the graphics are displayed
-    // This should always match the logic defined above for every menu
-    match app.state {
-        // --- Render Main Menu ---
-        AppState::MainMenu => {
-            // Create title
-            let title = Block::default()
-                .title(
-                    Span::styled(
-                        "Onmap",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    )
+            // Create the horizontal layout, make margins left and right 0
+            // so the TUI is on the left of the screen
+            let horizontal_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(
+                    [
+                        Constraint::Percentage(0),  // Left margin
+                        Constraint::Percentage(30), // Center content (30% width)
+                        Constraint::Percentage(0),  // Right margin
+                    ]
+                    .as_ref(),
                 )
-                .borders(Borders::ALL);
-            f.render_widget(title, vertical_chunks[0]);
+                .split(size);
 
-            // Create menu items
-            let items = vec![
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+            // Now create a vertical layout within the center horizontal section
+            let vertical_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints(
+                    [
+                        Constraint::Length(3), // Title
+                        Constraint::Min(10),   // Menu content
+                        Constraint::Length(5), // Instructions
+                    ]
+                    .as_ref(),
+                )
+                .split(horizontal_layout[1]);
+
+            // Center section for content
+            let content_area = vertical_chunks[1];
+
+            // The following code defines how the graphics are displayed
+            // This should always match the logic defined above for every menu
+            match app.state {
+                // --- Render Main Menu ---
+                AppState::MainMenu => {
+                    // Create title
+                    let title = Block::default()
+                        .title(Span::styled(
+                            "Onmap",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL);
+                    f.render_widget(title, vertical_chunks[0]);
+
+                    // Create menu items
+                    let items = vec![
+                        ListItem::new(Line::from(Span::styled(
                             "1. Host discovery",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "2. Port scanning",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
+                        ))),
+                    ];
 
-            ];
+                    // Create menu list
+                    let menu_list = List::new(items)
+                        .block(Block::default().borders(Borders::ALL).title("Main Menu"))
+                        .highlight_style(
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        );
+                    f.render_widget(menu_list, content_area);
 
-            // Create menu list
-            let menu_list = List::new(items)
-                .block(Block::default().borders(Borders::ALL).title("Main Menu"))
-                .highlight_style(
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                );
-            f.render_widget(menu_list, content_area);
+                    // Create instructions
+                    let instructions = Block::default().title("Instructions").borders(Borders::ALL);
 
-            // Create instructions
-            let instructions = Block::default()
-                .title("Instructions")
-                .borders(Borders::ALL);
+                    // Add text to the instructions block
+                    let instructions_text =
+                        Text::from("Press 1-4 to select an option\nPress 'q' to quit");
+                    f.render_widget(
+                        Paragraph::new(instructions_text).block(instructions),
+                        vertical_chunks[2],
+                    );
+                }
+                // --- Render Host Discovery Sub-Menu ---
+                AppState::SubMenuHostDiscovery => {
+                    // Create title
+                    let title = Block::default()
+                        .title(Span::styled(
+                            "Host discovery",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL);
+                    f.render_widget(title, vertical_chunks[0]);
 
-            // Add text to the instructions block
-            let instructions_text = Text::from(
-            "Press 1-4 to select an option\nPress 'q' to quit"
-            );
-            f.render_widget(
-                Paragraph::new(instructions_text).block(instructions),
-                vertical_chunks[2],
-            );
-        }
-        // --- Render Host Discovery Sub-Menu ---
-        AppState::SubMenuHostDiscovery => {
-            // Create title
-            let title = Block::default()
-                .title(
-                    Span::styled(
-                        "Host discovery",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                )
-                .borders(Borders::ALL);
-            f.render_widget(title, vertical_chunks[0]);
-
-            // Create submenu items
-            let sub_items = vec![
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                    // Create submenu items
+                    let sub_items = vec![
+                        ListItem::new(Line::from(Span::styled(
                             "1. List scan (-sL)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "2. Ping scan (-sn)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "3. TCP SYN Discovery (-PS)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "4. TCP ACK Discovery (-PA)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "5. UDP Discovery (-PU)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "6. ARP Discovery (-ARP)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "7. ICMP echo (-PE)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "8. ICMP timestamp (-PP)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "9. ICMP netmask (-PM)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-            ];
+                        ))),
+                    ];
 
-            // Create submenu list
-            let submenu_list = List::new(sub_items)
-                .block(Block::default().borders(Borders::ALL).title("Options"))
-                .highlight_style(
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                );
-            f.render_widget(submenu_list, content_area);
+                    // Create submenu list
+                    let submenu_list = List::new(sub_items)
+                        .block(Block::default().borders(Borders::ALL).title("Options"))
+                        .highlight_style(
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        );
+                    f.render_widget(submenu_list, content_area);
 
-            // Create instructions
-            let instructions = Block::default()
-                .title("Instructions")
-                .borders(Borders::ALL);
+                    // Create instructions
+                    let instructions = Block::default().title("Instructions").borders(Borders::ALL);
 
-            // Add text to the instructions block
-            let instructions_text = Text::from(
-                "Press 1-9 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit"
-            );
-            f.render_widget(
-                Paragraph::new(instructions_text).block(instructions),
-                vertical_chunks[2],
-            );
-        }
-        // --- Render Port Scan Sub-Menu ---
-        AppState::SubMenuPortScan => {
-            // Create title
-            let title = Block::default()
-                .title(
-                    Span::styled(
-                        "Port scanning",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                )
-                .borders(Borders::ALL);
-            f.render_widget(title, vertical_chunks[0]);
+                    // Add text to the instructions block
+                    let instructions_text = Text::from(
+                        "Press 1-9 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
+                    );
+                    f.render_widget(
+                        Paragraph::new(instructions_text).block(instructions),
+                        vertical_chunks[2],
+                    );
+                }
+                // --- Render Port Scan Sub-Menu ---
+                AppState::SubMenuPortScan => {
+                    // Create title
+                    let title = Block::default()
+                        .title(Span::styled(
+                            "Port scanning",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL);
+                    f.render_widget(title, vertical_chunks[0]);
 
-            // Create submenu items
-            let sub_items = vec![
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                    // Create submenu items
+                    let sub_items = vec![
+                        ListItem::new(Line::from(Span::styled(
                             "1. SYN scan (-sS)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "2. Connect scan (-sT)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "3. ACK scan (-sA)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "4. Window scan (-sW)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "5. Mainmon scan (-sM)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "6. Null scan (-sN)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "7. FIN scan (-sF)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "8. Xmas scan (-sX)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "9. UDP scan (-sU)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-            ];
+                        ))),
+                    ];
 
-            // Create submenu list
-            let submenu_list = List::new(sub_items)
-                .block(Block::default().borders(Borders::ALL).title("Options"))
-                .highlight_style(
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                );
-            f.render_widget(submenu_list, content_area);
+                    // Create submenu list
+                    let submenu_list = List::new(sub_items)
+                        .block(Block::default().borders(Borders::ALL).title("Options"))
+                        .highlight_style(
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        );
+                    f.render_widget(submenu_list, content_area);
 
-            // Create instructions
-            let instructions = Block::default()
-                .title("Instructions")
-                .borders(Borders::ALL);
+                    // Create instructions
+                    let instructions = Block::default().title("Instructions").borders(Borders::ALL);
 
-            // Add text to the instructions block
-            let instructions_text = Text::from(
-                "Press 1-9 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit"
-            );
-            f.render_widget(
-                Paragraph::new(instructions_text).block(instructions),
-                vertical_chunks[2],
-            );
-        }
-        // --- Render Ip Address Input ---
-        AppState::IpAddressInput => {
-            // Create title
-            let title = Block::default()
-                .title(
-                    Span::styled(
-                        "IP Address Input",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                )
-                .borders(Borders::ALL);
-            f.render_widget(title, vertical_chunks[0]);
+                    // Add text to the instructions block
+                    let instructions_text = Text::from(
+                        "Press 1-9 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
+                    );
+                    f.render_widget(
+                        Paragraph::new(instructions_text).block(instructions),
+                        vertical_chunks[2],
+                    );
+                }
+                // --- Render Ip Address Input ---
+                AppState::IpAddressInput => {
+                    // Create title
+                    let title = Block::default()
+                        .title(Span::styled(
+                            "IP Address Input",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL);
+                    f.render_widget(title, vertical_chunks[0]);
 
-            // Create input area
-            let input = Paragraph::new(app.ip_input.as_str())
-                .style(Style::default().fg(Color::Yellow))
-                .block(Block::default().borders(Borders::ALL).title("Enter IP Address"));
-            f.render_widget(input, content_area);
-            
-            // Show cursor at the current position
-            f.set_cursor(
-                // Add 1 for the border and 1 for the offset from the border
-                content_area.x + app.cursor_position as u16 + 1,
-                // Add 1 for the border and 1 for the offset from the border
-                content_area.y + 1,
-            );
+                    // Create input area
+                    let input = Paragraph::new(app.ip_input.as_str())
+                        .style(Style::default().fg(Color::Yellow))
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Enter IP Address"),
+                        );
+                    f.render_widget(input, content_area);
 
-            // Create instructions
-            let instructions = Block::default()
-                .title("Instructions")
-                .borders(Borders::ALL);
+                    // Show cursor at the current position
+                    f.set_cursor(
+                        // Add 1 for the border and 1 for the offset from the border
+                        content_area.x + app.cursor_position as u16 + 1,
+                        // Add 1 for the border and 1 for the offset from the border
+                        content_area.y + 1,
+                    );
 
-            // Add text to the instructions block
-            let instructions_text = Text::from(
-                "Enter IP address and press Enter to submit\nPress Esc to clear"
-            );
-            f.render_widget(
-                Paragraph::new(instructions_text).block(instructions),
-                vertical_chunks[2],
-            );
-        }
+                    // Create instructions
+                    let instructions = Block::default().title("Instructions").borders(Borders::ALL);
 
-        // --- Render Port Options Sub-Menu ---
-        AppState::PortOptions => {
-            // Create title
-            let title = Block::default()
-                .title(
-                    Span::styled(
-                        "Port scanning",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                )
-                .borders(Borders::ALL);
-            f.render_widget(title, vertical_chunks[0]);
+                    // Add text to the instructions block
+                    let instructions_text = Text::from(
+                        "Enter IP address and press Enter to submit\nPress Esc to clear",
+                    );
+                    f.render_widget(
+                        Paragraph::new(instructions_text).block(instructions),
+                        vertical_chunks[2],
+                    );
+                }
 
-            // Create submenu items
-            let sub_items = vec![
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                // --- Render Port Options Sub-Menu ---
+                AppState::PortOptions => {
+                    // Create title
+                    let title = Block::default()
+                        .title(Span::styled(
+                            "Port scanning",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL);
+                    f.render_widget(title, vertical_chunks[0]);
+
+                    // Create submenu items
+                    let sub_items = vec![
+                        ListItem::new(Line::from(Span::styled(
                             "1. Normal mode (1-1000)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "2. Port ranges (-p)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "3. Fast mode (-F)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-                ListItem::new(
-                    Line::from(
-                        Span::styled(
+                        ))),
+                        ListItem::new(Line::from(Span::styled(
                             "4. Sequentially (-r)",
                             Style::default().fg(Color::White),
-                        )
-                    )
-                ),
-            ];
+                        ))),
+                    ];
 
-            // Create submenu list
-            let submenu_list = List::new(sub_items)
-                .block(Block::default().borders(Borders::ALL).title("Options"))
-                .highlight_style(
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                );
-            f.render_widget(submenu_list, content_area);
+                    // Create submenu list
+                    let submenu_list = List::new(sub_items)
+                        .block(Block::default().borders(Borders::ALL).title("Options"))
+                        .highlight_style(
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        );
+                    f.render_widget(submenu_list, content_area);
 
-            // Create instructions
-            let instructions = Block::default()
-                .title("Instructions")
-                .borders(Borders::ALL);
+                    // Create instructions
+                    let instructions = Block::default().title("Instructions").borders(Borders::ALL);
 
-            // Add text to the instructions block
-            let instructions_text = Text::from(
-                "Press 1-3 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit"
-            );
-            f.render_widget(
-                Paragraph::new(instructions_text).block(instructions),
-                vertical_chunks[2],
-            );
+                    // Add text to the instructions block
+                    let instructions_text = Text::from(
+                        "Press 1-3 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
+                    );
+                    f.render_widget(
+                        Paragraph::new(instructions_text).block(instructions),
+                        vertical_chunks[2],
+                    );
+                }
+
+                // --- Render Port Range Input ---
+                AppState::PortRangeInput => {
+                    // Create title
+                    let title = Block::default()
+                        .title(Span::styled(
+                            "Port range input",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .borders(Borders::ALL);
+                    f.render_widget(title, vertical_chunks[0]);
+
+                    // Create input area
+                    let input = Paragraph::new(app.port_input.as_str())
+                        .style(Style::default().fg(Color::Yellow))
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Enter Port range"),
+                        );
+                    f.render_widget(input, content_area);
+
+                    // Show cursor at the current position
+                    f.set_cursor(
+                        // Add 1 for the border and 1 for the offset from the border
+                        content_area.x + app.cursor_position as u16 + 1,
+                        // Add 1 for the border and 1 for the offset from the border
+                        content_area.y + 1,
+                    );
+
+                    // Create instructions
+                    let instructions = Block::default().title("Instructions").borders(Borders::ALL);
+
+                    // Add text to the instructions block
+                    let instructions_text = Text::from(
+                        "Enter port range and press Enter to submit\nPress Esc to clear",
+                    );
+                    f.render_widget(
+                        Paragraph::new(instructions_text).block(instructions),
+                        vertical_chunks[2],
+                    );
+                }
+            }
         }
-
-        // --- Render Port Range Input ---
-        AppState::PortRangeInput => {
-            // Create title
-            let title = Block::default()
-                .title(
-                    Span::styled(
-                        "Port range input",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                )
-                .borders(Borders::ALL);
-            f.render_widget(title, vertical_chunks[0]);
-
-            // Create input area
-            let input = Paragraph::new(app.port_input.as_str())
-                .style(Style::default().fg(Color::Yellow))
-                .block(Block::default().borders(Borders::ALL).title("Enter Port range"));
-            f.render_widget(input, content_area);
-            
-            // Show cursor at the current position
-            f.set_cursor(
-                // Add 1 for the border and 1 for the offset from the border
-                content_area.x + app.cursor_position as u16 + 1,
-                // Add 1 for the border and 1 for the offset from the border
-                content_area.y + 1,
-            );
-
-            // Create instructions
-            let instructions = Block::default()
-                .title("Instructions")
-                .borders(Borders::ALL);
-
-            // Add text to the instructions block
-            let instructions_text = Text::from(
-                "Enter port range and press Enter to submit\nPress Esc to clear"
-            );
-            f.render_widget(
-                Paragraph::new(instructions_text).block(instructions),
-                vertical_chunks[2],
-            );
-        }
-    }
-
-    }
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests {
-    
+
     use super::*;
 
     /// Tests that the `App::new()` constructor initializes the app state correctly.
@@ -975,7 +893,10 @@ mod tests {
     fn test_select_host_discovery() {
         let mut app = App::new();
         app.select_host_discovery(HostDiscoveryOption::PingScan);
-        assert_eq!(app.host_discovery_selected, Some(HostDiscoveryOption::PingScan));
+        assert_eq!(
+            app.host_discovery_selected,
+            Some(HostDiscoveryOption::PingScan)
+        );
     }
 
     /// Tests the `select_port_scan` method.
@@ -1019,7 +940,7 @@ mod tests {
         assert_eq!(app.port_input, "80");
         assert_eq!(app.cursor_position, 2);
     }
-    
+
     /// Tests the backspace functionality for the IP input.
     #[test]
     fn test_delete_char_ip_input() {
@@ -1082,7 +1003,7 @@ mod tests {
         app.move_cursor_left();
         assert_eq!(app.cursor_position, 0);
     }
-    
+
     /// Tests moving the cursor right.
     #[test]
     fn test_move_cursor_right() {
@@ -1145,7 +1066,10 @@ mod tests {
         app.state = AppState::IpAddressInput;
 
         assert_eq!(app.state, AppState::IpAddressInput);
-        assert_eq!(app.host_discovery_selected, Some(HostDiscoveryOption::PingScan));
+        assert_eq!(
+            app.host_discovery_selected,
+            Some(HostDiscoveryOption::PingScan)
+        );
         assert!(!app.port_needed, "Ping scan should not require a port");
     }
 
@@ -1162,10 +1086,13 @@ mod tests {
         app.port_needed = true;
 
         assert_eq!(app.state, AppState::IpAddressInput);
-        assert_eq!(app.host_discovery_selected, Some(HostDiscoveryOption::TcpSynDiscovery));
+        assert_eq!(
+            app.host_discovery_selected,
+            Some(HostDiscoveryOption::TcpSynDiscovery)
+        );
         assert!(app.port_needed, "TCP SYN Discovery should require a port");
     }
-    
+
     /// Tests selecting a port scan option, which should always require a port.
     #[test]
     fn test_port_scan_to_ip_input() {
@@ -1216,7 +1143,7 @@ mod tests {
         assert_eq!(app.state, AppState::PortRangeInput);
         assert_eq!(app.port_mode, Some(PortOptions::PortRangeInput));
     }
-    
+
     /// Tests the character validation logic in the IP Address input state.
     #[test]
     fn test_ip_address_input_validation_logic() {
@@ -1224,7 +1151,7 @@ mod tests {
             state: AppState::IpAddressInput,
             ..App::new()
         };
-        
+
         // This simulates the logic from run_app
         let process_key = |app: &mut App, c: char| {
             if c.is_digit(10) || c == '.' || c == '-' || c == '/' {

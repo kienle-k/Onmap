@@ -1,6 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr};
-use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use trust_dns_resolver::TokioAsyncResolver;
+use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use trust_dns_resolver::error::ResolveErrorKind;
 
 use super::get_resolv_conf_nameservers;
@@ -53,10 +53,7 @@ pub async fn resolve_hostname(ip: &Ipv4Addr) -> Option<String> {
     }
 
     // Create the resolver with the config from above
-    let resolver = TokioAsyncResolver::tokio(
-        config,
-        ResolverOpts::default()
-    );
+    let resolver = TokioAsyncResolver::tokio(config, ResolverOpts::default());
 
     // Perform the reverse lookup
     match resolver.reverse_lookup(ip_addr).await {
@@ -73,7 +70,7 @@ pub async fn resolve_hostname(ip: &Ipv4Addr) -> Option<String> {
                     Some(hostname)
                 }
             })
-        },
+        }
         Err(e) => {
             // If no record was found, that's a valid (empty) result.
             // For other errors, print a warning and return None.
@@ -83,10 +80,9 @@ pub async fn resolve_hostname(ip: &Ipv4Addr) -> Option<String> {
                 eprintln!("[Warning: DNS lookup for {} failed: {}]", ip, e);
                 None
             }
-        },
+        }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -94,8 +90,8 @@ mod tests {
     //! These tests perform real network requests to DNS servers.
     use super::*;
     use std::net::Ipv4Addr;
-    use trust_dns_resolver::config::{ResolverConfig, NameServerConfig, Protocol};
     use std::time::Duration;
+    use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 
     /// Verifies that a successful reverse lookup on a known IP returns the correct hostname.
     #[tokio::test]
@@ -124,9 +120,9 @@ mod tests {
         // Configure a mock resolver that uses a non-responsive IP and a very short timeout.
         let mut config = ResolverConfig::new();
         config.add_name_server(NameServerConfig {
-            socket_addr: "192.0.2.255:53"
-                .parse()
-                .expect("Parsing a hardcoded socket address for mock resolver setup should not fail"),
+            socket_addr: "192.0.2.255:53".parse().expect(
+                "Parsing a hardcoded socket address for mock resolver setup should not fail",
+            ),
             protocol: Protocol::Udp,
             tls_dns_name: None,
             trust_negative_responses: true,
@@ -147,21 +143,22 @@ mod tests {
     /// A test helper that mirrors `resolve_hostname` but accepts a custom resolver.
     /// This allows for injecting a mock or specially configured resolver for testing
     /// specific scenarios, like timeouts.
-    async fn resolve_hostname_with_custom_resolver(ip: &Ipv4Addr, resolver: TokioAsyncResolver) -> Option<String> {
+    async fn resolve_hostname_with_custom_resolver(
+        ip: &Ipv4Addr,
+        resolver: TokioAsyncResolver,
+    ) -> Option<String> {
         let ip_addr = IpAddr::V4(*ip);
 
         match resolver.reverse_lookup(ip_addr).await {
-            Ok(lookup) => {
-                lookup.iter().next().and_then(|name| {
-                    let hostname_str = name.to_string();
-                    let hostname = hostname_str.trim_end_matches('.').to_string();
-                    if hostname.is_empty() {
-                        None
-                    } else {
-                        Some(hostname)
-                    }
-                })
-            },
+            Ok(lookup) => lookup.iter().next().and_then(|name| {
+                let hostname_str = name.to_string();
+                let hostname = hostname_str.trim_end_matches('.').to_string();
+                if hostname.is_empty() {
+                    None
+                } else {
+                    Some(hostname)
+                }
+            }),
             Err(e) => {
                 if let ResolveErrorKind::NoRecordsFound { .. } = e.kind() {
                     None
@@ -169,7 +166,7 @@ mod tests {
                     eprintln!("[Warning: DNS lookup for {} failed: {}]", ip, e);
                     None
                 }
-            },
+            }
         }
     }
 }

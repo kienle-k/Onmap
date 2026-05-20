@@ -1,5 +1,5 @@
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
 use std::net::IpAddr;
-use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
 
 fn reply_type_to_nmap(reply_type: &str) -> &str {
     if reply_type.starts_with("SYN-ACK") {
@@ -19,12 +19,14 @@ fn reply_type_to_nmap(reply_type: &str) -> &str {
     }
 }
 
-pub fn print_host_discovery_results_original(results: &(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult)) {
+pub fn print_host_discovery_results_original(
+    results: &(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult),
+) {
     println!("");
 
     let (single_results, all_results) = results;
 
-    let show_down   = log::max_level() >= log::LevelFilter::Info;
+    let show_down = log::max_level() >= log::LevelFilter::Info;
     let show_reason = log::max_level() >= log::LevelFilter::Debug;
 
     // Sort by IP for consistent output
@@ -46,7 +48,10 @@ pub fn print_host_discovery_results_original(results: &(Vec<HostDiscoverySingleR
                 continue;
             }
             if show_reason {
-                println!("Onmap scan report for {}  [host down, received no-response]", host.ip_address);
+                println!(
+                    "Onmap scan report for {}  [host down, received no-response]",
+                    host.ip_address
+                );
             } else {
                 println!("Onmap scan report for {}  [host down]", host.ip_address);
             }
@@ -54,9 +59,7 @@ pub fn print_host_discovery_results_original(results: &(Vec<HostDiscoverySingleR
             let hostname = host.dns_resolve.as_deref().unwrap_or("-");
             println!("Onmap scan report for {} ({})", hostname, host.ip_address);
 
-            let latency = host.latency
-                .map(|d| d.as_secs_f32() / 10.0)
-                .unwrap_or(-1.0);
+            let latency = host.latency.map(|d| d.as_secs_f32() / 10.0).unwrap_or(-1.0);
 
             if show_reason {
                 let reply = reply_type_to_nmap(&host.reply_type);
@@ -76,11 +79,21 @@ pub fn print_host_discovery_results_original(results: &(Vec<HostDiscoverySingleR
     let num_hosts_scanned = all_results.scanned_addresses.len();
     let num_hosts_up = all_results.hosts_up;
 
-    let hosts_up_str = if num_hosts_up == 1 { format!("1 host up") } else { format!("{} hosts up", num_hosts_up) };
-    if num_hosts_scanned == 1 {
-        println!("Onmap done: 1 IP address ({}) scanned in {} seconds", hosts_up_str, elapsed_time);
+    let hosts_up_str = if num_hosts_up == 1 {
+        format!("1 host up")
     } else {
-        println!("Onmap done: {} IP addresses ({}) scanned in {} seconds", num_hosts_scanned, hosts_up_str, elapsed_time);
+        format!("{} hosts up", num_hosts_up)
+    };
+    if num_hosts_scanned == 1 {
+        println!(
+            "Onmap done: 1 IP address ({}) scanned in {} seconds",
+            hosts_up_str, elapsed_time
+        );
+    } else {
+        println!(
+            "Onmap done: {} IP addresses ({}) scanned in {} seconds",
+            num_hosts_scanned, hosts_up_str, elapsed_time
+        );
     }
     println!("");
 }

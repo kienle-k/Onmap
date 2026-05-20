@@ -1,13 +1,14 @@
+use crate::models::{PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates};
+use crate::resolving::resolve_hostname;
+use chrono::Local;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Instant;
-use chrono::Local;
-use crate::models::{PortScanSingleResult, PortScanAllResult, PortStateReasons, PortStates};
-use crate::resolving::{resolve_hostname};
 
 // Hauptfunktion zum Ausführen des Connect-Scans
-pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResult>, PortScanAllResult)) {
-
+pub async fn print_port_scan_results_original(
+    results: &(Vec<PortScanSingleResult>, PortScanAllResult),
+) {
     println!("");
 
     let (single_results, all_results) = results;
@@ -35,8 +36,14 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
     for ip_address in results_by_ip.keys() {
         let hostname = if let IpAddr::V4(ipv4_addr) = ip_address {
             match resolve_hostname(ipv4_addr).await {
-                Some(h) => { dns_ok += 1; h }
-                None    => { dns_nx += 1; "-".to_string() }
+                Some(h) => {
+                    dns_ok += 1;
+                    h
+                }
+                None => {
+                    dns_nx += 1;
+                    "-".to_string()
+                }
             }
         } else {
             dns_nx += 1;
@@ -54,15 +61,22 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
     );
     log::trace!(
         "DNS resolution of {} IPs took {:.2}s. Mode: Async [#: {}, OK: {}, NX: {}, DR: 0, SF: 0, TR: {}, CN: 0]",
-        host_count, dns_elapsed, host_count, dns_ok, dns_nx, host_count
+        host_count,
+        dns_elapsed,
+        host_count,
+        dns_ok,
+        dns_nx,
+        host_count
     );
 
     // --- Per-host printing ---
     let show_reason = log::max_level() >= log::LevelFilter::Debug;
 
     for (ip_address, host_results) in results_by_ip.iter() {
-
-        let hostname = hostname_map.get(ip_address).map(String::as_str).unwrap_or("-");
+        let hostname = hostname_map
+            .get(ip_address)
+            .map(String::as_str)
+            .unwrap_or("-");
         println!("Onmap scan report for {} ({})", hostname, ip_address);
 
         // verbosity 2: "Host is up, received user-set"
@@ -71,8 +85,11 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
         }
 
         // Filter for only open or open|filtered ports first
-        let open_ports: Vec<&PortScanSingleResult> = host_results.iter()
-            .filter(|r| r.port_state == PortStates::Open || r.port_state == PortStates::OpenOrFiltered)
+        let open_ports: Vec<&PortScanSingleResult> = host_results
+            .iter()
+            .filter(|r| {
+                r.port_state == PortStates::Open || r.port_state == PortStates::OpenOrFiltered
+            })
             .cloned()
             .collect();
 
@@ -87,7 +104,8 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
             .filter(|r| r.port_state == PortStates::Filtered)
             .count();
 
-        let unfiltered_ports: Vec<&PortScanSingleResult> = host_results.iter()
+        let unfiltered_ports: Vec<&PortScanSingleResult> = host_results
+            .iter()
             .filter(|r| r.port_state == PortStates::Unfiltered)
             .copied()
             .collect();
@@ -113,10 +131,10 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
                     if r.port_state == PortStates::Closed || r.port_state == PortStates::Filtered {
                         let name = match r.reason {
                             PortStateReasons::Reset | PortStateReasons::Unfiltered => "resets",
-                            PortStateReasons::Timeout                              => "no-responses",
-                            PortStateReasons::SynAck                               => "syn-acks",
-                            PortStateReasons::UdpResponse                          => "udp-responses",
-                            PortStateReasons::IcmpPortUnreachable                  => "port-unreaches",
+                            PortStateReasons::Timeout => "no-responses",
+                            PortStateReasons::SynAck => "syn-acks",
+                            PortStateReasons::UdpResponse => "udp-responses",
+                            PortStateReasons::IcmpPortUnreachable => "port-unreaches",
                         };
                         *reason_counts.entry(name).or_insert(0) += 1;
                     }
@@ -131,31 +149,40 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
         }
 
         if !open_ports.is_empty() {
-
             let mut sorted_open_ports = open_ports.clone();
             sorted_open_ports.sort_by_key(|r| r.port);
 
             if show_reason {
-                println!("{:<10} {:<14} {:<20} {}", "PORT", "STATE", "SERVICE", "REASON");
+                println!(
+                    "{:<10} {:<14} {:<20} {}",
+                    "PORT", "STATE", "SERVICE", "REASON"
+                );
             } else {
                 println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
             }
 
             for port_result in sorted_open_ports {
                 let state_str = match port_result.port_state {
-                    PortStates::Open          => "open",
+                    PortStates::Open => "open",
                     PortStates::OpenOrFiltered => "open|filtered",
-                    _                          => "unknown",
+                    _ => "unknown",
                 };
                 if show_reason {
                     let reason_str = match port_result.reason {
-                        PortStateReasons::SynAck                               => format!("syn-ack ttl {}", port_result.ttl),
-                        PortStateReasons::Reset | PortStateReasons::Unfiltered => format!("reset ttl {}", port_result.ttl),
-                        PortStateReasons::Timeout                              => "no-response".to_string(),
-                        PortStateReasons::UdpResponse                          => format!("udp-response ttl {}", port_result.ttl),
-                        PortStateReasons::IcmpPortUnreachable                  => "port-unreach".to_string(),
+                        PortStateReasons::SynAck => format!("syn-ack ttl {}", port_result.ttl),
+                        PortStateReasons::Reset | PortStateReasons::Unfiltered => {
+                            format!("reset ttl {}", port_result.ttl)
+                        }
+                        PortStateReasons::Timeout => "no-response".to_string(),
+                        PortStateReasons::UdpResponse => {
+                            format!("udp-response ttl {}", port_result.ttl)
+                        }
+                        PortStateReasons::IcmpPortUnreachable => "port-unreach".to_string(),
                     };
-                    println!("{:<10} {:<14} {:<20} {}", port_result.port, state_str, port_result.service, reason_str);
+                    println!(
+                        "{:<10} {:<14} {:<20} {}",
+                        port_result.port, state_str, port_result.service, reason_str
+                    );
                 } else {
                     println!(
                         "{:<7}  {:<14} {}",
@@ -166,12 +193,14 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
                 }
             }
         } else if !unfiltered_ports.is_empty() {
-
             let mut sorted_unfiltered_ports = unfiltered_ports.clone();
             sorted_unfiltered_ports.sort_by_key(|r| r.port);
 
             if show_reason {
-                println!("{:<10} {:<14} {:<20} {}", "PORT", "STATE", "SERVICE", "REASON");
+                println!(
+                    "{:<10} {:<14} {:<20} {}",
+                    "PORT", "STATE", "SERVICE", "REASON"
+                );
             } else {
                 println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
             }
@@ -179,7 +208,10 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
             for port_result in sorted_unfiltered_ports {
                 if show_reason {
                     let reason_str = format!("reset ttl {}", port_result.ttl);
-                    println!("{:<10} {:<14} {:<20} {}", port_result.port, "unfiltered", port_result.service, reason_str);
+                    println!(
+                        "{:<10} {:<14} {:<20} {}",
+                        port_result.port, "unfiltered", port_result.service, reason_str
+                    );
                 } else {
                     println!(
                         "{:<7}  {:<14} {}",
@@ -191,7 +223,10 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
             }
         } else {
             if !host_results.is_empty() {
-                println!("Host is up, but all {} scanned ports are in a 'closed' or 'filtered' state.", host_results.len());
+                println!(
+                    "Host is up, but all {} scanned ports are in a 'closed' or 'filtered' state.",
+                    host_results.len()
+                );
             }
         }
         println!("");
@@ -205,9 +240,18 @@ pub async fn print_port_scan_results_original(results: &(Vec<PortScanSingleResul
     let num_hosts_scanned = results_by_ip.len();
 
     match num_hosts_scanned {
-        0 => println!("Onmap done: 0 IP addresses (0 hosts up) scanned in {} seconds", elapsed_time),    
-        1 => println!("Onmap done: 1 IP address (1 host up) scanned in {} seconds", elapsed_time),
-        _ => println!("Onmap done: {} IP addresses ({} hosts up) scanned in {} seconds", num_hosts_scanned, num_hosts_scanned, elapsed_time)
+        0 => println!(
+            "Onmap done: 0 IP addresses (0 hosts up) scanned in {} seconds",
+            elapsed_time
+        ),
+        1 => println!(
+            "Onmap done: 1 IP address (1 host up) scanned in {} seconds",
+            elapsed_time
+        ),
+        _ => println!(
+            "Onmap done: {} IP addresses ({} hosts up) scanned in {} seconds",
+            num_hosts_scanned, num_hosts_scanned, elapsed_time
+        ),
     }
-    println!(); 
+    println!();
 }

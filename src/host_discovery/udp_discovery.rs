@@ -40,12 +40,17 @@ pub async fn run_udp_discovery(
     let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
     let mut host_states: HashMap<Ipv4Addr, HostProbeState> = ips
         .iter()
-        .map(|ip| (*ip, HostProbeState {
-            is_up: false,
-            latency: None,
-            ttl: 0,
-            reply_type: "no response".to_string(),
-        }))
+        .map(|ip| {
+            (
+                *ip,
+                HostProbeState {
+                    is_up: false,
+                    latency: None,
+                    ttl: 0,
+                    reply_type: "no response".to_string(),
+                },
+            )
+        })
         .collect();
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
@@ -62,7 +67,10 @@ pub async fn run_udp_discovery(
             };
 
             futures.push(async move {
-                let _permit = sem_clone.acquire().await.expect("Semaphore should not be closed");
+                let _permit = sem_clone
+                    .acquire()
+                    .await
+                    .expect("Semaphore should not be closed");
                 let result = udp_probe_with_details(ip, port, source_ip, timeout_override_ms).await;
                 (ip, port, result)
             });
@@ -70,9 +78,7 @@ pub async fn run_udp_discovery(
     }
 
     while let Some((ip, port, result)) = futures.next().await {
-        let entry = host_states
-            .get_mut(&ip)
-            .expect("Host state missing for IP");
+        let entry = host_states.get_mut(&ip).expect("Host state missing for IP");
 
         match result {
             Ok((status, latency)) => {
@@ -108,9 +114,7 @@ pub async fn run_udp_discovery(
 
     let mut host_results = Vec::new();
     for ip in ips {
-        let state = host_states
-            .remove(&ip)
-            .expect("Host state missing for IP");
+        let state = host_states.remove(&ip).expect("Host state missing for IP");
 
         let dns_resolve = None;
 
@@ -127,22 +131,28 @@ pub async fn run_udp_discovery(
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;
     let end_time = SystemTime::now();
     let dns_start = Instant::now();
-    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+    let dns_tasks: Vec<_> = host_results
+        .iter()
+        .enumerate()
         .filter_map(|(i, r)| match r.ip_address {
             IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
             _ => None,
         })
         .collect();
     let dns_resolved = futures::future::join_all(
-        dns_tasks.into_iter().map(|(i, ipv4)| async move {
-            (i, resolve_hostname(&ipv4).await)
-        })
-    ).await;
+        dns_tasks
+            .into_iter()
+            .map(|(i, ipv4)| async move { (i, resolve_hostname(&ipv4).await) }),
+    )
+    .await;
     for (idx, hostname) in dns_resolved {
         host_results[idx].dns_resolve = hostname;
     }
     let dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
-    let hosts_dns_resolution = host_results.iter().filter(|r| r.dns_resolve.is_some()).count() as u64;
+    let hosts_dns_resolution = host_results
+        .iter()
+        .filter(|r| r.dns_resolve.is_some())
+        .count() as u64;
 
     let summary = HostDiscoveryAllResult {
         scanned_addresses: all_ips,
@@ -171,13 +181,16 @@ async fn udp_probe_with_details(
 
     let task = task::spawn_blocking(move || {
         let bind_addr = SocketAddr::new(IpAddr::V4(source_ip), 0);
-        let socket = UdpSocket::bind(bind_addr)
-            .map_err(|e| format!("Failed to bind UDP socket: {}", e))?;
+        let socket =
+            UdpSocket::bind(bind_addr).map_err(|e| format!("Failed to bind UDP socket: {}", e))?;
 
         let dest_addr = SocketAddr::new(IpAddr::V4(target_ip), port);
-        socket
-            .connect(dest_addr)
-            .map_err(|e| format!("Failed to connect UDP socket to {}:{}: {}", target_ip, port, e))?;
+        socket.connect(dest_addr).map_err(|e| {
+            format!(
+                "Failed to connect UDP socket to {}:{}: {}",
+                target_ip, port, e
+            )
+        })?;
 
         socket
             .set_read_timeout(Some(Duration::from_millis(read_timeout_ms)))
@@ -191,7 +204,10 @@ async fn udp_probe_with_details(
                 if e.kind() == ErrorKind::ConnectionRefused {
                     return Ok((UdpProbeStatus::IcmpPortUnreachable, Some(start.elapsed())));
                 }
-                return Err(format!("Failed to send UDP probe to {}:{}: {}", target_ip, port, e));
+                return Err(format!(
+                    "Failed to send UDP probe to {}:{}: {}",
+                    target_ip, port, e
+                ));
             }
         }
 
@@ -202,15 +218,26 @@ async fn udp_probe_with_details(
                 ErrorKind::ConnectionRefused => {
                     Ok((UdpProbeStatus::IcmpPortUnreachable, Some(start.elapsed())))
                 }
-                ErrorKind::WouldBlock | ErrorKind::TimedOut => Ok((UdpProbeStatus::NoResponse, None)),
-                _ => Err(format!("UDP receive failed for {}:{}: {}", target_ip, port, e)),
+                ErrorKind::WouldBlock | ErrorKind::TimedOut => {
+                    Ok((UdpProbeStatus::NoResponse, None))
+                }
+                _ => Err(format!(
+                    "UDP receive failed for {}:{}: {}",
+                    target_ip, port, e
+                )),
             },
         }
     });
 
     match timeout(Duration::from_millis(outer_timeout_ms), task).await {
         Ok(Ok(result)) => result,
-        Ok(Err(e)) => Err(format!("UDP probe task failed for {}:{}: {}", target_ip, port, e)),
-        Err(_) => Err(format!("UDP probe task timed out for {}:{}", target_ip, port)),
+        Ok(Err(e)) => Err(format!(
+            "UDP probe task failed for {}:{}: {}",
+            target_ip, port, e
+        )),
+        Err(_) => Err(format!(
+            "UDP probe task timed out for {}:{}",
+            target_ip, port
+        )),
     }
 }

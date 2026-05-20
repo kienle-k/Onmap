@@ -1,9 +1,9 @@
+use crate::models::{PortScanAllResult, PortScanSingleResult, PortStates, Protocols};
+use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::net::IpAddr;
-use chrono::{DateTime, Local};
-use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols};
 
 fn state_str(state: PortStates) -> &'static str {
     match state {
@@ -41,10 +41,13 @@ pub fn save_to_file_grepable_port_scan(
     let mut order: Vec<IpAddr> = Vec::new();
     let mut by_ip: HashMap<IpAddr, Vec<&PortScanSingleResult>> = HashMap::new();
     for r in single_results {
-        by_ip.entry(r.ip_address).or_insert_with(|| {
-            order.push(r.ip_address);
-            Vec::new()
-        }).push(r);
+        by_ip
+            .entry(r.ip_address)
+            .or_insert_with(|| {
+                order.push(r.ip_address);
+                Vec::new()
+            })
+            .push(r);
     }
 
     for ip in &order {
@@ -56,9 +59,7 @@ pub fn save_to_file_grepable_port_scan(
         // Ports line: list all ports, then ignored state for closed/filtered
         let port_entries: Vec<String> = ports
             .iter()
-            .filter(|r| {
-                r.port_state != PortStates::Closed && r.port_state != PortStates::Filtered
-            })
+            .filter(|r| r.port_state != PortStates::Closed && r.port_state != PortStates::Filtered)
             .map(|r| {
                 format!(
                     "{}/{}/{}//{}///",
@@ -83,7 +84,10 @@ pub fn save_to_file_grepable_port_scan(
                 } else {
                     "filtered"
                 };
-                line.push_str(&format!("\tIgnored State: {} ({})", ignored_state, ignored_count));
+                line.push_str(&format!(
+                    "\tIgnored State: {} ({})",
+                    ignored_state, ignored_count
+                ));
             }
             writeln!(file, "{}", line)?;
         }

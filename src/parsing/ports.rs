@@ -31,22 +31,18 @@ use super::super::models::PortOptions;
 /// ```
 
 pub fn convert_ports(port_input: String) -> Result<Vec<u16>, String> {
-
     // Trim to eliminate faulty spaces at edges
     let input = port_input.trim();
 
     // List of most used ports (for -pF)
     let most_used = vec![
-        1, 7, 9, 13, 21, 22, 23, 25, 26, 37, 
-        53, 67, 68, 69, 79, 80, 81, 82, 83, 84,
-        85, 88, 106, 110, 111, 113, 119, 123, 135, 137,
-        139, 143, 161, 179, 199, 389, 427, 443, 465, 513,
-        514, 515, 587, 631, 636, 873, 993, 995, 1024, 1025, 
-        1026, 1027, 1028, 1029, 1030, 1031, 1433, 1521, 1720, 1723, 
-        1900, 2121, 3128, 3306, 3389, 5432, 5900, 6000, 8000, 8008, 
-        8080, 8081, 8088, 8090, 8118, 8880, 8909, 9000, 9090, 9200, 
-        9300, 9999, 10000, 10001, 11211, 27017, 27018, 27019, 28017, 32400, 
-        32768, 32769, 49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159
+        1, 7, 9, 13, 21, 22, 23, 25, 26, 37, 53, 67, 68, 69, 79, 80, 81, 82, 83, 84, 85, 88, 106,
+        110, 111, 113, 119, 123, 135, 137, 139, 143, 161, 179, 199, 389, 427, 443, 465, 513, 514,
+        515, 587, 631, 636, 873, 993, 995, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1433,
+        1521, 1720, 1723, 1900, 2121, 3128, 3306, 3389, 5432, 5900, 6000, 8000, 8008, 8080, 8081,
+        8088, 8090, 8118, 8880, 8909, 9000, 9090, 9200, 9300, 9999, 10000, 10001, 11211, 27017,
+        27018, 27019, 28017, 32400, 32768, 32769, 49152, 49153, 49154, 49155, 49156, 49157, 49158,
+        49159,
     ];
 
     // For -p- (All ports)
@@ -61,10 +57,16 @@ pub fn convert_ports(port_input: String) -> Result<Vec<u16>, String> {
     let mut result = Vec::new();
     for part in input.split(',') {
         let p = part.trim();
-        // Split at "-" --> detect port range 
+        // Split at "-" --> detect port range
         if let Some((start, end)) = p.split_once('-') {
-            let start: u16 = start.trim().parse().map_err(|_| format!("Invalid start: {}", start))?;
-            let end: u16 = end.trim().parse().map_err(|_| format!("Invalid end: {}", end))?;
+            let start: u16 = start
+                .trim()
+                .parse()
+                .map_err(|_| format!("Invalid start: {}", start))?;
+            let end: u16 = end
+                .trim()
+                .parse()
+                .map_err(|_| format!("Invalid end: {}", end))?;
             // Asure range makes sense
             if start > end {
                 return Err(format!("Start {} greater than end {}", start, end));
@@ -79,9 +81,6 @@ pub fn convert_ports(port_input: String) -> Result<Vec<u16>, String> {
     Ok(result)
 }
 
-
-
-
 pub fn set_ports_arr(port_option: PortOptions) -> Result<Vec<u16>, String> {
     match port_option {
         // "Normal" mode provides a list of the 1000 most common ports.
@@ -90,14 +89,13 @@ pub fn set_ports_arr(port_option: PortOptions) -> Result<Vec<u16>, String> {
         PortOptions::FastMode => {
             // "Fast" mode returns a curated list of the top 100 most common ports.
             Ok(vec![
-                1, 7, 9, 13, 21, 22, 23, 25, 26, 37, 53, 67, 68, 69, 79, 80, 81, 82, 83,
-                84, 85, 88, 106, 110, 111, 113, 119, 123, 135, 137, 139, 143, 161, 179,
-                199, 389, 427, 443, 465, 513, 514, 515, 587, 631, 636, 873, 993, 995,
-                1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1433, 1521, 1720, 1723,
-                1900, 2121, 3128, 3306, 3389, 5432, 5900, 6000, 8000, 8008, 8080, 8081,
-                8088, 8090, 8118, 8880, 8909, 9000, 9090, 9200, 9300, 9999, 10000, 10001,
-                11211, 27017, 27018, 27019, 28017, 32400, 32768, 32769, 49152, 49153,
-                49154, 49155, 49156, 49157, 49158, 49159,
+                1, 7, 9, 13, 21, 22, 23, 25, 26, 37, 53, 67, 68, 69, 79, 80, 81, 82, 83, 84, 85,
+                88, 106, 110, 111, 113, 119, 123, 135, 137, 139, 143, 161, 179, 199, 389, 427, 443,
+                465, 513, 514, 515, 587, 631, 636, 873, 993, 995, 1024, 1025, 1026, 1027, 1028,
+                1029, 1030, 1031, 1433, 1521, 1720, 1723, 1900, 2121, 3128, 3306, 3389, 5432, 5900,
+                6000, 8000, 8008, 8080, 8081, 8088, 8090, 8118, 8880, 8909, 9000, 9090, 9200, 9300,
+                9999, 10000, 10001, 11211, 27017, 27018, 27019, 28017, 32400, 32768, 32769, 49152,
+                49153, 49154, 49155, 49156, 49157, 49158, 49159,
             ])
         }
 
@@ -150,8 +148,8 @@ mod tests {
     /// Verifies that a valid single port string is parsed correctly.
     #[test]
     fn test_convert_port_range_single_port_valid() {
-        let ports = convert_ports("8080".to_string())
-            .expect("Parsing a single valid port should succeed");
+        let ports =
+            convert_ports("8080".to_string()).expect("Parsing a single valid port should succeed");
         assert_eq!(ports, vec![8080]);
     }
 
@@ -169,8 +167,8 @@ mod tests {
     /// Verifies that a simple, valid port range is parsed correctly.
     #[test]
     fn test_convert_port_range_valid_range() {
-        let ports = convert_ports("80-82".to_string())
-            .expect("Parsing a valid port range should succeed");
+        let ports =
+            convert_ports("80-82".to_string()).expect("Parsing a valid port range should succeed");
         assert_eq!(ports, vec![80, 81, 82]);
     }
 
@@ -224,8 +222,8 @@ mod tests {
     /// Verifies that `FastMode` returns the list of 100 common ports.
     #[test]
     fn test_set_ports_arr_fast_mode() {
-        let ports =
-            set_ports_arr(PortOptions::FastMode).expect("Setting ports for FastMode should not fail");
+        let ports = set_ports_arr(PortOptions::FastMode)
+            .expect("Setting ports for FastMode should not fail");
         assert!(!ports.is_empty());
         assert!(ports.contains(&22));
         assert!(ports.contains(&443));

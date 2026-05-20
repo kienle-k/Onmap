@@ -1,4 +1,6 @@
-use crate::models::{PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols};
+use crate::models::{
+    PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -125,7 +127,8 @@ pub fn save_to_file_xml_port_scan(
 
         // Keep open ports explicit and summarize the rest by state+reason while
         // still preserving exact port membership via the later ports field.
-        let mut extraports: HashMap<PortStates, HashMap<PortStateReasons, Vec<u16>>> = HashMap::new();
+        let mut extraports: HashMap<PortStates, HashMap<PortStateReasons, Vec<u16>>> =
+            HashMap::new();
 
         for result in host_results {
             if result.port_state != PortStates::Open {
@@ -216,14 +219,12 @@ pub fn save_to_file_xml_port_scan(
     writeln!(
         file,
         "    <finished time=\"{}\" elapsed=\"{:.3}\" exit=\"success\"/>",
-        end_timestamp,
-        elapsed
+        end_timestamp, elapsed
     )?;
     writeln!(
         file,
         "    <hosts up=\"{}\" down=\"0\" total=\"{}\"/>",
-        total_hosts,
-        total_hosts
+        total_hosts, total_hosts
     )?;
     writeln!(file, "  </runstats>")?;
     writeln!(file, "</nmaprun>")?;
@@ -241,10 +242,8 @@ mod tests {
 
     #[test]
     fn writes_open_and_extraports_with_exact_port_membership() {
-        let path = std::env::temp_dir().join(format!(
-            "onmap-port-scan-xml-{}.xml",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("onmap-port-scan-xml-{}.xml", std::process::id()));
         let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
         let results = vec![
             PortScanSingleResult {
@@ -376,7 +375,9 @@ mod tests {
 
         assert!(xml.contains("<port protocol=\"udp\" portid=\"53\">"));
         assert!(xml.contains("<extraports state=\"open|filtered\" count=\"2\">"));
-        assert!(xml.contains("<extrareasons reason=\"no-responses\" count=\"2\" ports=\"54-55\"/>"));
+        assert!(
+            xml.contains("<extrareasons reason=\"no-responses\" count=\"2\" ports=\"54-55\"/>")
+        );
         assert!(xml.contains("<extraports state=\"closed|filtered\" count=\"1\">"));
         assert!(xml.contains("<extrareasons reason=\"no-responses\" count=\"1\" ports=\"56\"/>"));
     }

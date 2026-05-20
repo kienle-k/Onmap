@@ -1,14 +1,13 @@
-use std::net::{Ipv4Addr, IpAddr};
-use std::process::Command;
-use std::time::{Duration, SystemTime, Instant};
-use tokio::task;
 use futures::stream::{FuturesUnordered, StreamExt};
+use std::net::{IpAddr, Ipv4Addr};
+use std::process::Command;
+use std::time::{Duration, Instant, SystemTime};
+use tokio::task;
 
-use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
-use crate::resolving::{resolve_hostname, extract_ttl};
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::resolving::{extract_ttl, resolve_hostname};
 
 const DEFAULT_PING_TIMEOUT_MS: u64 = 1000;
-
 
 /// Performs an asynchronous ICMP ping scan on a list of target IP addresses.
 ///
@@ -94,17 +93,20 @@ pub async fn run_ping_scan(
     }
 
     let dns_start = Instant::now();
-    let dns_tasks: Vec<_> = host_results.iter().enumerate()
+    let dns_tasks: Vec<_> = host_results
+        .iter()
+        .enumerate()
         .filter_map(|(i, r)| match r.ip_address {
             IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
             _ => None,
         })
         .collect();
     let dns_resolved = futures::future::join_all(
-        dns_tasks.into_iter().map(|(i, ipv4)| async move {
-            (i, resolve_hostname(&ipv4).await)
-        })
-    ).await;
+        dns_tasks
+            .into_iter()
+            .map(|(i, ipv4)| async move { (i, resolve_hostname(&ipv4).await) }),
+    )
+    .await;
     for (idx, hostname) in dns_resolved {
         host_results[idx].dns_resolve = hostname;
     }
@@ -182,7 +184,10 @@ pub async fn ping_host_with_details(
                     Ok((true, Some(elapsed), ttl))
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    Err(format!("Ping command failed with status: {}. Stderr: {}", output.status, stderr))
+                    Err(format!(
+                        "Ping command failed with status: {}. Stderr: {}",
+                        output.status, stderr
+                    ))
                 }
             }
             Err(e) => Err(format!("Failed to execute ping command: {}", e)),
@@ -195,7 +200,6 @@ pub async fn ping_host_with_details(
         Err(join_error) => Err(format!("Ping task failed: {}", join_error)),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -214,11 +218,18 @@ mod tests {
         let ip = Ipv4Addr::new(127, 0, 0, 1);
         let result = ping_host_with_details(&ip, DEFAULT_PING_TIMEOUT_MS).await;
 
-        assert!(result.is_ok(), "Ping to localhost should succeed, but got error: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Ping to localhost should succeed, but got error: {:?}",
+            result.err()
+        );
         let (is_reachable, latency, ttl) = result.expect("Ping result could not be resolved");
 
         assert!(is_reachable, "Localhost should be reachable");
-        assert!(latency.is_some(), "Latency should be recorded for a successful ping");
+        assert!(
+            latency.is_some(),
+            "Latency should be recorded for a successful ping"
+        );
         // TTL extraction depends heavily on OS-specific `ping` output, so we just
         // confirm the code doesn't panic, whether it finds a value or not.
         assert!(ttl.is_some() || ttl.is_none());
@@ -239,8 +250,10 @@ mod tests {
         let error_message = result.unwrap_err();
         // Check for expected error messages depending on OS and ping command behavior
         assert!(
-            error_message.contains("Ping command failed") || error_message.contains("Failed to execute ping command"),
-            "Error message should indicate ping failure, got: {}", error_message
+            error_message.contains("Ping command failed")
+                || error_message.contains("Failed to execute ping command"),
+            "Error message should indicate ping failure, got: {}",
+            error_message
         );
     }
 
@@ -257,7 +270,11 @@ mod tests {
         let total_ips = ips.as_ref().expect("Ips could not be resolved").len();
 
         let scan_result = run_ping_scan(ips, None).await;
-        assert!(scan_result.is_ok(), "Ping scan should succeed, but got error: {:?}", scan_result.err());
+        assert!(
+            scan_result.is_ok(),
+            "Ping scan should succeed, but got error: {:?}",
+            scan_result.err()
+        );
         let (results, summary) = scan_result.expect("Scan result could not be resolved");
 
         // --- Assertions on the Summary ---
@@ -304,7 +321,10 @@ mod tests {
         let ip_addresses = Err("Failed to parse IP range".to_string());
         let scan_result = run_ping_scan(ip_addresses, None).await;
 
-        assert!(scan_result.is_err(), "Scan should return an error for invalid input");
+        assert!(
+            scan_result.is_err(),
+            "Scan should return an error for invalid input"
+        );
         let error_message = scan_result.unwrap_err();
         assert_eq!(error_message, "Failed to parse IP range");
     }

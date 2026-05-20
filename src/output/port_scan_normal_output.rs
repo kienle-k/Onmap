@@ -1,9 +1,9 @@
+use crate::models::{PortScanAllResult, PortScanSingleResult, PortStates, Protocols};
+use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::net::IpAddr;
-use chrono::{DateTime, Local};
-use crate::models::{PortScanSingleResult, PortScanAllResult, PortStates, Protocols};
 
 fn state_str(state: PortStates) -> &'static str {
     match state {
@@ -41,10 +41,13 @@ pub fn save_to_file_normal_port_scan(
     let mut order: Vec<IpAddr> = Vec::new();
     let mut by_ip: HashMap<IpAddr, Vec<&PortScanSingleResult>> = HashMap::new();
     for r in single_results {
-        by_ip.entry(r.ip_address).or_insert_with(|| {
-            order.push(r.ip_address);
-            Vec::new()
-        }).push(r);
+        by_ip
+            .entry(r.ip_address)
+            .or_insert_with(|| {
+                order.push(r.ip_address);
+                Vec::new()
+            })
+            .push(r);
     }
 
     for ip in &order {
@@ -53,19 +56,35 @@ pub fn save_to_file_normal_port_scan(
         writeln!(file, "Nmap scan report for {}", ip)?;
         writeln!(file, "Host is up.")?;
 
-        let not_open: usize = ports.iter().filter(|r| {
-            r.port_state != PortStates::Open && r.port_state != PortStates::OpenOrFiltered
-        }).count();
+        let not_open: usize = ports
+            .iter()
+            .filter(|r| {
+                r.port_state != PortStates::Open && r.port_state != PortStates::OpenOrFiltered
+            })
+            .count();
         if not_open > 0 {
-            let closed_count = ports.iter().filter(|r| r.port_state == PortStates::Closed).count();
-            let filtered_count = ports.iter().filter(|r| r.port_state == PortStates::Filtered).count();
-            let label = if closed_count >= filtered_count { "closed" } else { "filtered" };
+            let closed_count = ports
+                .iter()
+                .filter(|r| r.port_state == PortStates::Closed)
+                .count();
+            let filtered_count = ports
+                .iter()
+                .filter(|r| r.port_state == PortStates::Filtered)
+                .count();
+            let label = if closed_count >= filtered_count {
+                "closed"
+            } else {
+                "filtered"
+            };
             writeln!(file, "Not shown: {} {} ports", not_open, label)?;
         }
 
-        let open_ports: Vec<&&PortScanSingleResult> = ports.iter().filter(|r| {
-            r.port_state == PortStates::Open || r.port_state == PortStates::OpenOrFiltered
-        }).collect();
+        let open_ports: Vec<&&PortScanSingleResult> = ports
+            .iter()
+            .filter(|r| {
+                r.port_state == PortStates::Open || r.port_state == PortStates::OpenOrFiltered
+            })
+            .collect();
 
         if !open_ports.is_empty() {
             writeln!(file, "{:<8} {:<6} {}", "PORT", "STATE", "SERVICE")?;

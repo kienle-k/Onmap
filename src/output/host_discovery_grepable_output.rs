@@ -1,7 +1,7 @@
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use chrono::{DateTime, Local};
 use std::fs::File;
 use std::io::Write;
-use chrono::{DateTime, Local};
-use crate::models::{HostDiscoverySingleResult, HostDiscoveryAllResult};
 
 pub fn save_to_file_grepable_host_discovery(
     path: &str,
