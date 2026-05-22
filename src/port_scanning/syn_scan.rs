@@ -63,7 +63,7 @@ fn source_ip_for_target(target: Ipv4Addr) -> Result<Ipv4Addr, String> {
 pub async fn port_syn_scan(
     ip_address: IpAddr,
     port: u16,
-    local_ip_address: Ipv4Addr,
+    _local_ip_address: Ipv4Addr,
     protocols: Arc<ProtocolMap>,
     timeout_override_ms: Option<u64>,
 ) -> Result<PortScanSingleResult, String> {
