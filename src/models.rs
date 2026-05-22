@@ -1,4 +1,4 @@
-use clap::{ArgAction, Parser, Subcommand};
+use clap::{ArgAction, Parser};
 use std::ffi::OsString;
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
@@ -8,17 +8,12 @@ use std::time::{Duration, SystemTime};
     author,
     version,
     about = "Onmap - A fast and memory-safe network scanning tool built in Rust.",
-    long_about = None,
-    args_conflicts_with_subcommands = true
+    long_about = None
 )]
 pub struct Cli {
     /// Run in Text User Interface (TUI) mode
     #[arg(long)]
     pub tui: bool,
-
-    /// Specify the scan type and its arguments
-    #[command(subcommand)]
-    pub command: Option<ScanCommand>,
 
     /// Ping scan (Host Discovery)
     #[arg(long = "sn", help = "Ping scan (Host Discovery)", action = ArgAction::SetTrue)]
@@ -48,7 +43,25 @@ pub struct Cli {
     #[arg(long = "PU", help = "UDP discovery scan (Host Discovery)", action = ArgAction::SetTrue)]
     pub udp_discovery: bool,
 
-    /// Port specification for host discovery probes that require ports
+
+    /// TCP SYN port scan
+    #[arg(long = "sS", help = "TCP SYN port scan", action = ArgAction::SetTrue)]
+    pub syn_scan: bool,
+
+    /// TCP connect port scan
+    #[arg(long = "sT", help = "TCP connect port scan", action = ArgAction::SetTrue)]
+    pub connect_scan: bool,
+
+    /// TCP ACK port scan
+    #[arg(long = "sA", help = "TCP ACK port scan", action = ArgAction::SetTrue)]
+    pub ack_scan: bool,
+
+    /// UDP port scan
+    #[arg(long = "sU", help = "UDP port scan", action = ArgAction::SetTrue)]
+    pub udp_scan: bool,
+
+
+    /// Port specification for the active scan mode
     #[arg(short = 'p', long = "ports", value_name = "PORTS")]
     pub host_discovery_ports: Option<String>,
 
@@ -64,11 +77,11 @@ pub struct Cli {
     #[arg(long = "PU-ports", value_name = "PORTS")]
     pub udp_discovery_ports: Option<String>,
 
-    /// Override host discovery timeout in milliseconds
+    /// Override timeout in milliseconds for the active scan mode
     #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
     pub host_discovery_timeout_ms: Option<u64>,
 
-    /// Target IP address, IP address list, IP range or CIDR for host discovery
+    /// Target IP address, IP address list, IP range or CIDR
     #[arg(value_name = "TARGETS")]
     pub host_discovery_targets: Option<String>,
 
@@ -138,62 +151,6 @@ pub struct Cli {
     pub script: Option<String>,
 }
 
-#[derive(Subcommand, Debug)]
-pub enum ScanCommand {
-    /// SYN stealth scan
-    #[command(name = "-sS", aliases = ["sS"])]
-    SynScan {
-        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long = "ports")]
-        ports: Option<String>,
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "Targets")]
-        ips: String,
-    },
-    /// TCP connect scan
-    #[command(name = "-sT", aliases = ["sT"])]
-    ConnectScan {
-        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long = "ports")]
-        ports: Option<String>,
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
-    /// UDP scan
-    #[command(name = "-sU", aliases = ["sU"])]
-    UdpScan {
-        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long = "ports")]
-        ports: Option<String>,
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
-    /// ACK scan (firewall rule discovery)
-    #[command(name = "-sA", aliases = ["sA"])]
-    AckScan {
-        /// Port specification (e.g -pF, -p-, -p 80, -p1-1000)
-        #[arg(short = 'p', long = "ports")]
-        ports: Option<String>,
-        /// Override scan timeout in milliseconds
-        #[arg(short = 't', long = "timeout-ms", value_name = "ms")]
-        timeout_ms: Option<u64>,
-        /// Target IP address, IP address list, IP range or CIDR
-        #[arg(value_name = "TARGETS")]
-        ips: String,
-    },
-}
-
 impl Cli {
     pub fn normalize_args<I, T>(args: I) -> Vec<OsString>
     where
@@ -213,6 +170,14 @@ impl Cli {
                 Some("-PS") => normalized.push(OsString::from("--PS")),
                 Some("-PA") => normalized.push(OsString::from("--PA")),
                 Some("-PU") => normalized.push(OsString::from("--PU")),
+
+                // Normalize Nmap-style port scan flags into clap long options so they stay in
+                // the same flat argument space as targets, ports, and output flags.
+                Some("-sS") => normalized.push(OsString::from("--sS")),
+                Some("-sT") => normalized.push(OsString::from("--sT")),
+                Some("-sU") => normalized.push(OsString::from("--sU")),
+                Some("-sA") => normalized.push(OsString::from("--sA")),
+
                 Some("-sV") => normalized.push(OsString::from("--sV")),
                 Some("-O") => normalized.push(OsString::from("--sO")),
                 Some("-sC") => {

@@ -41,8 +41,7 @@ use crate::output::{
 use crate::tui::{App, run_app};
 use models::{
     Cli, ExecutionCommand, HostDiscoveryAllResult, HostDiscoveryOption, HostDiscoverySingleResult,
-    HostDiscoverySpec, MainMenuItem, PortOptions, PortScanAllResult, PortScanOption,
-    PortScanSingleResult, ScanCommand,
+    HostDiscoverySpec, MainMenuItem, PortOptions, PortScanAllResult, PortScanOption, PortScanSingleResult,
 };
 use printing::{
     print_host_discovery_results, print_host_discovery_results_original, print_port_scan_results,
@@ -352,21 +351,32 @@ fn build_command_from_tui(
 
 fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String> {
     let host_discovery_methods = cli.host_discovery_methods();
+    let port_scan_method = selected_port_scan_method(cli)?;
     let has_host_discovery_config = !host_discovery_methods.is_empty()
-        || cli.host_discovery_ports.is_some()
         || cli.syn_discovery_ports.is_some()
         || cli.ack_discovery_ports.is_some()
-        || cli.udp_discovery_ports.is_some()
-        || cli.host_discovery_timeout_ms.is_some()
-        || cli.host_discovery_targets.is_some();
+        || cli.udp_discovery_ports.is_some();
 
-    if cli.command.is_some() && has_host_discovery_config {
+    if port_scan_method.is_some() && has_host_discovery_config {
         return Err(
-            "Host discovery flags cannot be combined with port scan subcommands".to_string(),
+            "Host discovery flags cannot be combined with port scan modes".to_string(),
         );
     }
 
-    let command = match &cli.command {
+    let command = match port_scan_method {
+        Some(method) => ExecutionCommand::PortScan {
+            method,
+            targets: parse_targets(
+                cli.host_discovery_targets
+                    .as_deref()
+                    .ok_or_else(|| "Targets must be provided".to_string())?,
+            )?,
+            ports: parse_ports_spec(cli.host_discovery_ports.as_ref())?,
+            timeout_override_ms: cli.host_discovery_timeout_ms,
+            service_version: cli.service_version,
+            os_detection: cli.os_detection,
+            script: cli.script.clone(),
+        },
         None => {
             if !has_host_discovery_config {
                 return Ok(None);
@@ -374,61 +384,32 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
 
             build_host_discovery_command(cli, host_discovery_methods)?
         }
-        Some(ScanCommand::SynScan {
-            ports,
-            timeout_ms,
-            ips,
-        }) => ExecutionCommand::PortScan {
-            method: PortScanOption::SynScan,
-            targets: parse_targets(ips)?,
-            ports: parse_ports_spec(ports.as_ref())?,
-            timeout_override_ms: *timeout_ms,
-            service_version: cli.service_version,
-            os_detection: cli.os_detection,
-            script: cli.script.clone(),
-        },
-        Some(ScanCommand::ConnectScan {
-            ports,
-            timeout_ms,
-            ips,
-        }) => ExecutionCommand::PortScan {
-            method: PortScanOption::ConnectScan,
-            targets: parse_targets(ips)?,
-            ports: parse_ports_spec(ports.as_ref())?,
-            timeout_override_ms: *timeout_ms,
-            service_version: cli.service_version,
-            os_detection: cli.os_detection,
-            script: cli.script.clone(),
-        },
-        Some(ScanCommand::AckScan {
-            ports,
-            timeout_ms,
-            ips,
-        }) => ExecutionCommand::PortScan {
-            method: PortScanOption::AckScan,
-            targets: parse_targets(ips)?,
-            ports: parse_ports_spec(ports.as_ref())?,
-            timeout_override_ms: *timeout_ms,
-            service_version: cli.service_version,
-            os_detection: cli.os_detection,
-            script: cli.script.clone(),
-        },
-        Some(ScanCommand::UdpScan {
-            ports,
-            timeout_ms,
-            ips,
-        }) => ExecutionCommand::PortScan {
-            method: PortScanOption::UdpScan,
-            targets: parse_targets(ips)?,
-            ports: parse_ports_spec(ports.as_ref())?,
-            timeout_override_ms: *timeout_ms,
-            service_version: cli.service_version,
-            os_detection: cli.os_detection,
-            script: cli.script.clone(),
-        },
     };
 
     Ok(Some(command))
+}
+
+fn selected_port_scan_method(cli: &Cli) -> Result<Option<PortScanOption>, String> {
+    let mut selected = Vec::new();
+
+    if cli.syn_scan {
+        selected.push(PortScanOption::SynScan);
+    }
+    if cli.connect_scan {
+        selected.push(PortScanOption::ConnectScan);
+    }
+    if cli.ack_scan {
+        selected.push(PortScanOption::AckScan);
+    }
+    if cli.udp_scan {
+        selected.push(PortScanOption::UdpScan);
+    }
+
+    if selected.len() > 1 {
+        return Err("Only one port scan mode can be selected at a time".to_string());
+    }
+
+    Ok(selected.into_iter().next())
 }
 
 fn build_host_discovery_command(
@@ -1139,11 +1120,6 @@ mod tests {
     #[test]
     fn build_command_from_cli_supports_combined_host_discovery_probes() {
         let cli = parse_cli(&["onmap", "-PE", "-PP", "-PS22", "127.0.0.1"]);
-        assert!(
-            cli.command.is_none(),
-            "expected no subcommand for host discovery flags, got: {:?}",
-            cli
-        );
 
         let command = build_command_from_cli(&cli)
             .expect("combined host discovery command should build")
@@ -1272,7 +1248,7 @@ mod tests {
     }
 
     #[test]
-    fn build_command_from_cli_keeps_port_scan_subcommand_ports_local() {
+    fn build_command_from_cli_supports_flat_port_scan_syntax() {
         let cli = parse_cli(&["onmap", "-sT", "-p", "22", "127.0.0.1"]);
 
         let command = build_command_from_cli(&cli)
@@ -1291,6 +1267,29 @@ mod tests {
                 assert_eq!(ports, vec![22]);
                 assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
                 assert_eq!(timeout_override_ms, None);
+            }
+            other => panic!("expected port scan command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn build_command_from_cli_supports_port_scan_after_output_flag() {
+        let cli = parse_cli(&["onmap", "-X", "test", "-sS", "-p1", "127.0.0.1"]);
+
+        let command = build_command_from_cli(&cli)
+            .expect("port scan command should build")
+            .expect("port scan command should be present");
+
+        match command {
+            ExecutionCommand::PortScan {
+                method,
+                ports,
+                targets,
+                ..
+            } => {
+                assert_eq!(method, PortScanOption::SynScan);
+                assert_eq!(ports, vec![1]);
+                assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
             }
             other => panic!("expected port scan command, got {:?}", other),
         }
