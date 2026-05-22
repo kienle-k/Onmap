@@ -90,17 +90,12 @@ pub async fn port_tcp_connect_scan(
 /// * Uses `Arc<Mutex<...>>` to collect shared scan results safely across tasks.
 /// * Accurately counts packets sent (connect + response for open ports).
 pub async fn run_connect_scan(
-    ip_address_arr: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     ports_arr: Vec<u16>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     const DEFAULT_TIMEOUT_MS: u64 = 300;
     let timeout = Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
-
-    let ip_addresses = match ip_address_arr {
-        Ok(ips) => ips,
-        Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
-    };
 
     // let protocols = Arc::new(load_protocol_map("src/resolving/port_service_mapping.json").expect("Failed to load service names"));
     let protocols = Arc::new(

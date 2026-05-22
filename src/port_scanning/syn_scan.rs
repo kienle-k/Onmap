@@ -203,16 +203,11 @@ pub async fn port_syn_scan(
 /// This function requires administrator/root privileges to create raw sockets for packet crafting.
 /// It will return an `Err` if the underlying `port_syn_scan` calls fail due to permission issues.
 pub async fn run_syn_scan(
-    ip_address_arr: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     ports_arr: Vec<u16>,
     local_ip_address: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    let ip_addresses = match ip_address_arr {
-        Ok(ips) => ips,
-        Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
-    };
-
     // Load the protocol/service data from the json file
     let protocols = Arc::new(
         load_protocol_map("src/resolving/port_service_mapping.json")
@@ -324,23 +319,19 @@ mod tests {
     //! Unit tests for the SYN scan module.
     use super::*;
 
-    /// Tests the error handling path of `run_syn_scan` when provided with an `Err`
-    /// containing the IP addresses. This is a unit test as it does not perform
-    /// any network operations.
+    /// Tests that `run_syn_scan` handles empty IP input without failing.
     #[tokio::test]
-    async fn test_run_syn_scan_ip_error_handling() {
-        let ips = Err("Failed to resolve hostname".to_string());
+    async fn test_run_syn_scan_empty_ips() {
+        let ips = Vec::new();
         let ports = vec![80];
         let local_ip = Ipv4Addr::new(127, 0, 0, 1);
 
         let result = run_syn_scan(ips, ports, local_ip, None).await;
 
-        assert!(result.is_err());
-        let err_msg = result.expect_err("Expected run_syn_scan to fail");
-
-        assert_eq!(
-            err_msg,
-            "Failed to get IP addresses: Failed to resolve hostname"
-        );
+        assert!(result.is_ok());
+        let (single_results, all_result) = result.expect("Expected empty scan to succeed");
+        assert!(single_results.is_empty());
+        assert_eq!(all_result.packets_sent, 0);
+        assert!(all_result.open_ports.is_empty());
     }
 }

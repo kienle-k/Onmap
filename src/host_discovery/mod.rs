@@ -11,22 +11,22 @@
 // --- Standard Ping Scans ---
 
 /// Implements host discovery using the operating system's native ICMP Echo (ping) command.
-pub mod ping_scan;
-pub use ping_scan::run_ping_scan;
+pub mod ping_discovery;
+pub use ping_discovery::run_ping_discovery;
 
 // --- ICMP-based Discovery Methods ---
 
 /// Implements host discovery using ICMP Echo Request packets (Type 8).
-pub mod icmp_echo;
-pub use icmp_echo::run_icmp_echo;
+pub mod icmp_echo_discovery;
+pub use icmp_echo_discovery::run_icmp_echo_discovery;
 
 /// Implements host discovery using ICMP Netmask Request packets (Type 17).
-pub mod icmp_netmask;
-pub use icmp_netmask::run_icmp_netmask;
+pub mod icmp_netmask_discovery;
+pub use icmp_netmask_discovery::run_icmp_netmask_discovery;
 
 /// Implements host discovery using ICMP Timestamp Request packets (Type 13).
-pub mod icmp_timestamp;
-pub use icmp_timestamp::run_icmp_timestamp;
+pub mod icmp_timestamp_discovery;
+pub use icmp_timestamp_discovery::run_icmp_timestamp_discovery;
 
 // --- TCP-based Discovery Methods ---
 
@@ -46,5 +46,5 @@ pub use udp_discovery::run_udp_discovery;
 // --- ARP-based Discovery Methods ---
 
 /// Implements host discovery using ARP requests.
-pub mod arp;
-pub use arp::run_arp;
+pub mod arp_discovery;
+pub use arp_discovery::run_arp_discovery;

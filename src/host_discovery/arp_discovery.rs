@@ -14,12 +14,11 @@ use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
 use crate::resolving::resolve_hostname;
 
 /// Runs an ARP scan against a list of target IP addresses on the local network.
-pub async fn run_arp(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+pub async fn run_arp_discovery(
+    ip_addresses: Vec<Ipv4Addr>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
-    let ips = ip_addresses?;
 
     let local_ip = match local_ip() {
         Ok(IpAddr::V4(ip)) => ip,
@@ -33,9 +32,9 @@ pub async fn run_arp(
         .ok_or_else(|| format!("No MAC address found for interface {}", interface.name))?;
 
     let mut futures = FuturesUnordered::new();
-    let all_ips: Vec<IpAddr> = ips.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|ip| IpAddr::V4(*ip)).collect();
 
-    for ip in ips {
+    for ip in ip_addresses {
         let interface = interface.clone();
         futures.push(async move {
             let arp_result = arp_ping_host_with_details(

@@ -104,16 +104,11 @@ async fn udp_probe_with_details(
 
 /// Runs a concurrent UDP scan against a list of hosts and ports.
 pub async fn run_udp_scan(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     ports: Vec<u16>,
     local_ip: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    let ips = match ip_addresses {
-        Ok(ips) => ips,
-        Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
-    };
-
     let protocols = Arc::new(
         load_protocol_map("src/resolving/port_service_mapping.json")
             .map_err(|e| format!("Failed to load service names: {}", e))?,
@@ -123,7 +118,7 @@ pub async fn run_udp_scan(
     let semaphore = Arc::new(Semaphore::new(200));
     let mut futs = FuturesUnordered::new();
 
-    for &ip in &ips {
+    for &ip in &ip_addresses {
         for &port in &ports {
             let sem_clone = semaphore.clone();
             let protocols_clone = Arc::clone(&protocols);
@@ -172,7 +167,7 @@ pub async fn run_udp_scan(
 
     let all_results = PortScanAllResult {
         ports_scanned: ports.len() as u16,
-        packets_sent: (ips.len() * ports.len()) as u32,
+        packets_sent: (ip_addresses.len() * ports.len()) as u32,
         open_ports,
         start_time,
         end_time: SystemTime::now(),

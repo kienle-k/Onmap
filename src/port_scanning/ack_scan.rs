@@ -128,16 +128,11 @@ pub async fn port_ack_scan(
 ///
 /// A `Result` containing a tuple of `(Vec<PortScanSingleResult>, PortScanAllResult)` on success.
 pub async fn run_ack_scan(
-    ip_addresses: Result<Vec<Ipv4Addr>, String>,
+    ip_addresses: Vec<Ipv4Addr>,
     ports: &[u16],
     local_ip: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    let ips = match ip_addresses {
-        Ok(ips) => ips,
-        Err(e) => return Err(format!("Failed to get IP addresses: {}", e)),
-    };
-
     // Load service name data once, share cheaply across all tasks then.
     let protocols = Arc::new(
         load_protocol_map("src/resolving/port_service_mapping.json")
@@ -149,7 +144,7 @@ pub async fn run_ack_scan(
     let semaphore = Arc::new(Semaphore::new(200));
     let mut futs = FuturesUnordered::new();
 
-    for &ip in &ips {
+    for &ip in &ip_addresses {
         for &port in ports {
             let sem_clone = semaphore.clone();
             let protocols_clone = Arc::clone(&protocols);
@@ -200,7 +195,7 @@ pub async fn run_ack_scan(
 
     let all_results = PortScanAllResult {
         ports_scanned: ports.len() as u16,
-        packets_sent: (ips.len() * ports.len()) as u32,
+        packets_sent: (ip_addresses.len() * ports.len()) as u32,
         //An ACK scan finds UNFILTERED ports, so this list is left empty.
         open_ports: Vec::new(),
         start_time,
