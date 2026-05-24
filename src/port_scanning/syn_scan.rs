@@ -4,7 +4,7 @@ use pnet::packet::tcp::{MutableTcpPacket, TcpFlags};
 use pnet::transport::tcp_packet_iter;
 use pnet::transport::{TransportChannelType, TransportProtocol, transport_channel};
 use rand::Rng;
-use std::net::{IpAddr, Ipv4Addr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr};
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
@@ -12,28 +12,6 @@ use std::time::{Duration, Instant, SystemTime};
 use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
-
-fn source_ip_for_target(target: Ipv4Addr) -> Result<Ipv4Addr, String> {
-    if target.is_loopback() {
-        return Ok(Ipv4Addr::new(127, 0, 0, 1));
-    }
-
-    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
-        .map_err(|e| format!("Failed to bind route probe socket: {}", e))?;
-
-    socket
-        .connect((target, 9))
-        .map_err(|e| format!("Failed to determine route to {}: {}", target, e))?;
-
-    match socket
-        .local_addr()
-        .map_err(|e| format!("Failed to read local route address: {}", e))?
-        .ip()
-    {
-        IpAddr::V4(ip) => Ok(ip),
-        IpAddr::V6(ip) => Err(format!("Expected IPv4 source address, got IPv6 {}", ip)),
-    }
-}
 
 /// Performs a TCP SYN scan on a single port for a given IP address.
 ///
@@ -63,7 +41,7 @@ fn source_ip_for_target(target: Ipv4Addr) -> Result<Ipv4Addr, String> {
 pub async fn port_syn_scan(
     ip_address: IpAddr,
     port: u16,
-    _local_ip_address: Ipv4Addr,
+    local_ip_address: Ipv4Addr,
     protocols: Arc<ProtocolMap>,
     timeout_override_ms: Option<u64>,
 ) -> Result<PortScanSingleResult, String> {
@@ -106,19 +84,15 @@ pub async fn port_syn_scan(
     tcp_packet.set_window(64240);
     tcp_packet.set_urgent_ptr(0);
 
-    // Ask the kernel which IPv4 source address it would use for this target.
-    let route_source_ip = source_ip_for_target(ipv4)?;
-
-    // The TCP pseudo-header must match the route-specific source IP.
+    // Calculate checksum using the source and destination IPs
     let checksum =
-        pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &route_source_ip, &ipv4);
+        pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &local_ip_address, &ipv4);
     tcp_packet.set_checksum(checksum);
 
     // eprintln!(
-    //     "SYN DEBUG send: target={} configured_local_ip={} route_source_ip={} source_port={} target_port={} checksum=0x{:04x}",
+    //     "SYN DEBUG send: target={} local_ip={} source_port={} target_port={} checksum=0x{:04x}",
     //     ip_address,
     //     local_ip_address,
-    //     route_source_ip,
     //     source_port,
     //     port,
     //     checksum
