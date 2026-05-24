@@ -9,6 +9,7 @@ mod output;
 pub mod parsing;
 pub mod printing;
 pub mod resolving;
+pub mod version;
 
 // --- Standard library imports ---
 use std::collections::HashMap;
@@ -41,12 +42,14 @@ use crate::output::{
 use crate::tui::{App, run_app};
 use models::{
     Cli, ExecutionCommand, HostDiscoveryAllResult, HostDiscoveryOption, HostDiscoverySingleResult,
-    HostDiscoverySpec, MainMenuItem, PortOptions, PortScanAllResult, PortScanOption, PortScanSingleResult,
+    HostDiscoverySpec, MainMenuItem, PortOptions, PortScanAllResult, PortScanOption,
+    PortScanSingleResult, VersionFormat,
 };
 use printing::{
     print_host_discovery_results, print_host_discovery_results_original, print_port_scan_results,
     print_port_scan_results_original,
 };
+use version::{version_json, version_text};
 
 // --- Main public entry point ---
 /// Runs the Onmap application with the given CLI arguments.
@@ -54,6 +57,15 @@ use printing::{
 
 #[tokio::main]
 pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
+    if let Some(format) = &cli.version {
+        match format {
+            Some(VersionFormat::Json) => println!("{}", version_json()),
+            None => println!("{}", version_text()),
+        }
+
+        return Ok(());
+    }
+
     // Flush to enable TUI in docker (test environment)
     // This is a quick fix for an issue where the TUI doesn't display inside the container
     io::stdout().flush()?;
@@ -358,9 +370,7 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
         || cli.udp_discovery_ports.is_some();
 
     if port_scan_method.is_some() && has_host_discovery_config {
-        return Err(
-            "Host discovery flags cannot be combined with port scan modes".to_string(),
-        );
+        return Err("Host discovery flags cannot be combined with port scan modes".to_string());
     }
 
     let command = match port_scan_method {
@@ -956,8 +966,7 @@ async fn run_host_discovery_spec(
             host_discovery::run_icmp_echo_discovery(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::IcmpTimestamp => {
-            host_discovery::run_icmp_timestamp_discovery(ipv4_targets, timeout_override_ms)
-                .await?
+            host_discovery::run_icmp_timestamp_discovery(ipv4_targets, timeout_override_ms).await?
         }
         HostDiscoveryOption::IcmpNetmask => {
             run_icmp_netmask_discovery();
@@ -1116,6 +1125,28 @@ mod tests {
     fn parse_cli(args: &[&str]) -> Cli {
         Cli::try_parse_from(Cli::normalize_args(args.iter().copied()))
             .expect("CLI arguments should parse")
+    }
+
+    #[test]
+    fn cli_accepts_plain_version_flag() {
+        let cli = parse_cli(&["onmap", "-V"]);
+
+        assert_eq!(cli.version, Some(None));
+    }
+
+    #[test]
+    fn cli_accepts_json_version_format() {
+        let cli = parse_cli(&["onmap", "--version", "json"]);
+
+        assert_eq!(cli.version, Some(Some(VersionFormat::Json)));
+    }
+
+    #[test]
+    fn cli_rejects_invalid_version_format() {
+        let err = Cli::try_parse_from(Cli::normalize_args(["onmap", "-V", "text"]))
+            .expect_err("invalid version format should fail");
+
+        assert!(err.to_string().contains("json"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, Parser, ValueEnum};
 use std::ffi::OsString;
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
@@ -6,11 +6,15 @@ use std::time::{Duration, SystemTime};
 #[derive(Parser, Debug)]
 #[command(
     author,
-    version,
+    disable_version_flag = true,
     about = "Onmap - A fast and memory-safe network scanning tool built in Rust.",
     long_about = None
 )]
 pub struct Cli {
+    /// Print version information and exit
+    #[arg(short = 'V', long = "version", global = true, num_args = 0..=1, value_name = "FORMAT")]
+    pub version: Option<Option<VersionFormat>>,
+
     /// Run in Text User Interface (TUI) mode
     #[arg(long)]
     pub tui: bool,
@@ -43,7 +47,6 @@ pub struct Cli {
     #[arg(long = "PU", help = "UDP discovery scan (Host Discovery)", action = ArgAction::SetTrue)]
     pub udp_discovery: bool,
 
-
     /// TCP SYN port scan
     #[arg(long = "sS", help = "TCP SYN port scan", action = ArgAction::SetTrue)]
     pub syn_scan: bool,
@@ -59,7 +62,6 @@ pub struct Cli {
     /// UDP port scan
     #[arg(long = "sU", help = "UDP port scan", action = ArgAction::SetTrue)]
     pub udp_scan: bool,
-
 
     /// Port specification for the active scan mode
     #[arg(short = 'p', long = "ports", value_name = "PORTS")]
@@ -149,6 +151,11 @@ pub struct Cli {
         help = "Run nmap script(s) on open ports after scan"
     )]
     pub script: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, ValueEnum)]
+pub enum VersionFormat {
+    Json,
 }
 
 impl Cli {
