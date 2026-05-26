@@ -57,9 +57,6 @@ sudo ./target/release/onmap -PE --help
 # TCP SYN scan port 22 across an IP range
 ./target/release/onmap -sS -p22 10.0.0.1-10
 
-# FIN scan specific ports on one host
-./target/release/onmap -sF -p80,443 192.168.1.101
-
 # ACK scan specific ports on one host
 ./target/release/onmap -sA -p80,443 192.168.1.1
 ```
