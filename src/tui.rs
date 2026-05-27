@@ -135,7 +135,7 @@ impl App {
 /// A `Result` containing the final user selections when the loop exits successfully,
 /// or an `io::Error` if there's a problem reading events. The tuple contains all
 /// the necessary information to configure and run the selected scan.
-pub fn run_app<B: Backend>(
+pub fn run_tui<B: Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
 ) -> io::Result<(
@@ -1016,7 +1016,7 @@ mod tests {
         assert_eq!(app.cursor_position, 4);
     }
 
-    // --- State Transition Tests (Simulating run_app logic) ---
+    // --- State Transition Tests (Simulating run_tui logic) ---
 
     /// Tests the transition from the Main Menu to the Host Discovery sub-menu.
     #[test]
@@ -1144,7 +1144,7 @@ mod tests {
             ..App::new()
         };
 
-        // This simulates the logic from run_app
+        // This simulates the logic from run_tui
         let process_key = |app: &mut App, c: char| {
             if c.is_digit(10) || c == '.' || c == '-' || c == '/' {
                 app.input_ip(c);

@@ -38,7 +38,7 @@ use crate::output::{
     save_to_file_normal_host_discovery, save_to_file_normal_port_scan,
     save_to_file_xml_host_discovery, save_to_file_xml_port_scan,
 };
-use crate::tui::{App, run_app};
+use crate::tui::{run_tui, App};
 use models::{
     Cli, ExecutionCommand, HostDiscoveryAllResult, HostDiscoveryOption, HostDiscoverySingleResult,
     HostDiscoverySpec, MainMenuItem, PortOptions, PortScanAllResult, PortScanOption,
@@ -130,7 +130,7 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
         let mut app = App::new();
 
         // Main TUI loop
-        let res = run_app(&mut terminal, &mut app);
+        let res = run_tui(&mut terminal, &mut app);
 
         // Restore terminal
         disable_raw_mode()?;
