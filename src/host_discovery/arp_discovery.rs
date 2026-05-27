@@ -49,11 +49,10 @@ pub async fn run_arp_discovery(
             let dns_resolve = None;
             let mut is_reachable = false;
             let mut latency = None;
-            let ttl = 0;
             let mut reply_type = "no response".to_string();
 
             match arp_result {
-                Ok((reachable, lat, _)) => {
+                Ok((reachable, lat)) => {
                     is_reachable = reachable;
                     latency = lat;
                     if is_reachable {
@@ -71,7 +70,7 @@ pub async fn run_arp_discovery(
                 dns_resolve,
                 is_up: is_reachable,
                 reply_type,
-                ttl,
+                ttl: 0,
             }
         });
     }
@@ -136,7 +135,7 @@ async fn arp_ping_host_with_details(
     source_ip: Ipv4Addr,
     target_ip: Ipv4Addr,
     timeout_override_ms: Option<u64>,
-) -> Result<(bool, Option<Duration>, Option<u8>), String> {
+) -> Result<(bool, Option<Duration>), String> {
     const DEFAULT_READ_TIMEOUT_MS: u64 = 200;
     const DEFAULT_SCAN_WINDOW_MS: u64 = 2_000;
     const DEFAULT_OUTER_PADDING_MS: u64 = 1_000;
@@ -181,8 +180,8 @@ async fn arp_ping_host_with_details(
         let timeout_duration = Duration::from_millis(scan_window_ms);
         while start_time.elapsed() < timeout_duration {
             match rx.next() {
-                Ok(raw_frame) => {
-                    if let Some(ethernet_frame) = EthernetPacket::new(raw_frame) {
+                Ok(ethernet_bytes) => {
+                    if let Some(ethernet_frame) = EthernetPacket::new(ethernet_bytes) {
                         if ethernet_frame.get_ethertype() != EtherTypes::Arp {
                             continue;
                         }
@@ -193,7 +192,7 @@ async fn arp_ping_host_with_details(
                                 && arp_packet.get_target_proto_addr() == source_ip
                             {
                                 let latency = start_time.elapsed();
-                                return Ok((true, Some(latency), None));
+                                return Ok((true, Some(latency)));
                             }
                         }
                     }
@@ -204,7 +203,7 @@ async fn arp_ping_host_with_details(
             }
         }
 
-        Ok((false, None, None))
+        Ok((false, None))
     });
 
     match timeout(Duration::from_millis(outer_timeout_ms), task).await {
