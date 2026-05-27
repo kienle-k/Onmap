@@ -33,7 +33,6 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 
 // --- Internal imports (from this crate) ---
-use crate::host_discovery::run_icmp_netmask_discovery;
 use crate::output::{
     save_to_file_grepable_host_discovery, save_to_file_grepable_port_scan,
     save_to_file_normal_host_discovery, save_to_file_normal_port_scan,
@@ -528,7 +527,6 @@ fn host_discovery_method_name(method: HostDiscoveryOption) -> &'static str {
         HostDiscoveryOption::ArpDiscovery => "ARP discovery",
         HostDiscoveryOption::IcmpEcho => "ICMP echo discovery",
         HostDiscoveryOption::IcmpTimestamp => "ICMP timestamp discovery",
-        HostDiscoveryOption::IcmpNetmask => "ICMP netmask discovery",
     }
 }
 
@@ -573,7 +571,6 @@ fn requires_root(cmd: &ExecutionCommand) -> bool {
                 spec.method,
                 HostDiscoveryOption::IcmpEcho
                     | HostDiscoveryOption::IcmpTimestamp
-                    | HostDiscoveryOption::IcmpNetmask
                     | HostDiscoveryOption::ArpDiscovery
                     | HostDiscoveryOption::TcpSynDiscovery
                     | HostDiscoveryOption::TcpAckDiscovery
@@ -681,7 +678,6 @@ async fn execute_command(
                     HostDiscoveryOption::PingScan => "Ping Scan",
                     HostDiscoveryOption::IcmpEcho => "ICMP Echo Ping Scan",
                     HostDiscoveryOption::IcmpTimestamp => "ICMP Timestamp Ping Scan",
-                    HostDiscoveryOption::IcmpNetmask => "ICMP Netmask Ping Scan",
                     HostDiscoveryOption::ArpDiscovery => "ARP Ping Scan",
                     HostDiscoveryOption::TcpSynDiscovery => "SYN Ping Scan",
                     HostDiscoveryOption::TcpAckDiscovery => "ACK Ping Scan",
@@ -968,10 +964,6 @@ async fn run_host_discovery_spec(
         HostDiscoveryOption::IcmpTimestamp => {
             host_discovery::run_icmp_timestamp_discovery(ipv4_targets, timeout_override_ms).await?
         }
-        HostDiscoveryOption::IcmpNetmask => {
-            run_icmp_netmask_discovery();
-            return Ok(None);
-        }
     };
 
     Ok(Some(result))
@@ -986,10 +978,10 @@ async fn run_multi_host_discovery(
     if methods.iter().any(|spec| {
         matches!(
             spec.method,
-            HostDiscoveryOption::ListScan | HostDiscoveryOption::IcmpNetmask
+            HostDiscoveryOption::ListScan
         )
     }) {
-        return Err("List scan and ICMP netmask discovery cannot be combined with other host discovery methods".to_string());
+        return Err("List scan cannot be combined with other host discovery methods".to_string());
     }
 
     let futures = methods.into_iter().map(|spec| {

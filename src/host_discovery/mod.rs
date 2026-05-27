@@ -5,7 +5,7 @@
 //! is online and responsive.
 //!
 //! Each submodule implements a different discovery technique, such as a standard
-//! ICMP ping, a TCP SYN ping, or an ICMP netmask request. The primary functions
+//! ICMP ping or a TCP SYN ping. The primary functions
 //! from these modules are re-exported here for convenient access.
 
 // --- Standard Ping Scans ---
@@ -19,10 +19,6 @@ pub use ping_discovery::run_ping_discovery;
 /// Implements host discovery using ICMP Echo Request packets (Type 8).
 pub mod icmp_echo_discovery;
 pub use icmp_echo_discovery::run_icmp_echo_discovery;
-
-/// Implements host discovery using ICMP Netmask Request packets (Type 17).
-pub mod icmp_netmask_discovery;
-pub use icmp_netmask_discovery::run_icmp_netmask_discovery;
 
 /// Implements host discovery using ICMP Timestamp Request packets (Type 13).
 pub mod icmp_timestamp_discovery;

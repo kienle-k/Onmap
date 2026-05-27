@@ -182,15 +182,15 @@ async fn arp_ping_host_with_details(
         while start_time.elapsed() < timeout_duration {
             match rx.next() {
                 Ok(packet) => {
-                    if let Some(ethernet) = EthernetPacket::new(packet) {
-                        if ethernet.get_ethertype() != EtherTypes::Arp {
+                    if let Some(ethernet_frame) = EthernetPacket::new(packet) {
+                        if ethernet_frame.get_ethertype() != EtherTypes::Arp {
                             continue;
                         }
 
-                        if let Some(arp) = ArpPacket::new(ethernet.payload()) {
-                            if arp.get_operation() == ArpOperations::Reply
-                                && arp.get_sender_proto_addr() == target_ip
-                                && arp.get_target_proto_addr() == source_ip
+                        if let Some(arp_packet) = ArpPacket::new(ethernet_frame.payload()) {
+                            if arp_packet.get_operation() == ArpOperations::Reply
+                                && arp_packet.get_sender_proto_addr() == target_ip
+                                && arp_packet.get_target_proto_addr() == source_ip
                             {
                                 let latency = start_time.elapsed();
                                 return Ok((true, Some(latency), None));

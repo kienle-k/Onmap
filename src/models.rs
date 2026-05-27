@@ -326,8 +326,6 @@ pub enum HostDiscoveryOption {
     IcmpEcho,
     /// A discovery scan using ICMP Timestamp requests.
     IcmpTimestamp,
-    /// A discovery scan using ICMP Netmask requests.
-    IcmpNetmask,
 }
 
 /// Defines the different techniques available for port scanning.

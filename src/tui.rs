@@ -236,10 +236,6 @@ pub fn run_app<B: Backend>(
                             app.select_host_discovery(HostDiscoveryOption::IcmpTimestamp);
                             app.state = AppState::IpAddressInput;
                         }
-                        KeyCode::Char('9') => {
-                            app.select_host_discovery(HostDiscoveryOption::IcmpNetmask);
-                            app.state = AppState::IpAddressInput;
-                        }
                         _ => {}
                     }
                 }
@@ -609,10 +605,6 @@ pub fn run_app<B: Backend>(
                             "8. ICMP timestamp (-PP)",
                             Style::default().fg(Color::White),
                         ))),
-                        ListItem::new(Line::from(Span::styled(
-                            "9. ICMP netmask (-PM)",
-                            Style::default().fg(Color::White),
-                        ))),
                     ];
 
                     // Create submenu list
@@ -630,7 +622,7 @@ pub fn run_app<B: Backend>(
 
                     // Add text to the instructions block
                     let instructions_text = Text::from(
-                        "Press 1-9 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
+                        "Press 1-8 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
                     );
                     f.render_widget(
                         Paragraph::new(instructions_text).block(instructions),
