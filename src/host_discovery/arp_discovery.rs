@@ -181,8 +181,8 @@ async fn arp_ping_host_with_details(
         let timeout_duration = Duration::from_millis(scan_window_ms);
         while start_time.elapsed() < timeout_duration {
             match rx.next() {
-                Ok(packet) => {
-                    if let Some(ethernet_frame) = EthernetPacket::new(packet) {
+                Ok(raw_frame) => {
+                    if let Some(ethernet_frame) = EthernetPacket::new(raw_frame) {
                         if ethernet_frame.get_ethertype() != EtherTypes::Arp {
                             continue;
                         }
