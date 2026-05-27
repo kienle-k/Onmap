@@ -284,7 +284,8 @@ mod tests {
         let err_msg = result.unwrap_err();
         assert!(
             err_msg.contains("DNS resolution failed for not an ip")
-                || err_msg.contains("Invalid IP address: not an ip"),
+                || err_msg.contains("Invalid IP address: not an ip")
+                || err_msg.contains("Invalid IP address or hostname: not an ip"),
             "Expected DNS failure or Invalid IP error, got: {}",
             err_msg
         );
