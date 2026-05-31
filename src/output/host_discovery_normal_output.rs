@@ -13,7 +13,8 @@ pub fn save_to_file_normal_host_discovery(
     let start_dt: DateTime<Local> = summary.start_time.into();
     writeln!(
         file,
-        "# Onmap 1.0 scan initiated {}",
+        "# Onmap {} scan initiated {}",
+        env!("CARGO_PKG_VERSION"),
         start_dt.format("%a %b %e %H:%M:%S %Y")
     )?;
 
