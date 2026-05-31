@@ -114,7 +114,7 @@ fn treat_as_up(ip: &Ipv4Addr) -> HostDiscoverySingleResult {
         dns_resolve: None,
         latency: None,
         is_up: true,
-        reply_type: "Pn".to_string(),
+        reply_type: "user-set".to_string(),
         ttl: 0,
     }
 }

@@ -164,6 +164,7 @@ pub async fn run_udp_scan(
         open_ports,
         start_time,
         end_time: SystemTime::now(),
+        scan_type: None,
     };
 
     Ok((single_results, all_results))

@@ -1,6 +1,7 @@
 // --- Module declarations ---
 mod host_discovery;
 mod port_scanning;
+mod port_summary;
 mod tui;
 
 // --- Public API modules ---
@@ -39,8 +40,9 @@ use crate::output::{
 use crate::tui::{run_tui, App};
 use models::{
     Cli, DiscoveryMode, DiscoveryPlan, DiscoveryProbe, ExecutionCommand, HostDiscoveryAllResult,
-    HostDiscoveryOption, HostDiscoverySingleResult, MainMenuItem, PortOptions, PortScanAllResult,
-    PortScanOption, PortScanSingleResult, VersionFormat,
+    HostDiscoveryOption, HostDiscoveryResult, HostDiscoverySingleResult, HostMergeState,
+    MainMenuItem, PortOptions, PortScanAllResult, PortScanOption, PortScanResult,
+    PortScanSingleResult, VersionFormat,
 };
 
 use crate::host_discovery::engine::{run_discovery, DiscoveryResult};
@@ -153,8 +155,10 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
         Ok(None) => {
             if use_tui {
                 println!("No main menu item was selected, or TUI was exited prematurely.");
+                println!();
             } else {
                 println!("No scan method specified. Use `onmap --help` for usage information.");
+                println!();
             }
             return Ok(());
         }
@@ -167,7 +171,7 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
     print_startup_message();
 
     let (host_result_opt, port_result_opt) =
-        match execute_command(command, use_original_printing).await {
+        match execute_command(command, use_original_printing, cli.verbosity).await {
             Ok(result) => result,
             Err(e) => {
                 eprintln!("{}", e);
@@ -185,15 +189,21 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
 
     if let Some(path) = &cli.output_xml {
         let mut saved = false;
-        if !host_discovery_result.0.is_empty() {
+        if !host_discovery_result.0.is_empty() && port_scan_result.0.is_empty() {
             save_to_file_xml_host_discovery(
                 path,
                 (&host_discovery_result.0, &host_discovery_result.1),
+                cli.verbosity,
             )?;
             saved = true;
         }
         if !port_scan_result.0.is_empty() {
-            save_to_file_xml_port_scan(path, (&port_scan_result.0, &port_scan_result.1))?;
+            save_to_file_xml_port_scan(
+                path,
+                (&port_scan_result.0, &port_scan_result.1),
+                &host_discovery_result.0,
+                cli.verbosity,
+            )?;
             saved = true;
         }
         if !saved {
@@ -203,7 +213,7 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
 
     if let Some(path) = &cli.output_normal {
         let mut saved = false;
-        if !host_discovery_result.0.is_empty() {
+        if !host_discovery_result.0.is_empty() && port_scan_result.0.is_empty() {
             save_to_file_normal_host_discovery(
                 path,
                 (&host_discovery_result.0, &host_discovery_result.1),
@@ -221,7 +231,7 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
 
     if let Some(path) = &cli.output_grepable {
         let mut saved = false;
-        if !host_discovery_result.0.is_empty() {
+        if !host_discovery_result.0.is_empty() && port_scan_result.0.is_empty() {
             save_to_file_grepable_host_discovery(
                 path,
                 (&host_discovery_result.0, &host_discovery_result.1),
@@ -242,10 +252,11 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
         let normal_path = format!("{}.nmap", basename);
         let grepable_path = format!("{}.gnmap", basename);
         let mut saved = false;
-        if !host_discovery_result.0.is_empty() {
+        if !host_discovery_result.0.is_empty() && port_scan_result.0.is_empty() {
             save_to_file_xml_host_discovery(
                 &xml_path,
                 (&host_discovery_result.0, &host_discovery_result.1),
+                cli.verbosity,
             )?;
             save_to_file_normal_host_discovery(
                 &normal_path,
@@ -258,7 +269,12 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
             saved = true;
         }
         if !port_scan_result.0.is_empty() {
-            save_to_file_xml_port_scan(&xml_path, (&port_scan_result.0, &port_scan_result.1))?;
+            save_to_file_xml_port_scan(
+                &xml_path,
+                (&port_scan_result.0, &port_scan_result.1),
+                &host_discovery_result.0,
+                cli.verbosity,
+            )?;
             save_to_file_normal_port_scan(
                 &normal_path,
                 (&port_scan_result.0, &port_scan_result.1),
@@ -277,13 +293,6 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
     Ok(())
 }
 
-type HostDiscoveryResult = (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult);
-type PortScanResult = (Vec<PortScanSingleResult>, PortScanAllResult);
-
-struct HostMergeState {
-    best_up: Option<HostDiscoverySingleResult>,
-    best_down: Option<HostDiscoverySingleResult>,
-}
 
 fn build_command_from_tui(
     main_selected: Option<MainMenuItem>,
@@ -592,6 +601,7 @@ async fn run_nmap_post_scan(
 async fn execute_command(
     command: ExecutionCommand,
     use_original_printing: bool,
+    verbosity: u8,
 ) -> Result<(Option<HostDiscoveryResult>, Option<PortScanResult>), String> {
     let is_root = nix::unistd::Uid::effective().is_root();
 
@@ -668,8 +678,22 @@ async fn execute_command(
                 );
             }
             let discovery_start = SystemTime::now();
-            let ipv4_targets =
-                gate_targets_by_discovery(&plan, &original_targets, timeout_override_ms).await;
+            let host_disc = run_pre_scan_discovery(
+                &plan,
+                &original_targets,
+                timeout_override_ms,
+                discovery_start,
+            )
+            .await;
+            let ipv4_targets: Vec<Ipv4Addr> = host_disc
+                .0
+                .iter()
+                .filter(|r| r.is_up)
+                .filter_map(|r| match r.ip_address {
+                    IpAddr::V4(v) => Some(v),
+                    IpAddr::V6(_) => None,
+                })
+                .collect();
             if run_discovery_phase {
                 let elapsed = SystemTime::now()
                     .duration_since(discovery_start)
@@ -778,9 +802,11 @@ async fn execute_command(
             // Report the full scan-run window (discovery + port scan), not
             // scan-only. Done after the phase log above so that stays scan-only.
             result.1.start_time = discovery_start;
+            // Label the result with the scan method for `<scaninfo>`.
+            result.1.scan_type = Some(method);
 
             if use_original_printing {
-                print_port_scan_results_original(&result, original_targets.len()).await;
+                print_port_scan_results_original(&result, original_targets.len(), verbosity).await;
             } else {
                 print_port_scan_results(&result);
             }
@@ -801,23 +827,24 @@ async fn execute_command(
                 .await?;
             }
 
-            Ok((None, Some(result)))
+            Ok((Some(host_disc), Some(result)))
         }
     }
 }
 
 /// Run the discovery engine and return the up-set (or the original targets
 /// when the plan says skip discovery).
-async fn gate_targets_by_discovery(
+/// Runs the pre-scan host discovery and returns the full per-host result
+/// (up reason/ttl included). `-Pn` (`SkipDiscoveryTreatAllUp`) is handled inside
+/// `run_discovery`, which marks every target up without probing.
+async fn run_pre_scan_discovery(
     plan: &DiscoveryPlan,
     targets: &[Ipv4Addr],
     timeout_override_ms: Option<u64>,
-) -> Vec<Ipv4Addr> {
-    if matches!(plan.mode, DiscoveryMode::SkipDiscoveryTreatAllUp) {
-        return targets.to_vec();
-    }
-    let result = run_discovery(plan, targets, timeout_override_ms).await;
-    result.hosts_up()
+    start_time: SystemTime,
+) -> HostDiscoveryResult {
+    let engine = run_discovery(plan, targets, timeout_override_ms).await;
+    discovery_to_legacy(engine, targets, plan, start_time, SystemTime::now())
 }
 
 /// Adapt the engine's `DiscoveryResult` to the legacy `HostDiscoveryResult` tuple

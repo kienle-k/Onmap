@@ -191,6 +191,7 @@ pub async fn run_ack_scan(
         open_ports: Vec::new(),
         start_time,
         end_time: SystemTime::now(),
+        scan_type: None,
     };
 
     Ok((single_results, all_results))

@@ -317,6 +317,7 @@ pub async fn run_syn_scan(
         open_ports,
         start_time,
         end_time,
+        scan_type: None,
     };
 
     Ok((single_results, all_result))

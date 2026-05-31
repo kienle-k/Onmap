@@ -219,6 +219,7 @@ pub async fn run_connect_scan(
         open_ports,
         start_time,
         end_time,
+        scan_type: None,
     };
 
     // Return both result types

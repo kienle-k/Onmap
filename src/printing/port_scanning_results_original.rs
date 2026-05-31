@@ -1,4 +1,5 @@
-use crate::models::{PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates};
+use crate::models::{PortScanAllResult, PortScanSingleResult, PortStateReasons};
+use crate::port_summary::{port_state_name, protocol_name, state_reason_name, summarize_ports};
 use crate::resolving::resolve_hostname;
 use chrono::Local;
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ use std::time::Instant;
 pub async fn print_port_scan_results_original(
     results: &(Vec<PortScanSingleResult>, PortScanAllResult),
     total_targets: usize,
+    verbosity: u8,
 ) {
     println!("");
 
@@ -71,7 +73,7 @@ pub async fn print_port_scan_results_original(
     );
 
     // --- Per-host printing ---
-    let show_reason = log::max_level() >= log::LevelFilter::Debug;
+    let show_reason = verbosity >= 2;
 
     for (ip_address, host_results) in results_by_ip.iter() {
         let hostname = hostname_map
@@ -85,149 +87,66 @@ pub async fn print_port_scan_results_original(
             println!("Host is up, received user-set");
         }
 
-        // Filter for only open or open|filtered ports first
-        let open_ports: Vec<&PortScanSingleResult> = host_results
-            .iter()
-            .filter(|r| {
-                r.port_state == PortStates::Open || r.port_state == PortStates::OpenOrFiltered
-            })
-            .cloned()
-            .collect();
+        // Shared collapse decision (open never collapsed; non-open collapses
+        // past the verbosity threshold) — same logic the XML writer uses.
+        let summary = summarize_ports(host_results, verbosity);
 
-        // Count closed and filtered ports
-        let closed_port_num = host_results
-            .iter()
-            .filter(|r| r.port_state == PortStates::Closed)
-            .count();
-
-        let filtered_port_num = host_results
-            .iter()
-            .filter(|r| r.port_state == PortStates::Filtered)
-            .count();
-
-        let unfiltered_ports: Vec<&PortScanSingleResult> = host_results
-            .iter()
-            .filter(|r| r.port_state == PortStates::Unfiltered)
-            .copied()
-            .collect();
-
-        // Show either closed port num, filtered port num or both
-        if closed_port_num > 0 || filtered_port_num > 0 {
-            print!("Not shown: ");
-            if closed_port_num > 0 {
-                print!("{} closed ports", closed_port_num);
-            }
-            if filtered_port_num > 0 {
-                if closed_port_num > 0 {
-                    print!(" and ");
-                }
-                print!("{} filtered ports", filtered_port_num);
-            }
-            println!();
-
-            // verbosity 2: reason breakdown for hidden ports
-            if show_reason {
-                let mut reason_counts: HashMap<&str, usize> = HashMap::new();
-                for r in host_results.iter() {
-                    if r.port_state == PortStates::Closed || r.port_state == PortStates::Filtered {
-                        let name = match r.reason {
-                            PortStateReasons::Reset | PortStateReasons::Unfiltered => "resets",
-                            PortStateReasons::Timeout => "no-responses",
-                            PortStateReasons::SynAck => "syn-acks",
-                            PortStateReasons::UdpResponse => "udp-responses",
-                            PortStateReasons::IcmpPortUnreachable => "port-unreaches",
-                        };
-                        *reason_counts.entry(name).or_insert(0) += 1;
+        // Collapsed states → one "Not shown:" line, largest groups first.
+        if !summary.extra.is_empty() {
+            let parts: Vec<String> = summary
+                .extra
+                .iter()
+                .map(|g| {
+                    let base = format!(
+                        "{} {} {} ports",
+                        g.count,
+                        port_state_name(g.state),
+                        protocol_name(g.proto)
+                    );
+                    if show_reason {
+                        let reason = g
+                            .reasons
+                            .iter()
+                            .max_by_key(|(_, ports)| ports.len())
+                            .map(|(r, _)| state_reason_name(*r))
+                            .unwrap_or("");
+                        format!("{} ({})", base, reason)
+                    } else {
+                        base
                     }
-                }
-                let mut parts: Vec<String> = reason_counts
-                    .iter()
-                    .map(|(k, v)| format!("{} {}", v, k))
-                    .collect();
-                parts.sort();
-                println!("Reason: {}", parts.join(", "));
-            }
+                })
+                .collect();
+            println!("Not shown: {}", parts.join(", "));
         }
 
-        if !open_ports.is_empty() {
-            let mut sorted_open_ports = open_ports.clone();
-            sorted_open_ports.sort_by_key(|r| r.port);
-
-            if show_reason {
-                println!(
-                    "{:<10} {:<14} {:<20} {}",
-                    "PORT", "STATE", "SERVICE", "REASON"
-                );
-            } else {
-                println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
-            }
-
-            for port_result in sorted_open_ports {
-                let state_str = match port_result.port_state {
-                    PortStates::Open => "open",
-                    PortStates::OpenOrFiltered => "open|filtered",
-                    _ => "unknown",
-                };
-                if show_reason {
-                    let reason_str = match port_result.reason {
-                        PortStateReasons::SynAck => format!("syn-ack ttl {}", port_result.ttl),
-                        PortStateReasons::Reset | PortStateReasons::Unfiltered => {
-                            format!("reset ttl {}", port_result.ttl)
-                        }
-                        PortStateReasons::Timeout => "no-response".to_string(),
-                        PortStateReasons::UdpResponse => {
-                            format!("udp-response ttl {}", port_result.ttl)
-                        }
-                        PortStateReasons::IcmpPortUnreachable => "port-unreach".to_string(),
-                    };
-                    println!(
-                        "{:<10} {:<14} {:<20} {}",
-                        port_result.port, state_str, port_result.service, reason_str
-                    );
-                } else {
-                    println!(
-                        "{:<7}  {:<14} {}",
-                        &port_result.port.to_string(),
-                        state_str,
-                        &port_result.service
-                    );
-                }
-            }
-        } else if !unfiltered_ports.is_empty() {
-            let mut sorted_unfiltered_ports = unfiltered_ports.clone();
-            sorted_unfiltered_ports.sort_by_key(|r| r.port);
-
-            if show_reason {
-                println!(
-                    "{:<10} {:<14} {:<20} {}",
-                    "PORT", "STATE", "SERVICE", "REASON"
-                );
-            } else {
-                println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
-            }
-
-            for port_result in sorted_unfiltered_ports {
-                if show_reason {
-                    let reason_str = format!("reset ttl {}", port_result.ttl);
-                    println!(
-                        "{:<10} {:<14} {:<20} {}",
-                        port_result.port, "unfiltered", port_result.service, reason_str
-                    );
-                } else {
-                    println!(
-                        "{:<7}  {:<14} {}",
-                        &port_result.port.to_string(),
-                        "unfiltered",
-                        &port_result.service
-                    );
-                }
-            }
-        } else {
+        if summary.shown.is_empty() {
             if !host_results.is_empty() {
                 println!(
-                    "Host is up, but all {} scanned ports are in a 'closed' or 'filtered' state.",
-                    host_results.len()
+                    "All {} scanned ports on {} ({}) are in ignored states.",
+                    host_results.len(),
+                    hostname,
+                    ip_address
                 );
+            }
+        } else {
+            if show_reason {
+                println!("{:<10} {:<14} {:<20} {}", "PORT", "STATE", "SERVICE", "REASON");
+            } else {
+                println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
+            }
+            for r in &summary.shown {
+                let state = port_state_name(r.port_state);
+                if show_reason {
+                    let reason = match r.reason {
+                        PortStateReasons::Timeout | PortStateReasons::IcmpPortUnreachable => {
+                            state_reason_name(r.reason).to_string()
+                        }
+                        _ => format!("{} ttl {}", state_reason_name(r.reason), r.ttl),
+                    };
+                    println!("{:<10} {:<14} {:<20} {}", r.port, state, r.service, reason);
+                } else {
+                    println!("{:<7}  {:<14} {}", &r.port.to_string(), state, &r.service);
+                }
             }
         }
         println!("");

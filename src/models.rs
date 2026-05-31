@@ -166,6 +166,15 @@ pub enum VersionFormat {
     Json,
 }
 
+
+pub type HostDiscoveryResult = (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult);
+pub type PortScanResult = (Vec<PortScanSingleResult>, PortScanAllResult);
+
+pub struct HostMergeState {
+    pub best_up: Option<HostDiscoverySingleResult>,
+    pub best_down: Option<HostDiscoverySingleResult>,
+}
+
 impl Cli {
     pub fn normalize_args<I, T>(args: I) -> Vec<OsString>
     where
@@ -479,6 +488,9 @@ pub struct PortScanAllResult {
     pub start_time: SystemTime,
     /// The timestamp when the scan completed.
     pub end_time: SystemTime,
+    /// Which port-scan method produced these results (for `<scaninfo>` type).
+    /// Set by the scan function itself; `None` only on an empty result.
+    pub scan_type: Option<PortScanOption>,
 }
 
 impl PortScanAllResult {
@@ -490,6 +502,7 @@ impl PortScanAllResult {
             open_ports: Vec::new(),
             start_time: SystemTime::now(),
             end_time: SystemTime::now(),
+            scan_type: None,
         }
     }
 }

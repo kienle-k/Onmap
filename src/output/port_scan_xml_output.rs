@@ -1,122 +1,139 @@
 use crate::models::{
-    PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+    HostDiscoverySingleResult, PortScanAllResult, PortScanOption, PortScanSingleResult, Protocols,
 };
+use crate::port_summary::{
+    extraport_reason_name, format_port_ranges, port_state_name, protocol_name, state_reason_name,
+    summarize_ports,
+};
+use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::time::UNIX_EPOCH;
+use std::net::IpAddr;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-fn addrtype(ip: std::net::IpAddr) -> &'static str {
+fn addrtype(ip: IpAddr) -> &'static str {
     match ip {
-        std::net::IpAddr::V4(_) => "ipv4",
-        std::net::IpAddr::V6(_) => "ipv6",
+        IpAddr::V4(_) => "ipv4",
+        IpAddr::V6(_) => "ipv6",
     }
 }
 
-fn protocol_name(protocol: Protocols) -> &'static str {
-    match protocol {
-        Protocols::TCP => "tcp",
-        Protocols::UDP => "udp",
+/// Nmap `<scaninfo type>` value for the scan method.
+fn scan_type_name(scan_type: Option<PortScanOption>) -> &'static str {
+    match scan_type {
+        Some(PortScanOption::SynScan) => "syn",
+        Some(PortScanOption::ConnectScan) => "connect",
+        Some(PortScanOption::AckScan) => "ack",
+        Some(PortScanOption::UdpScan) => "udp",
+        _ => "unknown",
     }
 }
 
-fn port_state_name(state: PortStates) -> &'static str {
-    match state {
-        PortStates::Open => "open",
-        PortStates::Closed => "closed",
-        PortStates::Filtered => "filtered",
-        PortStates::Unfiltered => "unfiltered",
-        PortStates::OpenOrFiltered => "open|filtered",
-        PortStates::ClosedOrFiltered => "closed|filtered",
-    }
+fn xml_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
-fn state_reason_name(reason: PortStateReasons) -> &'static str {
-    match reason {
-        PortStateReasons::SynAck => "syn-ack",
-        PortStateReasons::Reset | PortStateReasons::Unfiltered => "reset",
-        PortStateReasons::Timeout => "no-response",
-        PortStateReasons::UdpResponse => "udp-response",
-        PortStateReasons::IcmpPortUnreachable => "port-unreach",
-    }
+fn epoch_secs(t: SystemTime) -> u64 {
+    t.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
-fn extraport_reason_name(reason: PortStateReasons) -> &'static str {
-    match reason {
-        PortStateReasons::SynAck => "syn-acks",
-        PortStateReasons::Reset | PortStateReasons::Unfiltered => "resets",
-        PortStateReasons::Timeout => "no-responses",
-        PortStateReasons::UdpResponse => "udp-responses",
-        PortStateReasons::IcmpPortUnreachable => "port-unreaches",
-    }
+fn xml_time(t: SystemTime) -> String {
+    let dt: DateTime<Local> = t.into();
+    dt.format("%a %b %e %H:%M:%S %Y").to_string()
 }
 
-fn format_port_ranges(ports: &[u16]) -> String {
-    if ports.is_empty() {
-        return String::new();
-    }
-
-    // Ports arrive pre-sorted, so we can compress them into Nmap-style ranges without cloning or re-sorting the grouped lists
-    let mut ranges = Vec::new();
-    let mut range_start = ports[0];
-    let mut range_end = ports[0];
-
-    for &port in ports.iter().skip(1) {
-        if port == range_end + 1 {
-            range_end = port;
-            continue;
-        }
-
-        if range_start == range_end {
-            ranges.push(range_start.to_string());
-        } else {
-            ranges.push(format!("{}-{}", range_start, range_end));
-        }
-
-        range_start = port;
-        range_end = port;
-    }
-
-    if range_start == range_end {
-        ranges.push(range_start.to_string());
+fn host_reason_name(reason: &str) -> &str {
+    if reason.starts_with("SYN-ACK") {
+        "syn-ack"
+    } else if reason.starts_with("RST")
+        || reason.contains("ConnectionRefused")
+        || reason.contains("connection refused")
+    {
+        "reset"
+    } else if reason == "ARP reply" {
+        "arp-response"
+    } else if reason == "ICMP echo reply" {
+        "echo-reply"
+    } else if reason.contains("timestamp") {
+        "timestamp-reply"
+    } else if reason.contains("UDP") {
+        "udp-response"
+    } else if reason == "no response" || reason.starts_with("Error:") {
+        "no-response"
     } else {
-        ranges.push(format!("{}-{}", range_start, range_end));
+        reason
     }
-
-    ranges.join(",")
 }
 
 pub fn save_to_file_xml_port_scan(
     path: &str,
     results: (&Vec<PortScanSingleResult>, &PortScanAllResult),
+    host_up: &[HostDiscoverySingleResult],
+    verbosity: u8,
 ) -> std::io::Result<()> {
     let (single_results, summary) = results;
     let mut file = File::create(path)?;
 
-    let start_timestamp = summary
-        .start_time
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    // Per-host liveness reason (+ttl) from the discovery phase, for <status>.
+    let host_status: HashMap<IpAddr, (&str, u8)> = host_up
+        .iter()
+        .map(|h| (h.ip_address, (h.reply_type.as_str(), h.ttl)))
+        .collect();
+
+    // Union of every scanned port, for <scaninfo> numservices/services.
+    let mut scanned_ports: Vec<u16> = single_results.iter().map(|r| r.port).collect();
+    scanned_ports.sort_unstable();
+    scanned_ports.dedup();
+    let protocol = single_results
+        .first()
+        .map(|r| r.protocol)
+        .unwrap_or(Protocols::TCP);
+
+    let start_ts = epoch_secs(summary.start_time);
+    let startstr = xml_time(summary.start_time);
     writeln!(file, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>")?;
+    writeln!(file, "<!DOCTYPE nmaprun>")?;
     writeln!(
         file,
-        "<nmaprun scanner=\"onmap\" start=\"{}\" version=\"1.0\">",
-        start_timestamp
+        "<nmaprun scanner=\"onmap\" start=\"{}\" startstr=\"{}\" version=\"{}\" xmloutputversion=\"1.05\">",
+        start_ts,
+        startstr,
+        env!("CARGO_PKG_VERSION")
     )?;
+    writeln!(
+        file,
+        "  <scaninfo type=\"{}\" protocol=\"{}\" numservices=\"{}\" services=\"{}\"/>",
+        scan_type_name(summary.scan_type),
+        protocol_name(protocol),
+        scanned_ports.len(),
+        format_port_ranges(&scanned_ports)
+    )?;
+    writeln!(file, "  <verbose level=\"{}\"/>", verbosity)?;
+    writeln!(file, "  <debugging level=\"0\"/>")?;
 
-    let mut host_map: HashMap<std::net::IpAddr, Vec<&PortScanSingleResult>> = HashMap::new();
+    let mut host_map: HashMap<IpAddr, Vec<&PortScanSingleResult>> = HashMap::new();
     for res in single_results {
         host_map.entry(res.ip_address).or_default().push(res);
     }
+    let hosts_up = host_map.len();
+    let total_hosts = if host_up.is_empty() { hosts_up } else { host_up.len() };
+    let hosts_down = total_hosts.saturating_sub(hosts_up);
 
-    let total_hosts = host_map.len();
-
-    for (ip, mut host_results) in host_map {
-        host_results.sort_unstable_by_key(|result| result.port);
+    for (ip, host_results) in host_map {
+        let (reason, reason_ttl) = host_status.get(&ip).copied().unwrap_or(("user-set", 0));
 
         writeln!(file, "  <host>")?;
-        writeln!(file, "    <status state=\"up\" reason=\"user-set\"/>")?;
+        writeln!(
+            file,
+            "    <status state=\"up\" reason=\"{}\" reason_ttl=\"{}\"/>",
+            xml_attr(host_reason_name(reason)),
+            reason_ttl
+        )?;
         writeln!(
             file,
             "    <address addr=\"{}\" addrtype=\"{}\"/>",
@@ -125,22 +142,30 @@ pub fn save_to_file_xml_port_scan(
         )?;
         writeln!(file, "    <ports>")?;
 
-        // Keep open ports explicit and summarize the rest by state+reason while
-        // still preserving exact port membership via the later ports field.
-        let mut extraports: HashMap<PortStates, HashMap<PortStateReasons, Vec<u16>>> =
-            HashMap::new();
+        let summary_ports = summarize_ports(&host_results, verbosity);
 
-        for result in host_results {
-            if result.port_state != PortStates::Open {
-                extraports
-                    .entry(result.port_state)
-                    .or_default()
-                    .entry(result.reason)
-                    .or_default()
-                    .push(result.port);
-                continue;
+        // Nmap emits <extraports> before the individual <port> elements.
+        for group in &summary_ports.extra {
+            writeln!(
+                file,
+                "      <extraports state=\"{}\" count=\"{}\">",
+                port_state_name(group.state),
+                group.count
+            )?;
+            for (reason, ports) in &group.reasons {
+                // Exact membership preserved so every scanned port is recoverable.
+                writeln!(
+                    file,
+                    "        <extrareasons reason=\"{}\" count=\"{}\" ports=\"{}\"/>",
+                    extraport_reason_name(*reason),
+                    ports.len(),
+                    format_port_ranges(ports)
+                )?;
             }
+            writeln!(file, "      </extraports>")?;
+        }
 
+        for result in &summary_ports.shown {
             writeln!(
                 file,
                 "      <port protocol=\"{}\" portid=\"{}\">",
@@ -157,74 +182,41 @@ pub fn save_to_file_xml_port_scan(
             writeln!(
                 file,
                 "        <service name=\"{}\" method=\"table\" conf=\"3\"/>",
-                result.service
+                xml_attr(&result.service)
             )?;
             writeln!(file, "      </port>")?;
-        }
-
-        let extraport_order = [
-            PortStates::Closed,
-            PortStates::Filtered,
-            PortStates::Unfiltered,
-            PortStates::OpenOrFiltered,
-            PortStates::ClosedOrFiltered,
-        ];
-
-        for state in extraport_order {
-            let Some(reason_counts) = extraports.get(&state) else {
-                continue;
-            };
-
-            let count: usize = reason_counts.values().map(Vec::len).sum();
-            writeln!(
-                file,
-                "      <extraports state=\"{}\" count=\"{}\">",
-                port_state_name(state),
-                count
-            )?;
-
-            let mut reasons: Vec<_> = reason_counts.iter().collect();
-            reasons.sort_unstable_by_key(|(reason, _)| extraport_reason_name(**reason));
-
-            for (reason, ports) in reasons {
-                // Each summary entry names the exact covered ports so downstream
-                // parsers can recover every scanned port deterministically.
-                writeln!(
-                    file,
-                    "        <extrareasons reason=\"{}\" count=\"{}\" ports=\"{}\"/>",
-                    extraport_reason_name(*reason),
-                    ports.len(),
-                    format_port_ranges(ports)
-                )?;
-            }
-
-            writeln!(file, "      </extraports>")?;
         }
 
         writeln!(file, "    </ports>")?;
         writeln!(file, "  </host>")?;
     }
 
-    let end_timestamp = summary
-        .end_time
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let end_ts = epoch_secs(summary.end_time);
     let elapsed = summary
         .end_time
         .duration_since(summary.start_time)
         .unwrap_or_default()
         .as_secs_f64();
+    let timestr = xml_time(summary.end_time);
+    let ip_word = if total_hosts == 1 { "IP address" } else { "IP addresses" };
+    let host_word = if hosts_up == 1 { "host" } else { "hosts" };
+    let summary_line = format!(
+        "Onmap done at {}; {} {} ({} {} up) scanned in {:.2} seconds",
+        timestr, total_hosts, ip_word, hosts_up, host_word, elapsed
+    );
     writeln!(file, "  <runstats>")?;
     writeln!(
         file,
-        "    <finished time=\"{}\" elapsed=\"{:.3}\" exit=\"success\"/>",
-        end_timestamp, elapsed
+        "    <finished time=\"{}\" timestr=\"{}\" elapsed=\"{:.3}\" summary=\"{}\" exit=\"success\"/>",
+        end_ts,
+        xml_attr(&timestr),
+        elapsed,
+        xml_attr(&summary_line)
     )?;
     writeln!(
         file,
-        "    <hosts up=\"{}\" down=\"0\" total=\"{}\"/>",
-        total_hosts, total_hosts
+        "    <hosts up=\"{}\" down=\"{}\" total=\"{}\"/>",
+        hosts_up, hosts_down, total_hosts
     )?;
     writeln!(file, "  </runstats>")?;
     writeln!(file, "</nmaprun>")?;
@@ -236,149 +228,175 @@ pub fn save_to_file_xml_port_scan(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{PortStateReasons, PortStates};
     use std::fs;
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::net::Ipv4Addr;
     use std::time::SystemTime;
 
-    #[test]
-    fn writes_open_and_extraports_with_exact_port_membership() {
-        let path =
-            std::env::temp_dir().join(format!("onmap-port-scan-xml-{}.xml", std::process::id()));
-        let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-        let results = vec![
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 22,
-                protocol: Protocols::TCP,
-                port_state: PortStates::Open,
-                ttl: 64,
-                reason: PortStateReasons::SynAck,
-                service: "ssh".to_string(),
-            },
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 79,
-                protocol: Protocols::TCP,
-                port_state: PortStates::Closed,
-                ttl: 64,
-                reason: PortStateReasons::Reset,
-                service: "finger".to_string(),
-            },
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 80,
-                protocol: Protocols::TCP,
-                port_state: PortStates::Closed,
-                ttl: 64,
-                reason: PortStateReasons::Reset,
-                service: "http".to_string(),
-            },
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 443,
-                protocol: Protocols::TCP,
-                port_state: PortStates::Filtered,
-                ttl: 0,
-                reason: PortStateReasons::Timeout,
-                service: "https".to_string(),
-            },
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 8080,
-                protocol: Protocols::TCP,
-                port_state: PortStates::Unfiltered,
-                ttl: 0,
-                reason: PortStateReasons::Unfiltered,
-                service: "http-proxy".to_string(),
-            },
-        ];
-        let summary = PortScanAllResult {
-            ports_scanned: 5,
-            packets_sent: 5,
-            open_ports: vec![22],
-            start_time: SystemTime::now(),
-            end_time: SystemTime::now(),
-        };
-
-        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary)).unwrap();
-
-        let xml = fs::read_to_string(&path).unwrap();
-        let _ = fs::remove_file(&path);
-
-        assert!(xml.contains("<port protocol=\"tcp\" portid=\"22\">"));
-        assert!(xml.contains("<state state=\"open\" reason=\"syn-ack\" reason_ttl=\"64\"/>"));
-        assert!(xml.contains("<extraports state=\"closed\" count=\"2\">"));
-        assert!(xml.contains("<extrareasons reason=\"resets\" count=\"2\" ports=\"79-80\"/>"));
-        assert!(xml.contains("<extraports state=\"filtered\" count=\"1\">"));
-        assert!(xml.contains("<extrareasons reason=\"no-responses\" count=\"1\" ports=\"443\"/>"));
-        assert!(xml.contains("<extraports state=\"unfiltered\" count=\"1\">"));
-        assert!(xml.contains("<extrareasons reason=\"resets\" count=\"1\" ports=\"8080\"/>"));
+    fn port(ip: IpAddr, port: u16, state: PortStates, reason: PortStateReasons) -> PortScanSingleResult {
+        PortScanSingleResult {
+            ip_address: ip,
+            port,
+            protocol: Protocols::TCP,
+            port_state: state,
+            ttl: 64,
+            reason,
+            service: "svc".to_string(),
+        }
     }
 
     #[test]
-    fn writes_udp_open_or_filtered_extraports_with_exact_port_membership() {
-        let path = std::env::temp_dir().join(format!(
-            "onmap-udp-port-scan-xml-{}.xml",
-            std::process::id()
-        ));
+    fn collapses_states_over_threshold_and_shows_open_and_small_states() {
         let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-        let results = vec![
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 53,
-                protocol: Protocols::UDP,
-                port_state: PortStates::Open,
-                ttl: 64,
-                reason: PortStateReasons::SynAck,
-                service: "domain".to_string(),
-            },
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 54,
-                protocol: Protocols::UDP,
-                port_state: PortStates::OpenOrFiltered,
-                ttl: 0,
-                reason: PortStateReasons::Timeout,
-                service: "unknown".to_string(),
-            },
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 55,
-                protocol: Protocols::UDP,
-                port_state: PortStates::OpenOrFiltered,
-                ttl: 0,
-                reason: PortStateReasons::Timeout,
-                service: "unknown".to_string(),
-            },
-            PortScanSingleResult {
-                ip_address: ip,
-                port: 56,
-                protocol: Protocols::UDP,
-                port_state: PortStates::ClosedOrFiltered,
-                ttl: 0,
-                reason: PortStateReasons::Timeout,
-                service: "unknown".to_string(),
-            },
+        let mut results = vec![
+            port(ip, 22, PortStates::Open, PortStateReasons::SynAck),
+            // 2 filtered ports stay individual (below the 25 threshold).
+            port(ip, 81, PortStates::Filtered, PortStateReasons::Timeout),
+            port(ip, 82, PortStates::Filtered, PortStateReasons::Timeout),
         ];
-        let summary = PortScanAllResult {
-            ports_scanned: 4,
-            packets_sent: 4,
-            open_ports: vec![53],
-            start_time: SystemTime::now(),
-            end_time: SystemTime::now(),
-        };
+        // 26 closed ports collapse into <extraports>.
+        for p in 1000..1026 {
+            results.push(port(ip, p, PortStates::Closed, PortStateReasons::Reset));
+        }
+        let mut summary = PortScanAllResult::new();
+        summary.scan_type = Some(PortScanOption::SynScan);
+        summary.start_time = SystemTime::now();
+        summary.end_time = SystemTime::now();
 
-        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary)).unwrap();
-
+        let path = std::env::temp_dir().join(format!("onmap-xml-{}.xml", std::process::id()));
+        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary), &[], 0).unwrap();
         let xml = fs::read_to_string(&path).unwrap();
         let _ = fs::remove_file(&path);
 
-        assert!(xml.contains("<port protocol=\"udp\" portid=\"53\">"));
-        assert!(xml.contains("<extraports state=\"open|filtered\" count=\"2\">"));
-        assert!(
-            xml.contains("<extrareasons reason=\"no-responses\" count=\"2\" ports=\"54-55\"/>")
-        );
-        assert!(xml.contains("<extraports state=\"closed|filtered\" count=\"1\">"));
-        assert!(xml.contains("<extrareasons reason=\"no-responses\" count=\"1\" ports=\"56\"/>"));
+        assert!(xml.contains("xmloutputversion=\"1.05\""));
+        assert!(xml.contains("<!DOCTYPE nmaprun>"));
+        assert!(xml.contains("startstr=\""));
+        assert!(xml.contains("<verbose level=\"0\"/>"));
+        assert!(xml.contains("<debugging level=\"0\"/>"));
+        assert!(xml.contains("<scaninfo type=\"syn\" protocol=\"tcp\""));
+        // open and the 2 filtered ports are individual.
+        assert!(xml.contains("<port protocol=\"tcp\" portid=\"22\">"));
+        assert!(xml.contains("<port protocol=\"tcp\" portid=\"81\">"));
+        // 26 closed collapse, with exact membership.
+        assert!(xml.contains("<extraports state=\"closed\" count=\"26\">"));
+        assert!(xml.contains("<extrareasons reason=\"resets\" count=\"26\" ports=\"1000-1025\"/>"));
+    }
+
+    #[test]
+    fn status_reason_comes_from_discovery_rows() {
+        let ip = IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8));
+        let results = vec![port(ip, 443, PortStates::Open, PortStateReasons::SynAck)];
+        let host_up = vec![HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: None,
+            is_up: true,
+            reply_type: "SYN-ACK port 443".to_string(),
+            ttl: 55,
+        }];
+        let mut summary = PortScanAllResult::new();
+        summary.scan_type = Some(PortScanOption::ConnectScan);
+
+        let path = std::env::temp_dir().join(format!("onmap-xml-st-{}.xml", std::process::id()));
+        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary), &host_up, 0)
+            .unwrap();
+        let xml = fs::read_to_string(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert!(xml.contains("<status state=\"up\" reason=\"syn-ack\" reason_ttl=\"55\"/>"));
+        assert!(xml.contains("<scaninfo type=\"connect\""));
+    }
+
+    #[test]
+    fn status_reason_normalizes_closed_discovery_replies() {
+        let ip = IpAddr::V4(Ipv4Addr::new(8, 8, 4, 4));
+        let results = vec![port(ip, 443, PortStates::Open, PortStateReasons::SynAck)];
+        let host_up = vec![HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: None,
+            is_up: true,
+            reply_type: "RST port 443".to_string(),
+            ttl: 41,
+        }];
+        let mut summary = PortScanAllResult::new();
+        summary.scan_type = Some(PortScanOption::ConnectScan);
+
+        let path = std::env::temp_dir().join(format!("onmap-xml-rst-{}.xml", std::process::id()));
+        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary), &host_up, 0)
+            .unwrap();
+        let xml = fs::read_to_string(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert!(xml.contains("<status state=\"up\" reason=\"reset\" reason_ttl=\"41\"/>"));
+    }
+
+    #[test]
+    fn runstats_count_discovery_down_hosts() {
+        let up_ip = IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8));
+        let down_ip = IpAddr::V4(Ipv4Addr::new(8, 8, 4, 4));
+        let results = vec![port(up_ip, 443, PortStates::Open, PortStateReasons::SynAck)];
+        let host_up = vec![
+            HostDiscoverySingleResult {
+                ip_address: up_ip,
+                dns_resolve: None,
+                latency: None,
+                is_up: true,
+                reply_type: "SYN-ACK port 443".to_string(),
+                ttl: 55,
+            },
+            HostDiscoverySingleResult {
+                ip_address: down_ip,
+                dns_resolve: None,
+                latency: None,
+                is_up: false,
+                reply_type: "no response".to_string(),
+                ttl: 0,
+            },
+        ];
+        let mut summary = PortScanAllResult::new();
+        summary.scan_type = Some(PortScanOption::ConnectScan);
+
+        let path = std::env::temp_dir().join(format!("onmap-xml-counts-{}.xml", std::process::id()));
+        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary), &host_up, 0)
+            .unwrap();
+        let xml = fs::read_to_string(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert!(xml.contains("<hosts up=\"1\" down=\"1\" total=\"2\"/>"));
+        assert!(xml.contains("2 IP addresses (1 host up)"));
+    }
+
+    #[test]
+    fn escapes_xml_attributes_and_uses_unknown_scan_type_without_scan_method() {
+        let ip = IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8));
+        let results = vec![PortScanSingleResult {
+            ip_address: ip,
+            port: 443,
+            protocol: Protocols::TCP,
+            port_state: PortStates::Open,
+            ttl: 64,
+            reason: PortStateReasons::SynAck,
+            service: "a&b\"<c>".to_string(),
+        }];
+        let summary = PortScanAllResult::new();
+        let host_up = vec![HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: None,
+            is_up: true,
+            reply_type: "custom & \"bad\"".to_string(),
+            ttl: 0,
+        }];
+
+        let path = std::env::temp_dir().join(format!("onmap-xml-escape-{}.xml", std::process::id()));
+        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary), &host_up, 0)
+            .unwrap();
+        let xml = fs::read_to_string(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert!(xml.contains("<scaninfo type=\"unknown\""));
+        assert!(xml.contains("reason=\"custom &amp; &quot;bad&quot;\""));
+        assert!(xml.contains("service name=\"a&amp;b&quot;&lt;c&gt;\""));
     }
 }
