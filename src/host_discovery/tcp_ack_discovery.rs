@@ -15,11 +15,11 @@ struct HostProbeState {
     reply_type: String,
 }
 
-/// Runs a TCP ACK discovery scan against a list of target IP addresses.
+/// Runs a TCP ACK discovery scan against `(target, source_ip)` pairs.
+/// The source IP is used per target for packet construction and TCP checksum.
 pub async fn run_tcp_ack_discovery(
-    ip_addresses: Vec<Ipv4Addr>,
+    ip_addresses: Vec<(Ipv4Addr, Ipv4Addr)>,
     ports: Vec<u16>,
-    local_ip_address: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
@@ -28,10 +28,10 @@ pub async fn run_tcp_ack_discovery(
         return Err("At least one port is required for TCP ACK discovery".to_string());
     }
 
-    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|(ip, _)| IpAddr::V4(*ip)).collect();
     let mut host_states: HashMap<Ipv4Addr, HostProbeState> = ip_addresses
         .iter()
-        .map(|ip| {
+        .map(|(ip, _)| {
             (
                 *ip,
                 HostProbeState {
@@ -47,15 +47,10 @@ pub async fn run_tcp_ack_discovery(
     let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
     let mut futures = FuturesUnordered::new();
 
-    for ip in &ip_addresses {
+    for (ip, source_ip) in &ip_addresses {
+        let (ip, source_ip) = (*ip, *source_ip);
         for &port in &ports {
             let sem_clone = Arc::clone(&semaphore);
-            let ip = *ip;
-            let source_ip = if ip.is_loopback() {
-                Ipv4Addr::new(127, 0, 0, 1)
-            } else {
-                local_ip_address
-            };
 
             futures.push(async move {
                 let _permit = sem_clone
@@ -90,7 +85,7 @@ pub async fn run_tcp_ack_discovery(
     }
 
     let mut host_results = Vec::new();
-    for ip in ip_addresses {
+    for (ip, _) in ip_addresses {
         let state = host_states.remove(&ip).expect("Host state missing for IP");
 
         let dns_resolve = None;

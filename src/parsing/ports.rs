@@ -5,7 +5,7 @@ use super::super::models::PortOptions;
 /// This function is flexible and supports multiple input formats for convenience:
 /// - A single port number (e.g., `"80"`).
 /// - An inclusive range of ports separated by a hyphen (e.g., `"80-1024"`).
-/// - A single hyphen (`"-"`) as a shortcut for the full port range (0-65535).
+/// - A single hyphen (`"-"`) as a shortcut for the full port range (1-65535).
 /// - A list of ports (e.g.: "80,90,100")
 /// - A combination of list and range (e.g "80,90,100-200")
 /// - A single 'F' character for "Fast" mode, which returns a list of the 100 most common ports.
@@ -27,7 +27,7 @@ use super::super::models::PortOptions;
 /// assert_eq!(convert_ports("21-23".to_string()).expect("Port range could not be parsed"), vec![21, 22, 23]);
 /// assert_eq!(convert_ports("21,23,24".to_string()).expect("Port list could not be parsed"), vec![21, 23, 24]);
 /// assert_eq!(convert_ports("21,23,24-26".to_string()).expect("Port list with ranges inside could not be parsed"), vec![21, 23, 24, 25, 26]);
-/// assert_eq!(convert_ports("-".to_string()).expect("All ports could not be parsed").len(), 65536);
+/// assert_eq!(convert_ports("-".to_string()).expect("All ports could not be parsed").len(), 65535);
 /// ```
 
 pub fn convert_ports(port_input: String) -> Result<Vec<u16>, String> {
@@ -45,9 +45,9 @@ pub fn convert_ports(port_input: String) -> Result<Vec<u16>, String> {
         49159,
     ];
 
-    // For -p- (All ports)
+    // For -p- (All ports, 1..=65535)
     if input == "-" {
-        return Ok((0u16..=65535).collect());
+        return Ok((1u16..=65535).collect());
     } else if input == "F" {
         return Ok(most_used);
     }
@@ -78,6 +78,17 @@ pub fn convert_ports(port_input: String) -> Result<Vec<u16>, String> {
             result.push(single);
         }
     }
+
+    // Dedupe while preserving insertion order; warn once if anything was removed.
+    let pre_dedupe_len = result.len();
+    let mut seen = std::collections::HashSet::with_capacity(pre_dedupe_len);
+    result.retain(|p| seen.insert(*p));
+    if result.len() != pre_dedupe_len {
+        eprintln!(
+            "WARNING: Duplicate port number(s) specified.  Are you alert enough to be using Onmap?  Have some coffee or Jolt(tm)."
+        );
+    }
+
     Ok(result)
 }
 
@@ -123,14 +134,48 @@ mod tests {
 
     // --- Tests for the convert_ports function ---
 
-    /// Verifies that the "-" shortcut correctly expands to all 65,536 ports.
+    /// Verifies that the "-" shortcut expands to ports 1..=65535 (port 0 excluded).
     #[test]
     fn test_convert_port_range_full_range() {
         let ports = convert_ports("-".to_string())
             .expect("Parsing a full port range '-' should always succeed");
-        assert_eq!(ports.len(), 65536);
-        assert_eq!(ports[0], 0);
-        assert_eq!(ports[65535], 65535);
+        assert_eq!(ports.len(), 65535);
+        assert_eq!(ports[0], 1);
+        assert_eq!(ports[65534], 65535);
+    }
+
+    /// Verifies that duplicate ports are removed while preserving first-occurrence order.
+    #[test]
+    fn test_convert_ports_dedupes_duplicates() {
+        assert_eq!(
+            convert_ports("22,22,22,22".to_string()).expect("duplicates should parse"),
+            vec![22]
+        );
+        assert_eq!(
+            convert_ports("80,22,80,443,22".to_string()).expect("duplicates should parse"),
+            vec![80, 22, 443]
+        );
+        assert_eq!(
+            convert_ports("20-22,21-23".to_string()).expect("overlapping ranges should parse"),
+            vec![20, 21, 22, 23]
+        );
+    }
+
+    /// Verifies that explicit port 0 in user input is accepted (Nmap parity).
+    #[test]
+    fn test_convert_ports_accepts_explicit_zero() {
+        assert_eq!(
+            convert_ports("0".to_string()).expect("explicit \"0\" should parse"),
+            vec![0]
+        );
+        assert_eq!(
+            convert_ports("0-2".to_string()).expect("explicit \"0-2\" should parse"),
+            vec![0, 1, 2]
+        );
+        assert_eq!(
+            convert_ports("80,0".to_string()).expect("explicit \"80,0\" should parse"),
+            vec![80, 0]
+        );
     }
 
     /// Verifies that the "F" shortcut correctly returns the list of common ports.

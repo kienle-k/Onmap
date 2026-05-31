@@ -11,8 +11,8 @@
 // --- Standard Ping Scans ---
 
 /// Implements host discovery using the operating system's native ICMP Echo (ping) command.
-pub mod ping_discovery;
-pub use ping_discovery::run_ping_discovery;
+/// Kept in place but no longer dispatched; deferred for later replacement.
+// pub mod ping_discovery; // DEPRECATED
 
 // --- ICMP-based Discovery Methods ---
 
@@ -37,10 +37,17 @@ pub use tcp_ack_discovery::run_tcp_ack_discovery;
 // --- UDP-based Discovery Methods ---
 /// Implements host discovery by sending UDP packets to specific ports and analyzing responses.
 pub mod udp_discovery;
-pub use udp_discovery::run_udp_discovery;
 
 // --- ARP-based Discovery Methods ---
 
 /// Implements host discovery using ARP requests.
 pub mod arp_discovery;
 pub use arp_discovery::run_arp_discovery;
+
+// --- Central planner + engine ---
+
+/// Maps CLI flags + privilege into a `DiscoveryPlan`.
+pub mod planner;
+
+/// Executes a `DiscoveryPlan` and returns per-probe results.
+pub mod engine;

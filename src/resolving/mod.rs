@@ -2,8 +2,9 @@
 //!
 //! This module provides functions related to network name resolution and
 //! data parsing. It includes utilities for resolving hostnames to IP addresses,
-//! finding system nameservers, and extracting specific information like TTL
-//! values or service names from network protocols.
+//! finding system nameservers, extracting specific information like TTL
+//! values or service names from network protocols, and resolving the
+//! route-correct source IP for a target.
 
 /// Finds system DNS nameservers by parsing the `/etc/resolv.conf` file.
 pub mod get_resolv_conf_nameservers;
@@ -19,3 +20,6 @@ pub use extract_ttl::extract_ttl;
 
 /// Contains logic for mapping port numbers and protocols to service names.
 pub mod get_service_name;
+
+/// Resolves the route-correct source IP the kernel would use for a target.
+pub mod source_ip;

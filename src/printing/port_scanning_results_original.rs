@@ -8,6 +8,7 @@ use std::time::Instant;
 // Hauptfunktion zum Ausführen des Connect-Scans
 pub async fn print_port_scan_results_original(
     results: &(Vec<PortScanSingleResult>, PortScanAllResult),
+    total_targets: usize,
 ) {
     println!("");
 
@@ -237,21 +238,15 @@ pub async fn print_port_scan_results_original(
         Err(_) => String::from("Invalid time calculation"),
     };
 
-    let num_hosts_scanned = results_by_ip.len();
+    // "IP addresses" counts every target given (incl. hosts dropped as down);
+    // "hosts up" counts only those that survived discovery and were scanned.
+    let hosts_up = results_by_ip.len();
+    let ip_word = if total_targets == 1 { "IP address" } else { "IP addresses" };
+    let host_word = if hosts_up == 1 { "host" } else { "hosts" };
 
-    match num_hosts_scanned {
-        0 => println!(
-            "Onmap done: 0 IP addresses (0 hosts up) scanned in {} seconds",
-            elapsed_time
-        ),
-        1 => println!(
-            "Onmap done: 1 IP address (1 host up) scanned in {} seconds",
-            elapsed_time
-        ),
-        _ => println!(
-            "Onmap done: {} IP addresses ({} hosts up) scanned in {} seconds",
-            num_hosts_scanned, num_hosts_scanned, elapsed_time
-        ),
-    }
+    println!(
+        "Onmap done: {} {} ({} {} up) scanned in {} seconds",
+        total_targets, ip_word, hosts_up, host_word, elapsed_time
+    );
     println!();
 }

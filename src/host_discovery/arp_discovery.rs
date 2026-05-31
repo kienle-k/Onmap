@@ -1,5 +1,4 @@
 use futures::stream::{FuturesUnordered, StreamExt};
-use local_ip_address::local_ip;
 use pnet::datalink::{self, Channel, NetworkInterface};
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
@@ -13,38 +12,39 @@ use tokio::time::timeout;
 use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
 use crate::resolving::resolve_hostname;
 
-/// Runs an ARP scan against a list of target IP addresses on the local network.
+/// Runs an ARP scan against `(target, source_ip)` pairs.
+/// The source IP picks the outbound interface per target; targets without a
+/// matching local interface are reported as "no interface".
 pub async fn run_arp_discovery(
-    ip_addresses: Vec<Ipv4Addr>,
+    ip_addresses: Vec<(Ipv4Addr, Ipv4Addr)>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     let start_time = SystemTime::now();
 
-    let local_ip = match local_ip() {
-        Ok(IpAddr::V4(ip)) => ip,
-        Ok(IpAddr::V6(_)) => return Err("ARP scan requires an IPv4 local address".to_string()),
-        Err(e) => return Err(format!("Failed to determine local IP: {}", e)),
-    };
-
-    let interface = select_interface_for_ip(local_ip)?;
-    let source_mac = interface
-        .mac
-        .ok_or_else(|| format!("No MAC address found for interface {}", interface.name))?;
-
     let mut futures = FuturesUnordered::new();
-    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|(ip, _)| IpAddr::V4(*ip)).collect();
 
-    for ip in ip_addresses {
-        let interface = interface.clone();
+    for (ip, source_ip) in ip_addresses {
         futures.push(async move {
-            let arp_result = arp_ping_host_with_details(
-                interface,
-                source_mac,
-                local_ip,
-                ip,
-                timeout_override_ms,
-            )
-            .await;
+            let arp_result = match select_interface_for_ip(source_ip) {
+                Ok(interface) => match interface.mac {
+                    Some(source_mac) => {
+                        arp_ping_host_with_details(
+                            interface,
+                            source_mac,
+                            source_ip,
+                            ip,
+                            timeout_override_ms,
+                        )
+                        .await
+                    }
+                    None => Err(format!(
+                        "No MAC address found for interface {}",
+                        interface.name
+                    )),
+                },
+                Err(e) => Err(e),
+            };
 
             let dns_resolve = None;
             let mut is_reachable = false;

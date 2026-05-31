@@ -212,9 +212,8 @@ pub async fn port_syn_scan(
 /// This function requires administrator/root privileges to create raw sockets for packet crafting.
 /// It will return an `Err` if the underlying `port_syn_scan` calls fail due to permission issues.
 pub async fn run_syn_scan(
-    ip_addresses: Vec<Ipv4Addr>,
+    ip_addresses: Vec<(Ipv4Addr, Ipv4Addr)>,
     ports_arr: Vec<u16>,
-    local_ip_address: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     // Load the protocol/service data from the json file
@@ -238,7 +237,7 @@ pub async fn run_syn_scan(
     let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
 
     // Create a task for each IP/port combination
-    for ip in ip_addresses {
+    for (ip, source_ip) in ip_addresses {
         for &port in &ports_arr {
             let single_results_clone = Arc::clone(&single_results);
             let open_ports_clone = Arc::clone(&open_ports);
@@ -260,7 +259,7 @@ pub async fn run_syn_scan(
                 match port_syn_scan(
                     IpAddr::V4(ip),
                     port,
-                    local_ip_address,
+                    source_ip,
                     protocols_clone,
                     timeout_override_ms,
                 )
@@ -331,11 +330,10 @@ mod tests {
     /// Tests that `run_syn_scan` handles empty IP input without failing.
     #[tokio::test]
     async fn test_run_syn_scan_empty_ips() {
-        let ips = Vec::new();
+        let ips: Vec<(Ipv4Addr, Ipv4Addr)> = Vec::new();
         let ports = vec![80];
-        let local_ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let result = run_syn_scan(ips, ports, local_ip, None).await;
+        let result = run_syn_scan(ips, ports, None).await;
 
         assert!(result.is_ok());
         let (single_results, all_result) = result.expect("Expected empty scan to succeed");

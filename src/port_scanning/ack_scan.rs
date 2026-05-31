@@ -128,9 +128,8 @@ pub async fn port_ack_scan(
 ///
 /// A `Result` containing a tuple of `(Vec<PortScanSingleResult>, PortScanAllResult)` on success.
 pub async fn run_ack_scan(
-    ip_addresses: Vec<Ipv4Addr>,
+    ip_addresses: Vec<(Ipv4Addr, Ipv4Addr)>,
     ports: &[u16],
-    local_ip: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     // Load service name data once, share cheaply across all tasks then.
@@ -144,18 +143,10 @@ pub async fn run_ack_scan(
     let semaphore = Arc::new(Semaphore::new(200));
     let mut futs = FuturesUnordered::new();
 
-    for &ip in &ip_addresses {
+    for &(ip, source_ip) in &ip_addresses {
         for &port in ports {
             let sem_clone = semaphore.clone();
             let protocols_clone = Arc::clone(&protocols);
-
-            // CRITICAL: If scanning a loopback address, the source IP *must* also be a
-            // loopback address for the OS to correctly route and receive the reply.
-            let source_ip = if ip.is_loopback() {
-                Ipv4Addr::new(127, 0, 0, 1)
-            } else {
-                local_ip
-            };
 
             futs.push(async move {
                 // Wait for a permit from the semaphore before starting the scan.

@@ -47,6 +47,14 @@ pub struct Cli {
     #[arg(long = "PU", help = "UDP discovery scan (Host Discovery)", action = ArgAction::SetTrue)]
     pub udp_discovery: bool,
 
+    /// Skip host discovery; treat all targets as up
+    #[arg(long = "Pn", help = "Skip host discovery; treat all targets as up", action = ArgAction::SetTrue)]
+    pub pn: bool,
+
+    /// Never do the implicit ARP ping for local-Ethernet targets
+    #[arg(long = "disable-arp-ping", help = "Never do ARP ping for local targets", action = ArgAction::SetTrue)]
+    pub disable_arp_ping: bool,
+
     /// TCP SYN port scan
     #[arg(long = "sS", help = "TCP SYN port scan", action = ArgAction::SetTrue)]
     pub syn_scan: bool,
@@ -65,7 +73,7 @@ pub struct Cli {
 
     /// Port specification for the active scan mode
     #[arg(short = 'p', long = "ports", value_name = "PORTS")]
-    pub host_discovery_ports: Option<String>,
+    pub scan_ports: Option<String>,
 
     /// Port specification for TCP SYN host discovery probes
     #[arg(long = "PS-ports", value_name = "PORTS")]
@@ -177,6 +185,7 @@ impl Cli {
                 Some("-PS") => normalized.push(OsString::from("--PS")),
                 Some("-PA") => normalized.push(OsString::from("--PA")),
                 Some("-PU") => normalized.push(OsString::from("--PU")),
+                Some("-Pn") => normalized.push(OsString::from("--Pn")),
 
                 // Normalize Nmap-style port scan flags into clap long options so they stay in
                 // the same flat argument space as targets, ports, and output flags.
@@ -260,12 +269,13 @@ impl Cli {
 #[derive(Debug, Clone)]
 pub enum ExecutionCommand {
     HostDiscovery {
-        methods: Vec<HostDiscoverySpec>,
+        plan: DiscoveryPlan,
         targets: Vec<IpAddr>,
         timeout_override_ms: Option<u64>,
     },
     PortScan {
         method: PortScanOption,
+        plan: DiscoveryPlan,
         targets: Vec<IpAddr>,
         ports: Vec<u16>,
         timeout_override_ms: Option<u64>,
@@ -305,6 +315,36 @@ pub enum MainMenuItem {
     SubMenuHostDiscovery,
     /// Option to perform a port scan.
     SubMenuPortScan,
+}
+
+/// One host-discovery probe in a `DiscoveryPlan`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiscoveryProbe {
+    Arp,
+    IcmpEcho,
+    IcmpTimestamp,
+    TcpSyn { port: u16 },
+    TcpAck { port: u16 },
+    TcpConnect { port: u16 },
+    Udp { port: u16 },
+}
+
+/// Discovery dispatch mode: default pre-scan, `-sn`, or `-Pn`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiscoveryMode {
+    BeforePortScan,
+    DiscoveryOnly,
+    SkipDiscoveryTreatAllUp,
+}
+
+/// Output of the host-discovery planner. `probes` apply to routed
+/// targets; ARP is added by the engine for local-Ethernet targets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveryPlan {
+    pub mode: DiscoveryMode,
+    pub probes: Vec<DiscoveryProbe>,
+    /// When true, the engine skips the implicit ARP ping for local targets.
+    pub disable_arp_ping: bool,
 }
 
 /// Defines the different techniques available for host discovery.
@@ -435,7 +475,7 @@ pub struct PortScanAllResult {
     pub packets_sent: u32,
     /// A vector of port numbers that were found to be open.
     pub open_ports: Vec<u16>,
-    /// The timestamp when the scan began.
+    /// The timestamp when the scan run began (includes the host-discovery phase).
     pub start_time: SystemTime,
     /// The timestamp when the scan completed.
     pub end_time: SystemTime,
