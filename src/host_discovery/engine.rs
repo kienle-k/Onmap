@@ -44,6 +44,7 @@ pub async fn run_discovery(
     plan: &DiscoveryPlan,
     targets: &[Ipv4Addr],
     timeout_override_ms: Option<u64>,
+    no_dns: bool,
 ) -> DiscoveryResult {
     if matches!(plan.mode, DiscoveryMode::SkipDiscoveryTreatAllUp) {
         return DiscoveryResult {
@@ -60,7 +61,7 @@ pub async fn run_discovery(
     // of plan. Cheap, reliable, and provides MAC info other probes can't.
     // Suppressed by --disable-arp-ping, falling back to IP-level probes.
     if !local.is_empty() && !plan.disable_arp_ping {
-        match run_arp_discovery(resolve_for_targets(&local), timeout_override_ms).await {
+        match run_arp_discovery(resolve_for_targets(&local), timeout_override_ms, no_dns).await {
             Ok((rows, summary)) => {
                 per_probe.extend(rows);
                 packets_sent = packets_sent.saturating_add(summary.packets_sent);
@@ -85,7 +86,7 @@ pub async fn run_discovery(
                     _ if plan.disable_arp_ping => &all_targets,
                     _ => &routed,
                 };
-                let result = run_probe(&probe, targets_for_probe, timeout_override_ms).await;
+                let result = run_probe(&probe, targets_for_probe, timeout_override_ms, no_dns).await;
                 (probe, result)
             }
         }))
@@ -123,37 +124,41 @@ async fn run_probe(
     probe: &DiscoveryProbe,
     targets: &[Ipv4Addr],
     timeout_override_ms: Option<u64>,
+    no_dns: bool,
 ) -> Result<(Vec<HostDiscoverySingleResult>, u64), String> {
     let outcome = match probe {
         DiscoveryProbe::Arp => {
-            run_arp_discovery(resolve_for_targets(targets), timeout_override_ms).await
+            run_arp_discovery(resolve_for_targets(targets), timeout_override_ms, no_dns).await
         }
         DiscoveryProbe::IcmpEcho => {
-            run_icmp_echo_discovery(targets.to_vec(), timeout_override_ms).await
+            run_icmp_echo_discovery(targets.to_vec(), timeout_override_ms, no_dns).await
         }
         DiscoveryProbe::IcmpTimestamp => {
-            run_icmp_timestamp_discovery(targets.to_vec(), timeout_override_ms).await
+            run_icmp_timestamp_discovery(targets.to_vec(), timeout_override_ms, no_dns).await
         }
         DiscoveryProbe::TcpSyn { port } => run_tcp_syn_discovery(
             resolve_for_targets(targets),
             vec![*port],
             timeout_override_ms,
+            no_dns,
         )
         .await,
         DiscoveryProbe::TcpAck { port } => run_tcp_ack_discovery(
             resolve_for_targets(targets),
             vec![*port],
             timeout_override_ms,
+            no_dns,
         )
         .await,
         DiscoveryProbe::Udp { port } => run_udp_discovery(
             resolve_for_targets(targets),
             vec![*port],
             timeout_override_ms,
+            no_dns,
         )
         .await,
         DiscoveryProbe::TcpConnect { port } => {
-            run_tcp_connect_discovery(targets.to_vec(), vec![*port], timeout_override_ms).await
+            run_tcp_connect_discovery(targets.to_vec(), vec![*port], timeout_override_ms, no_dns).await
         }
     };
     outcome.map(|(rows, summary)| (rows, summary.packets_sent))
@@ -212,7 +217,7 @@ mod tests {
             disable_arp_ping: false,
         };
         let targets = vec![Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(2, 2, 2, 2)];
-        let result = run_discovery(&plan, &targets, Some(100)).await;
+        let result = run_discovery(&plan, &targets, Some(100), false).await;
         assert_eq!(result.per_probe.len(), 2);
         assert!(result.per_probe.iter().all(|r| r.is_up));
         assert_eq!(result.hosts_up(), targets);

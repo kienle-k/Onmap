@@ -80,7 +80,11 @@ pub async fn print_port_scan_results_original(
             .get(ip_address)
             .map(String::as_str)
             .unwrap_or("-");
-        println!("Onmap scan report for {} ({})", hostname, ip_address);
+        if hostname == "-" {
+            println!("Onmap scan report for {}", ip_address);
+        } else {
+            println!("Onmap scan report for {} ({})", hostname, ip_address);
+        }
 
         // verbosity 2: "Host is up, received user-set"
         if show_reason {

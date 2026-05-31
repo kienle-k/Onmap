@@ -56,8 +56,11 @@ pub fn print_host_discovery_results_original(
                 println!("Onmap scan report for {}  [host down]", host.ip_address);
             }
         } else {
-            let hostname = host.dns_resolve.as_deref().unwrap_or("-");
-            println!("Onmap scan report for {} ({})", hostname, host.ip_address);
+            if let Some(hostname) = &host.dns_resolve {
+                println!("Onmap scan report for {} ({})", hostname, host.ip_address);
+            } else {
+                println!("Onmap scan report for {}", host.ip_address);
+            }
 
             let latency = host.latency.map(|d| d.as_secs_f32() / 10.0).unwrap_or(-1.0);
 

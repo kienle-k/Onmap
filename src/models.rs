@@ -55,6 +55,10 @@ pub struct Cli {
     #[arg(long = "disable-arp-ping", help = "Never do ARP ping for local targets", action = ArgAction::SetTrue)]
     pub disable_arp_ping: bool,
 
+    /// Disable reverse DNS resolution
+    #[arg(short = 'n', long = "no-dns", global = true, help = "Disable reverse DNS resolution", action = ArgAction::SetTrue)]
+    pub no_dns: bool,
+
     /// TCP SYN port scan
     #[arg(long = "sS", help = "TCP SYN port scan", action = ArgAction::SetTrue)]
     pub syn_scan: bool,
@@ -281,6 +285,7 @@ pub enum ExecutionCommand {
         plan: DiscoveryPlan,
         targets: Vec<IpAddr>,
         timeout_override_ms: Option<u64>,
+        no_dns: bool,
     },
     PortScan {
         method: PortScanOption,
@@ -288,6 +293,7 @@ pub enum ExecutionCommand {
         targets: Vec<IpAddr>,
         ports: Vec<u16>,
         timeout_override_ms: Option<u64>,
+        no_dns: bool,
         service_version: bool,
         os_detection: bool,
         script: Option<String>,

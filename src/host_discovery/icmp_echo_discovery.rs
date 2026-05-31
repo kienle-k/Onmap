@@ -25,6 +25,7 @@ use crate::resolving::resolve_hostname;
 pub async fn run_icmp_echo_discovery(
     ip_addresses: Vec<Ipv4Addr>,
     timeout_override_ms: Option<u64>,
+    no_dns: bool,
 ) -> Result<(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult), String> {
     // Start timing the entire scan operation.
     let start_time = SystemTime::now();
@@ -80,26 +81,28 @@ pub async fn run_icmp_echo_discovery(
         host_results.push(result);
     }
 
-    // DNS phase: resolve hostnames for up hosts in parallel, timed separately.
-    let dns_start = Instant::now();
-    let dns_tasks: Vec<_> = host_results
-        .iter()
-        .enumerate()
-        .filter_map(|(i, r)| match r.ip_address {
-            IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
-            _ => None,
-        })
-        .collect();
-    let dns_resolved = futures::future::join_all(
-        dns_tasks
-            .into_iter()
-            .map(|(i, ipv4)| async move { (i, resolve_hostname(&ipv4).await) }),
-    )
-    .await;
-    for (idx, hostname) in dns_resolved {
-        host_results[idx].dns_resolve = hostname;
+    let mut dns_elapsed_secs = 0.0;
+    if !no_dns {
+        let dns_start = Instant::now();
+        let dns_tasks: Vec<_> = host_results
+            .iter()
+            .enumerate()
+            .filter_map(|(i, r)| match r.ip_address {
+                IpAddr::V4(ipv4) if r.is_up => Some((i, ipv4)),
+                _ => None,
+            })
+            .collect();
+        let dns_resolved = futures::future::join_all(
+            dns_tasks
+                .into_iter()
+                .map(|(i, ipv4)| async move { (i, resolve_hostname(&ipv4).await) }),
+        )
+        .await;
+        for (idx, hostname) in dns_resolved {
+            host_results[idx].dns_resolve = hostname;
+        }
+        dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
     }
-    let dns_elapsed_secs = dns_start.elapsed().as_secs_f64();
 
     // Calculate summary statistics from the collected results.
     let hosts_up = host_results.iter().filter(|r| r.is_up).count() as u64;

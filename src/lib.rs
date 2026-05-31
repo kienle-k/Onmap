@@ -336,6 +336,7 @@ fn build_command_from_tui(
                 plan,
                 targets,
                 timeout_override_ms: None,
+                no_dns: false,
             }
         }
         MainMenuItem::SubMenuPortScan => {
@@ -355,6 +356,7 @@ fn build_command_from_tui(
                 targets,
                 ports,
                 timeout_override_ms: None,
+                no_dns: false,
                 service_version: false,
                 os_detection: false,
                 script: None,
@@ -428,6 +430,7 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
             )?,
             ports: parse_ports_spec(cli.scan_ports.as_ref())?,
             timeout_override_ms: cli.host_discovery_timeout_ms,
+            no_dns: cli.no_dns,
             service_version: cli.service_version,
             os_detection: cli.os_detection,
             script: cli.script.clone(),
@@ -448,8 +451,9 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
                     cli.host_discovery_targets
                         .as_deref()
                         .ok_or_else(|| "Host discovery targets must be provided".to_string())?,
-                )?,
+                    )?,
                 timeout_override_ms: cli.host_discovery_timeout_ms,
+                no_dns: cli.no_dns,
             }
         }
     };
@@ -614,6 +618,7 @@ async fn execute_command(
             plan,
             targets,
             timeout_override_ms,
+            no_dns,
         } => {
             let ipv4_targets = to_ipv4_vec(&targets)?;
             let num_targets = ipv4_targets.len();
@@ -627,7 +632,7 @@ async fn execute_command(
 
             let start_time = SystemTime::now();
             let engine_result =
-                run_discovery(&plan, &ipv4_targets, timeout_override_ms).await;
+                run_discovery(&plan, &ipv4_targets, timeout_override_ms, no_dns).await;
             let end_time = SystemTime::now();
             let result = discovery_to_legacy(engine_result, &ipv4_targets, &plan, start_time, end_time);
 
@@ -660,6 +665,7 @@ async fn execute_command(
             targets,
             ports,
             timeout_override_ms,
+            no_dns,
             service_version,
             os_detection,
             script,
@@ -683,6 +689,7 @@ async fn execute_command(
                 &original_targets,
                 timeout_override_ms,
                 discovery_start,
+                no_dns,
             )
             .await;
             let ipv4_targets: Vec<Ipv4Addr> = host_disc
@@ -842,8 +849,9 @@ async fn run_pre_scan_discovery(
     targets: &[Ipv4Addr],
     timeout_override_ms: Option<u64>,
     start_time: SystemTime,
+    no_dns: bool,
 ) -> HostDiscoveryResult {
-    let engine = run_discovery(plan, targets, timeout_override_ms).await;
+    let engine = run_discovery(plan, targets, timeout_override_ms, no_dns).await;
     discovery_to_legacy(engine, targets, plan, start_time, SystemTime::now())
 }
 
@@ -1038,8 +1046,10 @@ mod tests {
                 plan,
                 targets,
                 timeout_override_ms,
+                no_dns,
             } => {
                 assert_eq!(timeout_override_ms, None);
+                assert!(!no_dns);
                 assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
                 assert_eq!(plan.mode, DiscoveryMode::DiscoveryOnly);
 
@@ -1059,6 +1069,20 @@ mod tests {
                     );
                 }
             }
+            other => panic!("expected host discovery command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn build_command_from_cli_threads_no_dns() {
+        let cli = parse_cli(&["onmap", "-n", "-sn", "127.0.0.1"]);
+
+        let command = build_command_from_cli(&cli)
+            .expect("no-dns host discovery command should build")
+            .expect("no-dns host discovery command should be present");
+
+        match command {
+            ExecutionCommand::HostDiscovery { no_dns, .. } => assert!(no_dns),
             other => panic!("expected host discovery command, got {:?}", other),
         }
     }
