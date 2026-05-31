@@ -68,8 +68,8 @@ pub async fn run_discovery(
         }
     }
 
-    // Plan probes run in parallel. Each probe targets ALL hosts, except `Arp`
-    // which is restricted to routed hosts (locals already got auto-ARP above).
+    // Plan probes run in parallel. Auto-ARP covers local hosts; IP probes only
+    // fall back to all targets when --disable-arp-ping suppresses auto-ARP.
     if !plan.probes.is_empty() {
         let all_targets = Arc::new(targets.to_vec());
         let routed = Arc::new(routed);
@@ -81,7 +81,8 @@ pub async fn run_discovery(
             async move {
                 let targets_for_probe: &[Ipv4Addr] = match &probe {
                     DiscoveryProbe::Arp => &routed,
-                    _ => &all_targets,
+                    _ if plan.disable_arp_ping => &all_targets,
+                    _ => &routed,
                 };
                 let result = run_probe(&probe, targets_for_probe, timeout_override_ms).await;
                 (probe, result)

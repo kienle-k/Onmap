@@ -42,9 +42,6 @@ sudo ./target/release/onmap -PE 192.168.178.0/24
 # Combine host discovery probes with method-specific ports
 sudo ./target/release/onmap -PE -PP -PS22 -PA80 -PU53 192.168.178.0/24
 
-# Use shared fallback ports for selected port-based probes
-sudo ./target/release/onmap -PS22 -PA -PU -p 53 192.168.178.0/24
-
 # ICMP echo scan an IP range
 sudo ./target/release/onmap -PE 192.168.0.10-20
 
@@ -71,15 +68,6 @@ sudo ./target/release/onmap -sS -Pn -p22,80 192.168.1.100
 sudo ./target/release/onmap -sn --disable-arp-ping 192.168.1.0/24
 ```
 
-Host discovery probes can be combined. When multiple probes are selected, Onmap runs them in parallel and treats a host as up if any configured probe succeeds. Method-specific ports (`-PS22`, `-PA80`, `-PU53`) override shared `-p` ports for that method, while shared `-p` remains a fallback for selected port-based methods that do not define method-specific ports.
+Host discovery probes can be combined; they run in parallel and a host counts as up if any of them succeeds. Probe ports are set on the flag (`-PS22`, `-PA80`, `-PU53`) or with `--PS-ports`/`--PA-ports`/`--PU-ports`, and default to 80 for SYN/ACK and 40125 for UDP. `-p` only sets the port-scan ports.
 
-### Host discovery behavior
-
-Onmap mirrors Nmap's host-discovery model through a central planner:
-
-- **Default:** a port scan is preceded by a discovery phase, and only hosts found up are scanned.
-- **`-sn`:** run discovery only, no port scan.
-- **`-Pn`:** skip discovery and treat all targets as up (takes precedence over any `-P*` flag).
-- **Explicit `-P*` flags replace the default probe set** (e.g. `-PE` alone runs only the ICMP-echo probe).
-- **Local-Ethernet targets** also get an implicit ARP ping, unless `--disable-arp-ping` is given.
-- **Privileges:** raw discovery probes (ICMP/ARP/SYN/ACK/UDP) and raw port scans (`-sS`, `-sA`) require root. Without root, a plain port scan skips discovery and treats targets as up; explicit discovery still reports that root is required.
+A port scan runs discovery first and only scans hosts that come back up. `-sn` runs discovery alone; `-Pn` skips discovery and treats every target as up. Explicit `-P*` flags replace the default probe set, and local targets will use an ARP ping instead of the default probes, unless `--disable-arp-ping` is set. Raw probes and the `-sS`/`-sA` scans need root; without root a plain port scan just skips discovery. Soon to be implemented for this case: non-root tcp connect discovery.
