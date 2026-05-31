@@ -684,7 +684,27 @@ async fn execute_command(
                 );
             }
             if ipv4_targets.is_empty() {
-                println!("No hosts are up — skipping port scan.");
+                let elapsed = SystemTime::now()
+                    .duration_since(discovery_start)
+                    .unwrap_or_default()
+                    .as_secs_f64();
+                let total = original_targets.len();
+                println!();
+                if total == 1 {
+                    println!(
+                        "Note: Host seems down. If it is really up, but blocking our ping probes, try -Pn"
+                    );
+                } else {
+                    println!(
+                        "Note: Hosts seem down. If they are really up, but blocking our ping probes, try -Pn"
+                    );
+                }
+                let ip_word = if total == 1 { "IP address" } else { "IP addresses" };
+                println!(
+                    "Onmap done: {} {} (0 hosts up) scanned in {:.2} seconds",
+                    total, ip_word, elapsed
+                );
+                println!();
                 return Ok((None, None));
             }
 
