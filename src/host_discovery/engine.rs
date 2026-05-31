@@ -6,7 +6,8 @@
 
 use crate::host_discovery::{
     run_arp_discovery, run_icmp_echo_discovery, run_icmp_timestamp_discovery,
-    run_tcp_ack_discovery, run_tcp_syn_discovery, udp_discovery::run_udp_discovery,
+    run_tcp_ack_discovery, run_tcp_connect_discovery, run_tcp_syn_discovery,
+    udp_discovery::run_udp_discovery,
 };
 use crate::models::{
     DiscoveryMode, DiscoveryPlan, DiscoveryProbe, HostDiscoverySingleResult,
@@ -151,13 +152,8 @@ async fn run_probe(
             timeout_override_ms,
         )
         .await,
-        // TODO(tcp-connect-discovery): replace this placeholder with the real
-        // run_tcp_connect_discovery call (see TCP_CONNECT_DISCOVERY_GUIDE_v2).
         DiscoveryProbe::TcpConnect { port } => {
-            // Unprivileged TCP connect host discovery is not yet implemented. 
-            // Returns no hosts, so unprivileged discovery currently finds nothing.
-            eprintln!("Unprivileged TCP connect host discovery (port {port}) is not implemented yet.");
-            return Ok((Vec::new(), 0));
+            run_tcp_connect_discovery(targets.to_vec(), vec![*port], timeout_override_ms).await
         }
     };
     outcome.map(|(rows, summary)| (rows, summary.packets_sent))

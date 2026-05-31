@@ -34,6 +34,10 @@ pub use tcp_syn_discovery::run_tcp_syn_discovery;
 pub mod tcp_ack_discovery;
 pub use tcp_ack_discovery::run_tcp_ack_discovery;
 
+/// Implements host discovery by attempting TCP connect probes.
+pub mod tcp_connect_discovery;
+pub use tcp_connect_discovery::run_tcp_connect_discovery;
+
 // --- UDP-based Discovery Methods ---
 /// Implements host discovery by sending UDP packets to specific ports and analyzing responses.
 pub mod udp_discovery;

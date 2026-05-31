@@ -988,39 +988,39 @@ mod tests {
     fn build_command_from_cli_supports_combined_host_discovery_probes() {
         let cli = parse_cli(&["onmap", "-PE", "-PP", "-PS22", "127.0.0.1"]);
 
-        // TODO(tcp-connect-discovery): non-root host discovery currently errors.
-        // Assert the error and pass; the original assertions are commented out
-        // below. Once TCP connect discovery lands, remove this block and restore
-        // them.
-        let err = build_command_from_cli(&cli)
-            .expect_err("non-root host discovery should error");
-        assert!(err.contains("requires root privileges"));
-        return;
+        let is_root = nix::unistd::Uid::effective().is_root();
+        let command = build_command_from_cli(&cli)
+            .expect("combined host discovery command should build")
+            .expect("combined host discovery command should be present");
 
-        // let command = build_command_from_cli(&cli)
-        //     .expect("combined host discovery command should build")
-        //     .expect("combined host discovery command should be present");
-        //
-        // match command {
-        //     ExecutionCommand::HostDiscovery {
-        //         plan,
-        //         targets,
-        //         timeout_override_ms,
-        //     } => {
-        //         assert_eq!(timeout_override_ms, None);
-        //         assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
-        //         assert_eq!(plan.mode, DiscoveryMode::DiscoveryOnly);
-        //         assert_eq!(
-        //             plan.probes,
-        //             vec![
-        //                 DiscoveryProbe::IcmpEcho,
-        //                 DiscoveryProbe::IcmpTimestamp,
-        //                 DiscoveryProbe::TcpSyn { port: 22 },
-        //             ]
-        //         );
-        //     }
-        //     other => panic!("expected host discovery command, got {:?}", other),
-        // }
+        match command {
+            ExecutionCommand::HostDiscovery {
+                plan,
+                targets,
+                timeout_override_ms,
+            } => {
+                assert_eq!(timeout_override_ms, None);
+                assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
+                assert_eq!(plan.mode, DiscoveryMode::DiscoveryOnly);
+
+                if is_root {
+                    assert_eq!(
+                        plan.probes,
+                        vec![
+                            DiscoveryProbe::IcmpEcho,
+                            DiscoveryProbe::IcmpTimestamp,
+                            DiscoveryProbe::TcpSyn { port: 22 },
+                        ]
+                    );
+                } else {
+                    assert_eq!(
+                        plan.probes,
+                        vec![DiscoveryProbe::TcpConnect { port: 22 }]
+                    );
+                }
+            }
+            other => panic!("expected host discovery command, got {:?}", other),
+        }
     }
 
     #[test]

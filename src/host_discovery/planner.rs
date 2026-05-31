@@ -35,7 +35,7 @@ pub fn plan_discovery(cli: &Cli, is_root: bool) -> Result<DiscoveryPlan, String>
         || cli.ack_discovery
         || cli.udp_discovery;
 
-    let mut mode = match (cli.pn, cli.ping_scan) {
+    let mode = match (cli.pn, cli.ping_scan) {
         (true, _) => DiscoveryMode::SkipDiscoveryTreatAllUp,
         (false, true) => DiscoveryMode::DiscoveryOnly,
         (false, false) => DiscoveryMode::BeforePortScan,
@@ -44,16 +44,11 @@ pub fn plan_discovery(cli: &Cli, is_root: bool) -> Result<DiscoveryPlan, String>
     // -Pn skips discovery entirely, so the -P* probes never run and root is
     // not needed — let it through regardless of privilege.
     if !is_root && !cli.pn {
-        // -sn/-P* without root: every probe needs raw sockets, so error.
-        // TODO(tcp-connect-discovery): warn and fall back to TCP connect
-        // probes instead of erroring.
         if explicit_discovery || cli.ping_scan {
-            return Err("Host discovery requires root privileges.".to_string());
+            eprintln!(
+                "warning: Host discovery requires raw sockets; falling back to TCP connect probes."
+            );
         }
-        // Plain port scan without root: skip discovery, treat all up (-Pn).
-        // TODO(tcp-connect-discovery): use BeforePortScan to run TCP connect
-        // discovery first instead.
-        mode = DiscoveryMode::SkipDiscoveryTreatAllUp;
     }
 
     let probes = match mode {
@@ -69,6 +64,10 @@ pub fn plan_discovery(cli: &Cli, is_root: bool) -> Result<DiscoveryPlan, String>
 }
 
 fn select_probes(cli: &Cli, is_root: bool) -> Result<Vec<DiscoveryProbe>, String> {
+    if !is_root {
+        return select_unprivileged_probes(cli);
+    }
+
     let explicit = cli.icmp_echo
         || cli.icmp_timestamp
         || cli.arp
@@ -108,9 +107,42 @@ fn select_probes(cli: &Cli, is_root: bool) -> Result<Vec<DiscoveryProbe>, String
     Ok(probes)
 }
 
+fn select_unprivileged_probes(cli: &Cli) -> Result<Vec<DiscoveryProbe>, String> {
+    let explicit = cli.icmp_echo
+        || cli.icmp_timestamp
+        || cli.arp
+        || cli.syn_discovery
+        || cli.ack_discovery
+        || cli.udp_discovery;
+
+    if !explicit {
+        return Ok(default_set(false));
+    }
+
+    let mut ports = Vec::new();
+    if cli.syn_discovery {
+        ports.extend(explicit_ports(&cli.syn_discovery_ports, 80)?);
+    }
+    if cli.ack_discovery {
+        ports.extend(explicit_ports(&cli.ack_discovery_ports, 80)?);
+    }
+    if cli.udp_discovery {
+        ports.extend(explicit_ports(&cli.udp_discovery_ports, 40125)?);
+    }
+
+    if ports.is_empty() {
+        return Ok(default_set(false));
+    }
+
+    Ok(ports
+        .into_iter()
+        .map(|port| DiscoveryProbe::TcpConnect { port })
+        .collect())
+}
+
 /// Default probe set when no `-P*` flag is explicit.
 /// Root: ICMP echo + TCP SYN 443 + TCP ACK 80 + ICMP timestamp.
-/// Non-root: Currently: Skipped; TODO: TCP connect 80, 443.
+/// Non-root: TCP connect 80, 443.
 pub fn default_set(is_root: bool) -> Vec<DiscoveryProbe> {
     if is_root {
         vec![
@@ -120,8 +152,10 @@ pub fn default_set(is_root: bool) -> Vec<DiscoveryProbe> {
             DiscoveryProbe::IcmpTimestamp,
         ]
     } else {
-        // TODO> Implement TCP Connect scan here.
-        Vec::new()
+        vec![
+            DiscoveryProbe::TcpConnect { port: 80 },
+            DiscoveryProbe::TcpConnect { port: 443 },
+        ]
     }
 }
 
@@ -233,6 +267,46 @@ mod tests {
         assert_eq!(
             plan.probes,
             vec![DiscoveryProbe::IcmpEcho, DiscoveryProbe::TcpAck { port: 80 }]
+        );
+    }
+
+    #[test]
+    fn default_before_port_scan_non_root_uses_tcp_connect() {
+        let cli = cli_from(&["-sT", "1.2.3.4"]);
+        let plan = plan_discovery(&cli, false).unwrap();
+        assert_eq!(plan.mode, DiscoveryMode::BeforePortScan);
+        assert_eq!(
+            plan.probes,
+            vec![
+                DiscoveryProbe::TcpConnect { port: 80 },
+                DiscoveryProbe::TcpConnect { port: 443 },
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_pa_ports_non_root_map_to_tcp_connect() {
+        let cli = cli_from(&["-PA80,443", "1.2.3.4"]);
+        let plan = plan_discovery(&cli, false).unwrap();
+        assert_eq!(
+            plan.probes,
+            vec![
+                DiscoveryProbe::TcpConnect { port: 80 },
+                DiscoveryProbe::TcpConnect { port: 443 },
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_icmp_only_non_root_falls_back_to_tcp_connect() {
+        let cli = cli_from(&["-PE", "1.2.3.4"]);
+        let plan = plan_discovery(&cli, false).unwrap();
+        assert_eq!(
+            plan.probes,
+            vec![
+                DiscoveryProbe::TcpConnect { port: 80 },
+                DiscoveryProbe::TcpConnect { port: 443 },
+            ]
         );
     }
 }
