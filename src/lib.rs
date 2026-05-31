@@ -691,19 +691,12 @@ async fn execute_command(
                 let total = original_targets.len();
                 println!();
                 if total == 1 {
-                    println!(
-                        "Note: Host seems down. If it is really up, but blocking our ping probes, try -Pn"
-                    );
+                    println!("Note: Host seems down. If it is really up, but blocking our ping probes, try -Pn");
                 } else {
-                    println!(
-                        "Note: Hosts seem down. If they are really up, but blocking our ping probes, try -Pn"
-                    );
+                    println!("Note: Hosts seem down. If they are really up, but blocking our ping probes, try -Pn");
                 }
                 let ip_word = if total == 1 { "IP address" } else { "IP addresses" };
-                println!(
-                    "Onmap done: {} {} (0 hosts up) scanned in {:.2} seconds",
-                    total, ip_word, elapsed
-                );
+                println!("Onmap done: {} {} (0 hosts up) scanned in {:.2} seconds", total, ip_word, elapsed);
                 println!();
                 return Ok((None, None));
             }
