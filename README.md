@@ -70,4 +70,7 @@ sudo ./target/release/onmap -sn --disable-arp-ping 192.168.1.0/24
 
 Host discovery probes can be combined; they run in parallel and a host counts as up if any of them succeeds. Probe ports are set on the flag (`-PS22`, `-PA80`, `-PU53`) or with `--PS-ports`/`--PA-ports`/`--PU-ports`, and default to 80 for SYN/ACK and 40125 for UDP. `-p` only sets the port-scan ports.
 
-A port scan runs discovery first and only scans hosts that come back up. `-sn` runs discovery alone; `-Pn` skips discovery and treats every target as up. Explicit `-P*` flags replace the default probe set, and local targets will use an ARP ping instead of the default probes, unless `--disable-arp-ping` is set. Raw probes and the `-sS`/`-sA` scans need root; without root a plain port scan just skips discovery. Soon to be implemented for this case: non-root tcp connect discovery.
+A port scan runs discovery first and only scans hosts that come back up. `-sn` runs discovery alone; `-Pn` skips discovery and treats every target as up. Explicit `-P*` flags replace the default probe set, and local targets will use an ARP ping instead of the default probes, unless `--disable-arp-ping` is set. Raw probes and the `-sS`/`-sA` scans need root; without root it falls back to tcp connect discovery probes to ports 80 and 443.
+
+Important cli difference to nmap: Onmap will run single host discovery and port scans only via explicit flags; for example `onmap -PE locahost` will not execute a port scan after the discovery phase. And `onmap localhost` does not work, as no scan method is specified. This is intended behavior to improve clarity of behavior for now.
+ 
