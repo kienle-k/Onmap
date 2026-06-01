@@ -11,6 +11,7 @@ pub async fn print_port_scan_results_original(
     results: &(Vec<PortScanSingleResult>, PortScanAllResult),
     total_targets: usize,
     verbosity: u8,
+    no_dns: bool,
 ) {
     println!("");
 
@@ -25,52 +26,60 @@ pub async fn print_port_scan_results_original(
     }
 
     // --- DNS resolution phase (batch, for verbosity messages) ---
+    // `-n` (no_dns) must suppress all reverse DNS here, mirroring discovery.
     let host_count = results_by_ip.len();
-    log::info!(
-        "Initiating Parallel DNS resolution of {} host(s). at {}",
-        host_count,
-        Local::now().format("%H:%M")
-    );
-    let dns_start = Instant::now();
-
     let mut hostname_map: HashMap<IpAddr, String> = HashMap::new();
-    let mut dns_ok = 0usize;
-    let mut dns_nx = 0usize;
-    for ip_address in results_by_ip.keys() {
-        let hostname = if let IpAddr::V4(ipv4_addr) = ip_address {
-            match resolve_hostname(ipv4_addr).await {
-                Some(h) => {
-                    dns_ok += 1;
-                    h
-                }
-                None => {
-                    dns_nx += 1;
-                    "-".to_string()
-                }
-            }
-        } else {
-            dns_nx += 1;
-            "-".to_string()
-        };
-        hostname_map.insert(*ip_address, hostname);
-    }
 
-    let dns_elapsed = dns_start.elapsed().as_secs_f64();
-    log::info!(
-        "Completed Parallel DNS resolution of {} host(s). at {}, {:.2}s elapsed",
-        host_count,
-        Local::now().format("%H:%M"),
-        dns_elapsed
-    );
-    log::trace!(
-        "DNS resolution of {} IPs took {:.2}s. Mode: Async [#: {}, OK: {}, NX: {}, DR: 0, SF: 0, TR: {}, CN: 0]",
-        host_count,
-        dns_elapsed,
-        host_count,
-        dns_ok,
-        dns_nx,
-        host_count
-    );
+    if no_dns {
+        for ip_address in results_by_ip.keys() {
+            hostname_map.insert(*ip_address, "-".to_string());
+        }
+    } else {
+        log::info!(
+            "Initiating Parallel DNS resolution of {} host(s). at {}",
+            host_count,
+            Local::now().format("%H:%M")
+        );
+        let dns_start = Instant::now();
+
+        let mut dns_ok = 0usize;
+        let mut dns_nx = 0usize;
+        for ip_address in results_by_ip.keys() {
+            let hostname = if let IpAddr::V4(ipv4_addr) = ip_address {
+                match resolve_hostname(ipv4_addr).await {
+                    Some(h) => {
+                        dns_ok += 1;
+                        h
+                    }
+                    None => {
+                        dns_nx += 1;
+                        "-".to_string()
+                    }
+                }
+            } else {
+                dns_nx += 1;
+                "-".to_string()
+            };
+            hostname_map.insert(*ip_address, hostname);
+        }
+
+        let dns_elapsed = dns_start.elapsed().as_secs_f64();
+        log::info!(
+            "Completed Parallel DNS resolution of {} host(s). at {}, {:.2}s elapsed",
+            host_count,
+            Local::now().format("%H:%M"),
+            dns_elapsed
+        );
+        log::trace!(
+            "DNS resolution of {} IPs took {:.2}s. Mode: Async [#: {}, OK: {}, NX: {}, DR: 0, SF: 0, TR: {}, CN: 0]",
+            host_count,
+            dns_elapsed,
+            host_count,
+            dns_ok,
+            dns_nx,
+            host_count
+        );
+    }
 
     // --- Per-host printing ---
     let show_reason = verbosity >= 2;

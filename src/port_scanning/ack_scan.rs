@@ -89,7 +89,14 @@ pub async fn port_ack_scan(
 
             match iter.next_with_timeout(remaining_time) {
                 Ok(Some((packet, addr))) => {
-                    if packet.get_destination() == source_port && addr == target_ip {
+                    // Correlate to the exact probe tuple: same target IP, same
+                    // probe source port, and same scanned target port. Without
+                    // the source-port check a RST from one port could mark a
+                    // concurrently scanned port unfiltered (matches SYN scan).
+                    if packet.get_destination() == source_port
+                        && addr == target_ip
+                        && packet.get_source() == port
+                    {
                         if packet.get_flags() & TcpFlags::RST != 0 {
                             // RST received, port is unfiltered. Return placeholder TTL.
                             return (true, Some(0));

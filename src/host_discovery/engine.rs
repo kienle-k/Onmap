@@ -45,6 +45,7 @@ pub async fn run_discovery(
     targets: &[Ipv4Addr],
     timeout_override_ms: Option<u64>,
     no_dns: bool,
+    is_root: bool,
 ) -> DiscoveryResult {
     if matches!(plan.mode, DiscoveryMode::SkipDiscoveryTreatAllUp) {
         return DiscoveryResult {
@@ -57,10 +58,13 @@ pub async fn run_discovery(
     let mut per_probe = Vec::new();
     let mut packets_sent: u64 = 0;
 
-    // Nmap-style auto-ARP: local-Ethernet targets always get ARP, regardless
-    // of plan. Cheap, reliable, and provides MAC info other probes can't.
-    // Suppressed by --disable-arp-ping, falling back to IP-level probes.
-    if !local.is_empty() && !plan.disable_arp_ping {
+    // Nmap-style auto-ARP: local-Ethernet targets get ARP, regardless of plan —
+    // but only when raw-packet privilege is actually available. ARP needs raw
+    // sockets, so as non-root it cannot run; replacing the planned IP/TCP-connect
+    // probes with a method that can't run would silently leave local-link targets
+    // undiscovered. Suppressed by --disable-arp-ping.
+    let auto_arp = is_root && !plan.disable_arp_ping && !local.is_empty();
+    if auto_arp {
         match run_arp_discovery(resolve_for_targets(&local), timeout_override_ms, no_dns).await {
             Ok((rows, summary)) => {
                 per_probe.extend(rows);
@@ -70,8 +74,10 @@ pub async fn run_discovery(
         }
     }
 
-    // Plan probes run in parallel. Auto-ARP covers local hosts; IP probes only
-    // fall back to all targets when --disable-arp-ping suppresses auto-ARP.
+    // Plan probes run in parallel. When auto-ARP ran, it covers local hosts so
+    // IP probes only target routed hosts. When auto-ARP did not run (non-root,
+    // --disable-arp-ping, or no local targets), IP/TCP-connect probes must cover
+    // every target so local-link hosts still get their planned fallback probes.
     if !plan.probes.is_empty() {
         let all_targets = Arc::new(targets.to_vec());
         let routed = Arc::new(routed);
@@ -81,11 +87,7 @@ pub async fn run_discovery(
             let all_targets = Arc::clone(&all_targets);
             let routed = Arc::clone(&routed);
             async move {
-                let targets_for_probe: &[Ipv4Addr] = match &probe {
-                    DiscoveryProbe::Arp => &routed,
-                    _ if plan.disable_arp_ping => &all_targets,
-                    _ => &routed,
-                };
+                let targets_for_probe = probe_target_set(&probe, auto_arp, &all_targets, &routed);
                 let result = run_probe(&probe, targets_for_probe, timeout_override_ms, no_dns).await;
                 (probe, result)
             }
@@ -164,6 +166,26 @@ async fn run_probe(
     outcome.map(|(rows, summary)| (rows, summary.packets_sent))
 }
 
+/// Select which targets a single planned probe runs against.
+///
+/// When auto-ARP ran, it already covered the local hosts, so IP-level probes
+/// target only `routed`. When auto-ARP did not run (non-root, `--disable-arp-ping`,
+/// or no local targets), IP-level probes must target every host so local-link
+/// targets still receive their planned (e.g. TCP-connect) probes. Explicit `-PR`
+/// ARP probes always target `routed` here (local hosts are auto-ARP's job).
+fn probe_target_set<'a>(
+    probe: &DiscoveryProbe,
+    auto_arp: bool,
+    all_targets: &'a [Ipv4Addr],
+    routed: &'a [Ipv4Addr],
+) -> &'a [Ipv4Addr] {
+    match probe {
+        DiscoveryProbe::Arp => routed,
+        _ if auto_arp => routed,
+        _ => all_targets,
+    }
+}
+
 /// Split targets into (local-Ethernet, routed) by IPv4 CIDR membership in
 /// any non-loopback interface's network.
 fn partition_targets(targets: &[Ipv4Addr]) -> (Vec<Ipv4Addr>, Vec<Ipv4Addr>) {
@@ -217,10 +239,41 @@ mod tests {
             disable_arp_ping: false,
         };
         let targets = vec![Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(2, 2, 2, 2)];
-        let result = run_discovery(&plan, &targets, Some(100), false).await;
+        let result = run_discovery(&plan, &targets, Some(100), false, false).await;
         assert_eq!(result.per_probe.len(), 2);
         assert!(result.per_probe.iter().all(|r| r.is_up));
         assert_eq!(result.hosts_up(), targets);
+    }
+
+    #[test]
+    fn tcp_connect_probe_targets_all_hosts_when_auto_arp_off() {
+        // Non-root / --disable-arp-ping / no local hosts: auto_arp == false.
+        // A local-link target would land only in `all_targets`, not `routed`,
+        // so the planned TCP-connect probe must run against `all_targets` or it
+        // would silently never probe local-link hosts (Issue 3).
+        let local = Ipv4Addr::new(192, 168, 1, 5);
+        let routed = Ipv4Addr::new(8, 8, 8, 8);
+        let all = vec![local, routed];
+        let routed_only = vec![routed];
+
+        let probe = DiscoveryProbe::TcpConnect { port: 80 };
+        let selected = probe_target_set(&probe, false, &all, &routed_only);
+        assert_eq!(selected, all.as_slice());
+        assert!(selected.contains(&local));
+    }
+
+    #[test]
+    fn ip_probe_targets_routed_only_when_auto_arp_on() {
+        // Root with auto-ARP active: local hosts handled by ARP, so IP probes
+        // only cover routed targets (avoids redundant probing).
+        let local = Ipv4Addr::new(192, 168, 1, 5);
+        let routed = Ipv4Addr::new(8, 8, 8, 8);
+        let all = vec![local, routed];
+        let routed_only = vec![routed];
+
+        let probe = DiscoveryProbe::TcpSyn { port: 443 };
+        let selected = probe_target_set(&probe, true, &all, &routed_only);
+        assert_eq!(selected, routed_only.as_slice());
     }
 
     fn row(ip: Ipv4Addr, up: bool) -> HostDiscoverySingleResult {

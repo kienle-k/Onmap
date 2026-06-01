@@ -632,7 +632,7 @@ async fn execute_command(
 
             let start_time = SystemTime::now();
             let engine_result =
-                run_discovery(&plan, &ipv4_targets, timeout_override_ms, no_dns).await;
+                run_discovery(&plan, &ipv4_targets, timeout_override_ms, no_dns, is_root).await;
             let end_time = SystemTime::now();
             let result = discovery_to_legacy(engine_result, &ipv4_targets, &plan, start_time, end_time);
 
@@ -690,6 +690,7 @@ async fn execute_command(
                 timeout_override_ms,
                 discovery_start,
                 no_dns,
+                is_root,
             )
             .await;
             let ipv4_targets: Vec<Ipv4Addr> = host_disc
@@ -729,7 +730,10 @@ async fn execute_command(
                 let ip_word = if total == 1 { "IP address" } else { "IP addresses" };
                 println!("Onmap done: {} {} (0 hosts up) scanned in {:.2} seconds", total, ip_word, elapsed);
                 println!();
-                return Ok((None, None));
+                // Return the discovery result (down hosts) rather than nothing so a
+                // requested XML/normal/grepable path still produces a parseable
+                // artifact with explicit zero-host runstats. No port-scan result.
+                return Ok((Some(host_disc), None));
             }
 
             let num_ports = ports.len();
@@ -813,7 +817,8 @@ async fn execute_command(
             result.1.scan_type = Some(method);
 
             if use_original_printing {
-                print_port_scan_results_original(&result, original_targets.len(), verbosity).await;
+                print_port_scan_results_original(&result, original_targets.len(), verbosity, no_dns)
+                    .await;
             } else {
                 print_port_scan_results(&result);
             }
@@ -850,8 +855,9 @@ async fn run_pre_scan_discovery(
     timeout_override_ms: Option<u64>,
     start_time: SystemTime,
     no_dns: bool,
+    is_root: bool,
 ) -> HostDiscoveryResult {
-    let engine = run_discovery(plan, targets, timeout_override_ms, no_dns).await;
+    let engine = run_discovery(plan, targets, timeout_override_ms, no_dns, is_root).await;
     discovery_to_legacy(engine, targets, plan, start_time, SystemTime::now())
 }
 

@@ -219,7 +219,7 @@ pub async fn run_syn_scan(
     // Load the protocol/service data from the json file
     let protocols = Arc::new(
         load_protocol_map("src/resolving/port_service_mapping.json")
-            .expect("Failed to load protocol map"),
+            .map_err(|e| format!("Failed to load service names: {}", e))?,
     );
 
     // Record the start time to calculate total scan duration later.
