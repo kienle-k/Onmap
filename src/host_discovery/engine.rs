@@ -47,14 +47,48 @@ pub async fn run_discovery(
     no_dns: bool,
     is_root: bool,
 ) -> DiscoveryResult {
+    let (local, routed) = partition_targets(targets);
+
     if matches!(plan.mode, DiscoveryMode::SkipDiscoveryTreatAllUp) {
+        // `-Pn` skips the IP-level ping phase, so routed (off-link) targets are
+        // assumed up and scanned — nmap cannot ping across a router under -Pn
+        // either. But on a directly-connected segment, sending any IP packet
+        // first requires the target's MAC, which means ARP. nmap treats this
+        // ARP as mandatory link-layer resolution (not host discovery): it runs
+        // even under -Pn, and a host that never answers ARP has no MAC and
+        // cannot be scanned, so it is reported down. We mirror that here.
+        //
+        // ARP needs raw sockets; when it cannot run (non-root) or is suppressed
+        // (--disable-arp-ping), fall back to assume-up for local targets too so
+        // we never silently drop them.
+        let arp_local = is_root && !plan.disable_arp_ping && !local.is_empty();
+        if !arp_local {
+            return DiscoveryResult {
+                per_probe: targets.iter().map(treat_as_up).collect(),
+                packets_sent: 0,
+            };
+        }
+
+        let mut per_probe: Vec<HostDiscoverySingleResult> =
+            routed.iter().map(treat_as_up).collect();
+        let mut packets_sent: u64 = 0;
+        match run_arp_discovery(resolve_for_targets(&local), timeout_override_ms, no_dns).await {
+            Ok((rows, summary)) => {
+                per_probe.extend(rows);
+                packets_sent = packets_sent.saturating_add(summary.packets_sent);
+            }
+            // If ARP itself errors, don't drop the local targets — assume them up.
+            Err(e) => {
+                eprintln!("warning: ARP resolution failed under -Pn: {e}");
+                per_probe.extend(local.iter().map(treat_as_up));
+            }
+        }
         return DiscoveryResult {
-            per_probe: targets.iter().map(treat_as_up).collect(),
-            packets_sent: 0,
+            per_probe,
+            packets_sent,
         };
     }
 
-    let (local, routed) = partition_targets(targets);
     let mut per_probe = Vec::new();
     let mut packets_sent: u64 = 0;
 
@@ -232,7 +266,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pn_mode_treats_all_targets_up() {
+    async fn pn_mode_non_root_treats_all_targets_up() {
+        // Non-root: ARP can't run, so -Pn falls back to assume-up for every
+        // target (routed and local alike) rather than dropping local hosts.
         let plan = DiscoveryPlan {
             mode: DiscoveryMode::SkipDiscoveryTreatAllUp,
             probes: Vec::new(),
@@ -242,7 +278,25 @@ mod tests {
         let result = run_discovery(&plan, &targets, Some(100), false, false).await;
         assert_eq!(result.per_probe.len(), 2);
         assert!(result.per_probe.iter().all(|r| r.is_up));
+        assert!(result.per_probe.iter().all(|r| r.reply_type == "user-set"));
         assert_eq!(result.hosts_up(), targets);
+    }
+
+    #[tokio::test]
+    async fn pn_mode_disable_arp_ping_treats_all_targets_up_even_as_root() {
+        // --disable-arp-ping is the documented escape hatch: under -Pn it
+        // restores assume-up for local targets too, so no ARP runs and no host
+        // is dropped, regardless of privilege.
+        let plan = DiscoveryPlan {
+            mode: DiscoveryMode::SkipDiscoveryTreatAllUp,
+            probes: Vec::new(),
+            disable_arp_ping: true,
+        };
+        let targets = vec![Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(2, 2, 2, 2)];
+        let result = run_discovery(&plan, &targets, Some(100), false, true).await;
+        assert_eq!(result.per_probe.len(), 2);
+        assert!(result.per_probe.iter().all(|r| r.is_up && r.reply_type == "user-set"));
+        assert_eq!(result.packets_sent, 0);
     }
 
     #[test]
