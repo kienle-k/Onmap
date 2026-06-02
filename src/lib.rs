@@ -409,7 +409,17 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
 
     let port_scan_method = selected_port_scan_method(cli)?;
     let is_root = nix::unistd::Uid::effective().is_root();
-    let plan = plan_discovery(cli, is_root)?;
+    let mut plan = plan_discovery(cli, is_root)?;
+
+    // TCP connect scan never does ARP: connect() goes through the OS stack,
+    // which resolves the MAC transparently, so onmap performs no link-layer ARP
+    // for this scan type regardless of privilege or local-link membership
+    // (matches nmap). Suppressing auto-ARP makes -sT -Pn on a local target
+    // report it `user-set` up rather than `arp-response`. For other scan types
+    // ARP behavior is unchanged.
+    if port_scan_method == Some(PortScanOption::ConnectScan) {
+        plan.disable_arp_ping = true;
+    }
     let any_discovery_flag = cli.ping_scan
         || cli.pn
         || cli.icmp_echo
@@ -1123,6 +1133,41 @@ mod tests {
                 assert_eq!(ports, vec![22]);
                 assert_eq!(targets, vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]);
                 assert_eq!(timeout_override_ms, None);
+            }
+            other => panic!("expected port scan command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn connect_scan_disables_arp_ping() {
+        // -sT never does ARP (connect() resolves the MAC via the OS stack), so
+        // the plan must suppress auto-ARP regardless of -Pn / privilege.
+        let cli = parse_cli(&["onmap", "-sT", "-Pn", "-p", "80", "10.10.0.1"]);
+        let command = build_command_from_cli(&cli)
+            .expect("connect scan command should build")
+            .expect("connect scan command should be present");
+
+        match command {
+            ExecutionCommand::PortScan { method, plan, .. } => {
+                assert_eq!(method, PortScanOption::ConnectScan);
+                assert!(plan.disable_arp_ping, "connect scan must disable ARP ping");
+            }
+            other => panic!("expected port scan command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn syn_scan_does_not_disable_arp_ping() {
+        // Other scan types keep their normal ARP behavior.
+        let cli = parse_cli(&["onmap", "-sS", "-p", "80", "10.10.0.1"]);
+        let command = build_command_from_cli(&cli)
+            .expect("syn scan command should build")
+            .expect("syn scan command should be present");
+
+        match command {
+            ExecutionCommand::PortScan { method, plan, .. } => {
+                assert_eq!(method, PortScanOption::SynScan);
+                assert!(!plan.disable_arp_ping, "syn scan must not disable ARP ping");
             }
             other => panic!("expected port scan command, got {:?}", other),
         }
