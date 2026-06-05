@@ -15,7 +15,9 @@ pub fn host_reply_display_name(reply: &HostDiscoveryReply) -> String {
         HostDiscoveryReply::TcpSyn { port, reason }
         | HostDiscoveryReply::TcpConnect { port, reason } => match reason {
             PortStateReasons::SynAck => format!("SYN-ACK port {}", port),
-            PortStateReasons::Reset => format!("RST port {}", port),
+            PortStateReasons::Reset | PortStateReasons::ConnRefused => {
+                format!("RST port {}", port)
+            }
             _ => format!("response port {}", port),
         },
         HostDiscoveryReply::TcpAck { port, reason } => match reason {
@@ -47,6 +49,7 @@ pub fn host_reply_nmap_reason(reply: &HostDiscoveryReply) -> &'static str {
         | HostDiscoveryReply::TcpConnect { reason, .. } => match reason {
             PortStateReasons::SynAck => "syn-ack",
             PortStateReasons::Reset => "reset",
+            PortStateReasons::ConnRefused => "conn-refused",
             _ => "user-set",
         },
         HostDiscoveryReply::TcpAck { .. } => "reset",

@@ -160,6 +160,10 @@ pub fn state_reason_name(reason: PortStateReasons) -> &'static str {
         PortStateReasons::Timeout => "no-response",
         PortStateReasons::UdpResponse => "udp-response",
         PortStateReasons::IcmpPortUnreachable => "port-unreach",
+        PortStateReasons::ConnRefused => "conn-refused",
+        PortStateReasons::HostUnreachable => "host-unreach",
+        PortStateReasons::NetworkUnreachable => "net-unreach",
+        PortStateReasons::AdminProhibited => "admin-prohibited",
     }
 }
 
@@ -172,6 +176,10 @@ pub fn state_reason_display_name(reason: PortStateReasons) -> &'static str {
         PortStateReasons::IcmpPortUnreachable => "ICMP Port Unreachable",
         PortStateReasons::Unfiltered => "Unfiltered",
         PortStateReasons::Timeout => "Timeout",
+        PortStateReasons::ConnRefused => "Connection Refused",
+        PortStateReasons::HostUnreachable => "Host Unreachable",
+        PortStateReasons::NetworkUnreachable => "Network Unreachable",
+        PortStateReasons::AdminProhibited => "Admin Prohibited",
     }
 }
 
@@ -202,5 +210,9 @@ pub fn extraport_reason_name(reason: PortStateReasons) -> &'static str {
         PortStateReasons::Timeout => "no-responses",
         PortStateReasons::UdpResponse => "udp-responses",
         PortStateReasons::IcmpPortUnreachable => "port-unreaches",
+        PortStateReasons::ConnRefused => "conn-refused",
+        PortStateReasons::HostUnreachable => "host-unreaches",
+        PortStateReasons::NetworkUnreachable => "net-unreaches",
+        PortStateReasons::AdminProhibited => "admin-prohibiteds",
     }
 }

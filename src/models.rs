@@ -450,6 +450,14 @@ pub enum PortStateReasons {
     Unfiltered,
     /// No response was received, indicating a filtered port or dropped packet.
     Timeout,
+    /// The connection was actively refused (TCP connect scan), indicating a closed port.
+    ConnRefused,
+    /// An ICMP host unreachable message was received, indicating a filtered port.
+    HostUnreachable,
+    /// An ICMP network unreachable message was received, indicating a filtered port.
+    NetworkUnreachable,
+    /// The connection was administratively prohibited, indicating a filtered port.
+    AdminProhibited,
 }
 
 /// Structured reply type for host discovery probes.

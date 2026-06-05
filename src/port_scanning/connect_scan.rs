@@ -53,21 +53,38 @@ pub async fn port_tcp_connect_scan(
 
     let socket_addr = SocketAddr::new(ip_address, port);
 
-    // Optimized to remove redundancy (using the function above)
+    // Map each connect outcome to a port state, mirroring Nmap's connect scan.
     match timeout(timeout_duration, TcpStream::connect(socket_addr)).await {
         Ok(Ok(_)) => Ok(make_result(PortStates::Open, PortStateReasons::SynAck)),
-        Ok(Err(e)) => match e.kind() {
-            ErrorKind::ConnectionRefused => {
-                Ok(make_result(PortStates::Closed, PortStateReasons::Reset))
-            }
-            _ => Err(format!(
-                "Error connecting to {}:{}: {:?}",
-                ip_address,
-                port,
-                e.kind()
-            )),
-        },
-        Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::Timeout)), // timeout
+        Ok(Err(e)) => {
+            let (state, reason) = match e.kind() {
+                ErrorKind::ConnectionRefused => (PortStates::Closed, PortStateReasons::ConnRefused),
+                ErrorKind::TimedOut => (PortStates::Filtered, PortStateReasons::Timeout),
+                ErrorKind::HostUnreachable => {
+                    (PortStates::Filtered, PortStateReasons::HostUnreachable)
+                }
+                ErrorKind::NetworkUnreachable => {
+                    (PortStates::Filtered, PortStateReasons::NetworkUnreachable)
+                }
+                ErrorKind::PermissionDenied => {
+                    (PortStates::Filtered, PortStateReasons::AdminProhibited)
+                }
+                // nmap maps EADDRNOTAVAIL to no-response.
+                ErrorKind::AddrNotAvailable => (PortStates::Filtered, PortStateReasons::Timeout),
+                // Unmapped errors are still a valid (filtered) result; log for visibility.
+                other => {
+                    log::debug!(
+                        "Unmapped connect error for {}:{}: {:?}",
+                        ip_address,
+                        port,
+                        other
+                    );
+                    (PortStates::Filtered, PortStateReasons::Timeout)
+                }
+            };
+            Ok(make_result(state, reason))
+        }
+        Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::Timeout)), // tokio timeout
     }
 }
 
@@ -108,6 +125,8 @@ pub async fn run_connect_scan(
     let single_results = Arc::new(Mutex::new(Vec::<PortScanSingleResult>::new()));
     let open_ports = Arc::new(Mutex::new(Vec::<u16>::new()));
     let packets_sent = Arc::new(Mutex::new(0u32));
+    // First fatal per-port error, if any. A successful run leaves this `None`.
+    let scan_error = Arc::new(Mutex::new(None::<String>));
 
     // Avoid overwhelming the network --> limit concurrent scans
     let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
@@ -122,6 +141,7 @@ pub async fn run_connect_scan(
             let packets_sent_clone = Arc::clone(&packets_sent);
             let sem_clone = Arc::clone(&semaphore);
             let protocols_clone = Arc::clone(&protocols);
+            let scan_error_clone = Arc::clone(&scan_error);
 
             // Spawn a task for each scan
             let task = tokio::spawn(async move {
@@ -181,7 +201,18 @@ pub async fn run_connect_scan(
                         }
                         results.push(result);
                     }
-                    Err(_e) => {}
+                    // A per-port error means a result is missing; never drop it silently.
+                    Err(e) => {
+                        log::error!("Connect scan failed for {}:{}: {}", ip_addr, port, e);
+                        let mut slot = match scan_error_clone.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => {
+                                eprintln!("Mutex poisoned: scan_error");
+                                poisoned.into_inner()
+                            }
+                        };
+                        slot.get_or_insert(e);
+                    }
                 }
             });
 
@@ -192,6 +223,15 @@ pub async fn run_connect_scan(
     // Wait for scans to complete
     for task in tasks {
         let _ = task.await;
+    }
+
+    // Fail the whole run rather than returning Ok with missing port results.
+    if let Some(error) = Arc::try_unwrap(scan_error)
+        .map_err(|_| "References still exist to scan_error")?
+        .into_inner()
+        .map_err(|_| "Mutex is poisoned: scan_error")?
+    {
+        return Err(error);
     }
 
     let end_time = SystemTime::now();
