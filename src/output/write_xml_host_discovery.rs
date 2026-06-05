@@ -1,4 +1,5 @@
 use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::output::host_reply_nmap_reason;
 use chrono::{DateTime, Local};
 use std::fs::File;
 use std::io::Write;
@@ -61,7 +62,7 @@ pub fn save_to_file_xml_host_discovery(
             file,
             "    <status state=\"{}\" reason=\"{}\" reason_ttl=\"{}\"/>",
             if host.is_up { "up" } else { "down" },
-            xml_attr(host.reply_type.to_nmap_reason()),
+            xml_attr(host_reply_nmap_reason(&host.reply_type)),
             host.ttl
         )?;
         writeln!(

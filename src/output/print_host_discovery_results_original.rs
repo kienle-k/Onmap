@@ -1,9 +1,6 @@
-use crate::models::{HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult};
+use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::output::host_reply_nmap_reason;
 use std::net::IpAddr;
-
-fn reply_type_to_nmap(reply_type: &HostDiscoveryReply) -> &str {
-    reply_type.to_nmap_reason()
-}
 
 pub fn print_host_discovery_results_original(
     results: &(Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult),
@@ -51,7 +48,7 @@ pub fn print_host_discovery_results_original(
             let latency = host.latency.map(|d| d.as_secs_f32() / 10.0).unwrap_or(-1.0);
 
             if show_reason {
-                let reply = reply_type_to_nmap(&host.reply_type);
+                let reply = host_reply_nmap_reason(&host.reply_type);
                 println!("Host is up, received {} ({:.7}s latency).", reply, latency);
             } else {
                 println!("Host is up ({:.7}s latency).", latency);

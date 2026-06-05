@@ -6,6 +6,8 @@
 /// Shared utility to format `Duration` values for terminal output.
 pub mod format_duration;
 
+/// Shared host-discovery output-name processing.
+pub mod host_result_processing;
 /// Shared port-result grouping and output-name processing.
 pub mod port_result_processing;
 /// Terminal output for host discovery results.
@@ -30,6 +32,7 @@ pub mod write_xml_host_discovery;
 pub mod write_xml_port_scan;
 
 pub use format_duration::format_duration;
+pub use host_result_processing::{host_reply_display_name, host_reply_nmap_reason};
 pub use port_result_processing::{
     collapse_threshold, extraport_reason_name, format_port_ranges, port_state_name,
     protocol_display_name, protocol_name, state_reason_display_name, state_reason_name,

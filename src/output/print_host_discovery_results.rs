@@ -1,5 +1,6 @@
 use super::format_duration;
 use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::output::host_reply_display_name;
 use prettytable::{Cell, Row, Table, format};
 
 /// Formats and prints the results of a host discovery scan to the console.
@@ -105,7 +106,7 @@ pub fn print_host_discovery_results(
                 Cell::new(status),
                 Cell::new(&latency),
                 Cell::new(hostname),
-                Cell::new(&host.reply_type.to_display_string()),
+                Cell::new(&host_reply_display_name(&host.reply_type)),
                 Cell::new(&host.ttl.to_string()),
             ]));
         }

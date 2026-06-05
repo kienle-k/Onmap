@@ -1,9 +1,12 @@
 use crate::models::{
     HostDiscoverySingleResult, PortScanAllResult, PortScanOption, PortScanSingleResult, Protocols,
 };
-use crate::output::port_result_processing::{
-    extraport_reason_name, format_port_ranges, port_state_name, protocol_name, state_reason_name,
-    summarize_ports,
+use crate::output::{
+    host_reply_nmap_reason,
+    port_result_processing::{
+        extraport_reason_name, format_port_ranges, port_state_name, protocol_name,
+        state_reason_name, summarize_ports,
+    },
 };
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
@@ -59,7 +62,12 @@ pub fn save_to_file_xml_port_scan(
     // Per-host liveness reason (+ttl) from the discovery phase, for <status>.
     let host_status: HashMap<IpAddr, (&'static str, u8)> = host_up
         .iter()
-        .map(|h| (h.ip_address, (h.reply_type.to_nmap_reason(), h.ttl)))
+        .map(|host| {
+            (
+                host.ip_address,
+                (host_reply_nmap_reason(&host.reply_type), host.ttl),
+            )
+        })
         .collect();
 
     // Union of every scanned port, for <scaninfo> numservices/services.
