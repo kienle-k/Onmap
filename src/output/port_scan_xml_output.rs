@@ -47,29 +47,6 @@ fn xml_time(t: SystemTime) -> String {
     dt.format("%a %b %e %H:%M:%S %Y").to_string()
 }
 
-fn host_reason_name(reason: &str) -> &str {
-    if reason.starts_with("SYN-ACK") {
-        "syn-ack"
-    } else if reason.starts_with("RST")
-        || reason.contains("ConnectionRefused")
-        || reason.contains("connection refused")
-    {
-        "reset"
-    } else if reason == "ARP reply" {
-        "arp-response"
-    } else if reason == "ICMP echo reply" {
-        "echo-reply"
-    } else if reason.contains("timestamp") {
-        "timestamp-reply"
-    } else if reason.contains("UDP") {
-        "udp-response"
-    } else if reason == "no response" || reason.starts_with("Error:") {
-        "no-response"
-    } else {
-        reason
-    }
-}
-
 pub fn save_to_file_xml_port_scan(
     path: &str,
     results: (&Vec<PortScanSingleResult>, &PortScanAllResult),
@@ -80,9 +57,9 @@ pub fn save_to_file_xml_port_scan(
     let mut file = File::create(path)?;
 
     // Per-host liveness reason (+ttl) from the discovery phase, for <status>.
-    let host_status: HashMap<IpAddr, (&str, u8)> = host_up
+    let host_status: HashMap<IpAddr, (&'static str, u8)> = host_up
         .iter()
-        .map(|h| (h.ip_address, (h.reply_type.as_str(), h.ttl)))
+        .map(|h| (h.ip_address, (h.reply_type.to_nmap_reason(), h.ttl)))
         .collect();
 
     // Union of every scanned port, for <scaninfo> numservices/services.
@@ -135,7 +112,7 @@ pub fn save_to_file_xml_port_scan(
         writeln!(
             file,
             "    <status state=\"up\" reason=\"{}\" reason_ttl=\"{}\"/>",
-            xml_attr(host_reason_name(reason)),
+            xml_attr(reason),
             reason_ttl
         )?;
         writeln!(
@@ -236,7 +213,7 @@ pub fn save_to_file_xml_port_scan(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{PortStateReasons, PortStates};
+    use crate::models::{HostDiscoveryReply, PortStateReasons, PortStates};
     use std::fs;
     use std::net::Ipv4Addr;
     use std::time::SystemTime;
@@ -304,7 +281,10 @@ mod tests {
             dns_resolve: None,
             latency: None,
             is_up: true,
-            reply_type: "SYN-ACK port 443".to_string(),
+            reply_type: HostDiscoveryReply::TcpConnect {
+                port: 443,
+                reason: PortStateReasons::SynAck,
+            },
             ttl: 55,
         }];
         let mut summary = PortScanAllResult::new();
@@ -329,7 +309,10 @@ mod tests {
             dns_resolve: None,
             latency: None,
             is_up: true,
-            reply_type: "RST port 443".to_string(),
+            reply_type: HostDiscoveryReply::TcpConnect {
+                port: 443,
+                reason: PortStateReasons::Reset,
+            },
             ttl: 41,
         }];
         let mut summary = PortScanAllResult::new();
@@ -355,7 +338,10 @@ mod tests {
                 dns_resolve: None,
                 latency: None,
                 is_up: true,
-                reply_type: "SYN-ACK port 443".to_string(),
+                reply_type: HostDiscoveryReply::TcpConnect {
+                    port: 443,
+                    reason: PortStateReasons::SynAck,
+                },
                 ttl: 55,
             },
             HostDiscoverySingleResult {
@@ -363,7 +349,7 @@ mod tests {
                 dns_resolve: None,
                 latency: None,
                 is_up: false,
-                reply_type: "no response".to_string(),
+                reply_type: HostDiscoveryReply::NoResponse,
                 ttl: 0,
             },
         ];
@@ -399,7 +385,7 @@ mod tests {
             dns_resolve: None,
             latency: None,
             is_up: true,
-            reply_type: "custom & \"bad\"".to_string(),
+            reply_type: HostDiscoveryReply::Custom("custom & \"bad\"".to_string()),
             ttl: 0,
         }];
 
@@ -411,7 +397,7 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         assert!(xml.contains("<scaninfo type=\"unknown\""));
-        assert!(xml.contains("reason=\"custom &amp; &quot;bad&quot;\""));
+        assert!(xml.contains("reason=\"user-set\""));
         assert!(xml.contains("service name=\"a&amp;b&quot;&lt;c&gt;\""));
     }
 }

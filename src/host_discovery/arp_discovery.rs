@@ -9,7 +9,7 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio::task;
 use tokio::time::timeout;
 
-use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::models::{HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult};
 use crate::resolving::resolve_hostname;
 
 /// Runs an ARP scan against `(target, source_ip)` pairs.
@@ -50,18 +50,18 @@ pub async fn run_arp_discovery(
             let dns_resolve = None;
             let mut is_reachable = false;
             let mut latency = None;
-            let mut reply_type = "no response".to_string();
+            let mut reply_type = HostDiscoveryReply::NoResponse;
 
             match arp_result {
                 Ok((reachable, lat)) => {
                     is_reachable = reachable;
                     latency = lat;
                     if is_reachable {
-                        reply_type = "ARP reply".to_string();
+                        reply_type = HostDiscoveryReply::ArpReply;
                     }
                 }
                 Err(e) => {
-                    reply_type = format!("Error: {}", e);
+                    reply_type = HostDiscoveryReply::Error(e);
                 }
             }
 

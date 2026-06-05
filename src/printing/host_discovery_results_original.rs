@@ -1,22 +1,8 @@
-use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::models::{HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult};
 use std::net::IpAddr;
 
-fn reply_type_to_nmap(reply_type: &str) -> &str {
-    if reply_type.starts_with("SYN-ACK") {
-        "syn-ack"
-    } else if reply_type.starts_with("RST") {
-        "reset"
-    } else if reply_type == "ARP reply" {
-        "arp-response"
-    } else if reply_type == "ICMP echo reply" {
-        "echo-reply"
-    } else if reply_type.contains("timestamp") {
-        "timestamp-reply"
-    } else if reply_type.contains("UDP") {
-        "udp-response"
-    } else {
-        "user-set"
-    }
+fn reply_type_to_nmap(reply_type: &HostDiscoveryReply) -> &str {
+    reply_type.to_nmap_reason()
 }
 
 pub fn print_host_discovery_results_original(

@@ -29,29 +29,6 @@ fn xml_attr(value: &str) -> String {
         .replace('>', "&gt;")
 }
 
-fn host_reason_name(reason: &str) -> &str {
-    if reason.starts_with("SYN-ACK") {
-        "syn-ack"
-    } else if reason.starts_with("RST")
-        || reason.contains("ConnectionRefused")
-        || reason.contains("connection refused")
-    {
-        "reset"
-    } else if reason == "ARP reply" {
-        "arp-response"
-    } else if reason == "ICMP echo reply" {
-        "echo-reply"
-    } else if reason.contains("timestamp") {
-        "timestamp-reply"
-    } else if reason.contains("UDP") {
-        "udp-response"
-    } else if reason == "no response" || reason.starts_with("Error:") {
-        "no-response"
-    } else {
-        reason
-    }
-}
-
 pub fn save_to_file_xml_host_discovery(
     path: &str,
     results: (&Vec<HostDiscoverySingleResult>, &HostDiscoveryAllResult),
@@ -84,7 +61,7 @@ pub fn save_to_file_xml_host_discovery(
             file,
             "    <status state=\"{}\" reason=\"{}\" reason_ttl=\"{}\"/>",
             if host.is_up { "up" } else { "down" },
-            xml_attr(host_reason_name(&host.reply_type)),
+            xml_attr(host.reply_type.to_nmap_reason()),
             host.ttl
         )?;
         writeln!(
@@ -148,6 +125,7 @@ pub fn save_to_file_xml_host_discovery(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{HostDiscoveryReply, PortStateReasons};
     use std::fs;
     use std::net::Ipv4Addr;
     use std::time::{Duration, SystemTime};
@@ -162,7 +140,10 @@ mod tests {
                 dns_resolve: Some("up.example".to_string()),
                 latency: Some(Duration::from_millis(2)),
                 is_up: true,
-                reply_type: "SYN-ACK port 80".to_string(),
+                reply_type: HostDiscoveryReply::TcpSyn {
+                    port: 80,
+                    reason: PortStateReasons::SynAck,
+                },
                 ttl: 64,
             },
             HostDiscoverySingleResult {
@@ -170,7 +151,7 @@ mod tests {
                 dns_resolve: None,
                 latency: None,
                 is_up: false,
-                reply_type: "no response".to_string(),
+                reply_type: HostDiscoveryReply::NoResponse,
                 ttl: 0,
             },
         ];
@@ -216,7 +197,7 @@ mod tests {
             dns_resolve: None,
             latency: None,
             is_up: false,
-            reply_type: "no response".to_string(),
+            reply_type: HostDiscoveryReply::NoResponse,
             ttl: 0,
         }];
         let summary = HostDiscoveryAllResult {
@@ -250,7 +231,7 @@ mod tests {
             dns_resolve: Some("a&b\"<c>".to_string()),
             latency: None,
             is_up: true,
-            reply_type: "custom & \"bad\"".to_string(),
+            reply_type: HostDiscoveryReply::Custom("custom & \"bad\"".to_string()),
             ttl: 0,
         }];
         let summary = HostDiscoveryAllResult {
@@ -270,7 +251,7 @@ mod tests {
         let xml = fs::read_to_string(&path).unwrap();
         let _ = fs::remove_file(&path);
 
-        assert!(xml.contains("reason=\"custom &amp; &quot;bad&quot;\""));
+        assert!(xml.contains("reason=\"user-set\""));
         assert!(xml.contains("hostname name=\"a&amp;b&quot;&lt;c&gt;\""));
     }
 }

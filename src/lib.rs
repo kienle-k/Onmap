@@ -1030,6 +1030,7 @@ fn print_startup_message() {
 mod tests {
     use super::*;
     use clap::Parser;
+    use models::{HostDiscoveryReply, PortStateReasons};
     use std::time::Duration;
 
     fn parse_cli(args: &[&str]) -> Cli {
@@ -1219,7 +1220,7 @@ mod tests {
                     dns_resolve: Some("slow.example".to_string()),
                     latency: Some(Duration::from_millis(25)),
                     is_up: true,
-                    reply_type: "ICMP echo reply".to_string(),
+                    reply_type: HostDiscoveryReply::IcmpEchoReply,
                     ttl: 42,
                 }],
                 HostDiscoveryAllResult {
@@ -1239,7 +1240,10 @@ mod tests {
                     dns_resolve: Some("fast.example".to_string()),
                     latency: Some(Duration::from_millis(5)),
                     is_up: true,
-                    reply_type: "RST port 22".to_string(),
+                    reply_type: HostDiscoveryReply::TcpConnect {
+                        port: 22,
+                        reason: PortStateReasons::Reset,
+                    },
                     ttl: 55,
                 }],
                 HostDiscoveryAllResult {
@@ -1257,7 +1261,13 @@ mod tests {
 
         assert_eq!(merged.0.len(), 1);
         assert!(merged.0[0].is_up);
-        assert_eq!(merged.0[0].reply_type, "RST port 22");
+        assert_eq!(
+            merged.0[0].reply_type,
+            HostDiscoveryReply::TcpConnect {
+                port: 22,
+                reason: PortStateReasons::Reset,
+            }
+        );
         assert_eq!(merged.0[0].dns_resolve.as_deref(), Some("fast.example"));
         assert_eq!(merged.0[0].ttl, 55);
 

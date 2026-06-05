@@ -4,7 +4,9 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::models::{
+    HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult, PortStateReasons,
+};
 use crate::port_scanning::ack_scan::port_ack_scan;
 use crate::resolving::resolve_hostname;
 
@@ -12,7 +14,7 @@ struct HostProbeState {
     is_up: bool,
     latency: Option<Duration>,
     ttl: u8,
-    reply_type: String,
+    reply_type: HostDiscoveryReply,
 }
 
 /// Runs a TCP ACK discovery scan against `(target, source_ip)` pairs.
@@ -39,7 +41,7 @@ pub async fn run_tcp_ack_discovery(
                     is_up: false,
                     latency: None,
                     ttl: 0,
-                    reply_type: "no response".to_string(),
+                    reply_type: HostDiscoveryReply::NoResponse,
                 },
             )
         })
@@ -80,7 +82,10 @@ pub async fn run_tcp_ack_discovery(
                 entry.is_up = true;
                 entry.latency = Some(latency);
                 entry.ttl = ttl.unwrap_or(0);
-                entry.reply_type = format!("RST port {}", port);
+                entry.reply_type = HostDiscoveryReply::TcpAck {
+                    port,
+                    reason: PortStateReasons::Unfiltered,
+                };
             }
         }
     }

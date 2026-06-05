@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio::task;
 use tokio::time::timeout;
 
-use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::models::{HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult};
 use crate::resolving::resolve_hostname;
 
 /// Runs an ICMP echo (ping) scan against a list of target IP addresses.
@@ -45,7 +45,7 @@ pub async fn run_icmp_echo_discovery(
             let mut is_reachable = false;
             let mut latency = None;
             let mut ttl = 0;
-            let mut reply_type = "no response".to_string();
+            let mut reply_type = HostDiscoveryReply::NoResponse;
 
             match icmp_result {
                 Ok((reachable, lat, received_ttl)) => {
@@ -53,13 +53,13 @@ pub async fn run_icmp_echo_discovery(
                     latency = lat;
                     ttl = received_ttl.unwrap_or(0);
                     if is_reachable {
-                        reply_type = "ICMP echo reply".to_string();
+                        reply_type = HostDiscoveryReply::IcmpEchoReply;
                     }
                 }
                 Err(e) => {
                     // An error occurred during the ICMP ping (e.g., permission denied, socket error).
                     // This host is considered not up due to the error.
-                    reply_type = format!("Error: {}", e);
+                    reply_type = HostDiscoveryReply::Error(e);
                     // is_reachable remains false, latency and ttl remain None/0
                 }
             }

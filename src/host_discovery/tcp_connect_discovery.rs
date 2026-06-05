@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::models::{
-    HostDiscoveryAllResult, HostDiscoverySingleResult, PortStateReasons, PortStates,
+    HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult, PortStates,
 };
 use crate::port_scanning::connect_scan::port_tcp_connect_scan;
 use crate::resolving::get_service_name::load_protocol_map;
@@ -17,7 +17,7 @@ struct HostProbeState {
     is_up: bool,
     latency: Option<Duration>,
     ttl: u8,
-    reply_type: String,
+    reply_type: HostDiscoveryReply,
 }
 
 /// Runs a TCP connect discovery scan against target IPs.
@@ -52,7 +52,7 @@ pub async fn run_tcp_connect_discovery(
                     is_up: false,
                     latency: None,
                     ttl: 0,
-                    reply_type: "no response".to_string(),
+                    reply_type: HostDiscoveryReply::NoResponse,
                 },
             )
         })
@@ -102,18 +102,17 @@ pub async fn run_tcp_connect_discovery(
                         entry.is_up = true;
                         entry.latency = Some(latency);
                         entry.ttl = port_result.ttl;
-                        entry.reply_type = match port_result.reason {
-                            PortStateReasons::SynAck => format!("SYN-ACK port {}", port),
-                            PortStateReasons::Reset => format!("RST port {}", port),
-                            _ => format!("response port {}", port),
+                        entry.reply_type = HostDiscoveryReply::TcpConnect {
+                            port,
+                            reason: port_result.reason,
                         };
                     }
                 }
                 _ => {}
             },
             Err(e) => {
-                if !entry.is_up && entry.reply_type == "no response" {
-                    entry.reply_type = format!("Error: {}", e);
+                if !entry.is_up && entry.reply_type == HostDiscoveryReply::NoResponse {
+                    entry.reply_type = HostDiscoveryReply::Error(e);
                 }
             }
         }

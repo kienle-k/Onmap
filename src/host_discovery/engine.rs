@@ -9,7 +9,9 @@ use crate::host_discovery::{
     run_tcp_ack_discovery, run_tcp_connect_discovery, run_tcp_syn_discovery,
     udp_discovery::run_udp_discovery,
 };
-use crate::models::{DiscoveryMode, DiscoveryPlan, DiscoveryProbe, HostDiscoverySingleResult};
+use crate::models::{
+    DiscoveryMode, DiscoveryPlan, DiscoveryProbe, HostDiscoveryReply, HostDiscoverySingleResult,
+};
 use crate::resolving::source_ip::resolve_for_targets;
 use futures::future::join_all;
 use pnet::datalink;
@@ -150,7 +152,7 @@ fn treat_as_up(ip: &Ipv4Addr) -> HostDiscoverySingleResult {
         dns_resolve: None,
         latency: None,
         is_up: true,
-        reply_type: "user-set".to_string(),
+        reply_type: HostDiscoveryReply::UserSet,
         ttl: 0,
     }
 }
@@ -284,7 +286,12 @@ mod tests {
         let result = run_discovery(&plan, &targets, Some(100), false, false).await;
         assert_eq!(result.per_probe.len(), 2);
         assert!(result.per_probe.iter().all(|r| r.is_up));
-        assert!(result.per_probe.iter().all(|r| r.reply_type == "user-set"));
+        assert!(
+            result
+                .per_probe
+                .iter()
+                .all(|r| r.reply_type == HostDiscoveryReply::UserSet)
+        );
         assert_eq!(result.hosts_up(), targets);
     }
 
@@ -305,7 +312,7 @@ mod tests {
             result
                 .per_probe
                 .iter()
-                .all(|r| r.is_up && r.reply_type == "user-set")
+                .all(|r| r.is_up && r.reply_type == HostDiscoveryReply::UserSet)
         );
         assert_eq!(result.packets_sent, 0);
     }
@@ -347,7 +354,7 @@ mod tests {
             dns_resolve: None,
             latency: None,
             is_up: up,
-            reply_type: String::new(),
+            reply_type: HostDiscoveryReply::NoResponse,
             ttl: 0,
         }
     }

@@ -452,6 +452,74 @@ pub enum PortStateReasons {
     Timeout,
 }
 
+/// Structured reply type for host discovery probes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostDiscoveryReply {
+    NoResponse,
+    Error(String),
+    UserSet,
+    Custom(String),
+    ArpReply,
+    IcmpEchoReply,
+    IcmpTimestampReply,
+    TcpSyn { port: u16, reason: PortStateReasons },
+    TcpAck { port: u16, reason: PortStateReasons },
+    TcpConnect { port: u16, reason: PortStateReasons },
+    Udp { port: u16, reason: PortStateReasons },
+}
+
+impl HostDiscoveryReply {
+    pub fn to_display_string(&self) -> String {
+        match self {
+            HostDiscoveryReply::NoResponse => "no response".to_string(),
+            HostDiscoveryReply::Error(message) => format!("Error: {}", message),
+            HostDiscoveryReply::UserSet => "user-set".to_string(),
+            HostDiscoveryReply::Custom(value) => value.to_string(),
+            HostDiscoveryReply::ArpReply => "ARP reply".to_string(),
+            HostDiscoveryReply::IcmpEchoReply => "ICMP echo reply".to_string(),
+            HostDiscoveryReply::IcmpTimestampReply => "ICMP timestamp reply".to_string(),
+            HostDiscoveryReply::TcpSyn { port, reason }
+            | HostDiscoveryReply::TcpConnect { port, reason } => match reason {
+                PortStateReasons::SynAck => format!("SYN-ACK port {}", port),
+                PortStateReasons::Reset => format!("RST port {}", port),
+                _ => format!("response port {}", port),
+            },
+            HostDiscoveryReply::TcpAck { port, reason } => match reason {
+                PortStateReasons::Reset | PortStateReasons::Unfiltered => {
+                    format!("RST port {}", port)
+                }
+                _ => format!("response port {}", port),
+            },
+            HostDiscoveryReply::Udp { port, reason } => match reason {
+                PortStateReasons::UdpResponse => format!("UDP response port {}", port),
+                PortStateReasons::IcmpPortUnreachable => {
+                    format!("ICMP port unreachable port {}", port)
+                }
+                _ => format!("response port {}", port),
+            },
+        }
+    }
+
+    pub fn to_nmap_reason(&self) -> &'static str {
+        match self {
+            HostDiscoveryReply::NoResponse | HostDiscoveryReply::Error(_) => "no-response",
+            HostDiscoveryReply::UserSet => "user-set",
+            HostDiscoveryReply::Custom(_) => "user-set",
+            HostDiscoveryReply::ArpReply => "arp-response",
+            HostDiscoveryReply::IcmpEchoReply => "echo-reply",
+            HostDiscoveryReply::IcmpTimestampReply => "timestamp-reply",
+            HostDiscoveryReply::TcpSyn { reason, .. }
+            | HostDiscoveryReply::TcpConnect { reason, .. } => match reason {
+                PortStateReasons::SynAck => "syn-ack",
+                PortStateReasons::Reset => "reset",
+                _ => "user-set",
+            },
+            HostDiscoveryReply::TcpAck { .. } => "reset",
+            HostDiscoveryReply::Udp { .. } => "udp-response",
+        }
+    }
+}
+
 /// The network protocol used for a scan.
 #[derive(Clone, Copy, Debug)]
 pub enum Protocols {
@@ -523,8 +591,8 @@ pub struct HostDiscoverySingleResult {
     pub latency: Option<Duration>,
     /// A boolean indicating whether the host is considered online.
     pub is_up: bool,
-    /// A string describing the type of reply received (e.g., "echo-reply").
-    pub reply_type: String,
+    /// The type of reply received by the discovery probe.
+    pub reply_type: HostDiscoveryReply,
     /// The Time-To-Live value from the response packet.
     pub ttl: u8,
 }

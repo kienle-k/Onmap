@@ -105,7 +105,7 @@ pub fn print_host_discovery_results(
                 Cell::new(status),
                 Cell::new(&latency),
                 Cell::new(hostname),
-                Cell::new(&host.reply_type),
+                Cell::new(&host.reply_type.to_display_string()),
                 Cell::new(&host.ttl.to_string()),
             ]));
         }

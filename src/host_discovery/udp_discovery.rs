@@ -7,7 +7,9 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio::task;
 use tokio::time::timeout;
 
-use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::models::{
+    HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult, PortStateReasons,
+};
 use crate::resolving::resolve_hostname;
 
 enum UdpProbeStatus {
@@ -20,7 +22,7 @@ struct HostProbeState {
     is_up: bool,
     latency: Option<Duration>,
     ttl: u8,
-    reply_type: String,
+    reply_type: HostDiscoveryReply,
 }
 
 /// Runs a UDP discovery scan against `(target, source_ip)` pairs.
@@ -47,7 +49,7 @@ pub async fn run_udp_discovery(
                     is_up: false,
                     latency: None,
                     ttl: 0,
-                    reply_type: "no response".to_string(),
+                    reply_type: HostDiscoveryReply::NoResponse,
                 },
             )
         })
@@ -78,10 +80,14 @@ pub async fn run_udp_discovery(
         match result {
             Ok((status, latency)) => {
                 let reply_type = match status {
-                    UdpProbeStatus::UdpResponse => Some(format!("UDP response port {}", port)),
-                    UdpProbeStatus::IcmpPortUnreachable => {
-                        Some(format!("ICMP port unreachable port {}", port))
-                    }
+                    UdpProbeStatus::UdpResponse => Some(HostDiscoveryReply::Udp {
+                        port,
+                        reason: PortStateReasons::UdpResponse,
+                    }),
+                    UdpProbeStatus::IcmpPortUnreachable => Some(HostDiscoveryReply::Udp {
+                        port,
+                        reason: PortStateReasons::IcmpPortUnreachable,
+                    }),
                     UdpProbeStatus::NoResponse => None,
                 };
 
@@ -100,8 +106,8 @@ pub async fn run_udp_discovery(
                 }
             }
             Err(e) => {
-                if !entry.is_up && entry.reply_type == "no response" {
-                    entry.reply_type = format!("Error: {}", e);
+                if !entry.is_up && entry.reply_type == HostDiscoveryReply::NoResponse {
+                    entry.reply_type = HostDiscoveryReply::Error(e);
                 }
             }
         }
