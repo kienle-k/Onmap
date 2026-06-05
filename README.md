@@ -1,5 +1,5 @@
 # Oxidized Nmap (`onmap`)
-A fast, minimal Rust-based port scanner — inspired by nmap, reimagined in Rust.
+A fast, minimal Rust-based port scanner - inspired by nmap, reimagined in Rust.
 
 ## Build
 ```bash
