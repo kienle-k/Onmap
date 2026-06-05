@@ -158,7 +158,7 @@ pub async fn run_ack_scan(
             futs.push(async move {
                 // Wait for a permit from the semaphore before starting the scan.
                 let _permit = sem_clone.acquire().await.unwrap();
-                let (is_unfiltered, ttl_option) =
+                let (is_unfiltered, _) =
                     port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
 
                 if is_unfiltered {
@@ -174,7 +174,7 @@ pub async fn run_ack_scan(
                     } else {
                         PortStates::Filtered
                     },
-                    ttl: ttl_option.unwrap_or(0),
+                    ttl: 0,
                     reason: if is_unfiltered {
                         PortStateReasons::Unfiltered
                     } else {

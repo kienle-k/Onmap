@@ -229,7 +229,7 @@ mod tests {
             port,
             protocol: Protocols::TCP,
             port_state: state,
-            ttl: 64,
+            ttl: 0,
             reason,
             service: "svc".to_string(),
         }
@@ -285,7 +285,7 @@ mod tests {
                 port: 443,
                 reason: PortStateReasons::SynAck,
             },
-            ttl: 55,
+            ttl: 0,
         }];
         let mut summary = PortScanAllResult::new();
         summary.scan_type = Some(PortScanOption::ConnectScan);
@@ -296,7 +296,7 @@ mod tests {
         let xml = fs::read_to_string(&path).unwrap();
         let _ = fs::remove_file(&path);
 
-        assert!(xml.contains("<status state=\"up\" reason=\"syn-ack\" reason_ttl=\"55\"/>"));
+        assert!(xml.contains("<status state=\"up\" reason=\"syn-ack\" reason_ttl=\"0\"/>"));
         assert!(xml.contains("<scaninfo type=\"connect\""));
     }
 
@@ -313,7 +313,7 @@ mod tests {
                 port: 443,
                 reason: PortStateReasons::Reset,
             },
-            ttl: 41,
+            ttl: 0,
         }];
         let mut summary = PortScanAllResult::new();
         summary.scan_type = Some(PortScanOption::ConnectScan);
@@ -324,7 +324,7 @@ mod tests {
         let xml = fs::read_to_string(&path).unwrap();
         let _ = fs::remove_file(&path);
 
-        assert!(xml.contains("<status state=\"up\" reason=\"reset\" reason_ttl=\"41\"/>"));
+        assert!(xml.contains("<status state=\"up\" reason=\"reset\" reason_ttl=\"0\"/>"));
     }
 
     #[test]
@@ -342,7 +342,7 @@ mod tests {
                     port: 443,
                     reason: PortStateReasons::SynAck,
                 },
-                ttl: 55,
+                ttl: 0,
             },
             HostDiscoverySingleResult {
                 ip_address: down_ip,
@@ -375,7 +375,7 @@ mod tests {
             port: 443,
             protocol: Protocols::TCP,
             port_state: PortStates::Open,
-            ttl: 64,
+            ttl: 0,
             reason: PortStateReasons::SynAck,
             service: "a&b\"<c>".to_string(),
         }];

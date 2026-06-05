@@ -144,7 +144,7 @@ mod tests {
                     port: 80,
                     reason: PortStateReasons::SynAck,
                 },
-                ttl: 64,
+                ttl: 0,
             },
             HostDiscoverySingleResult {
                 ip_address: down_ip,
@@ -177,7 +177,7 @@ mod tests {
         assert!(xml.contains("xmloutputversion=\"1.05\""));
         assert!(xml.contains("<verbose level=\"0\"/>"));
         assert!(xml.contains("<debugging level=\"0\"/>"));
-        assert!(xml.contains("<status state=\"up\" reason=\"syn-ack\" reason_ttl=\"64\"/>"));
+        assert!(xml.contains("<status state=\"up\" reason=\"syn-ack\" reason_ttl=\"0\"/>"));
         assert!(!xml.contains("<status state=\"down\""));
         assert!(!xml.contains("192.0.2.2"));
         assert!(

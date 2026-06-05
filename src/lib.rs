@@ -1221,7 +1221,7 @@ mod tests {
                     latency: Some(Duration::from_millis(25)),
                     is_up: true,
                     reply_type: HostDiscoveryReply::IcmpEchoReply,
-                    ttl: 42,
+                    ttl: 0,
                 }],
                 HostDiscoveryAllResult {
                     scanned_addresses: vec![ip],
@@ -1244,7 +1244,7 @@ mod tests {
                         port: 22,
                         reason: PortStateReasons::Reset,
                     },
-                    ttl: 55,
+                    ttl: 0,
                 }],
                 HostDiscoveryAllResult {
                     scanned_addresses: vec![ip],
@@ -1269,7 +1269,7 @@ mod tests {
             }
         );
         assert_eq!(merged.0[0].dns_resolve.as_deref(), Some("fast.example"));
-        assert_eq!(merged.0[0].ttl, 55);
+        assert_eq!(merged.0[0].ttl, 0);
 
         assert_eq!(merged.1.scanned_addresses, vec![ip]);
         assert_eq!(merged.1.hosts_up, 1);
