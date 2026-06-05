@@ -9,9 +9,7 @@ use crate::host_discovery::{
     run_tcp_ack_discovery, run_tcp_connect_discovery, run_tcp_syn_discovery,
     udp_discovery::run_udp_discovery,
 };
-use crate::models::{
-    DiscoveryMode, DiscoveryPlan, DiscoveryProbe, HostDiscoverySingleResult,
-};
+use crate::models::{DiscoveryMode, DiscoveryPlan, DiscoveryProbe, HostDiscoverySingleResult};
 use crate::resolving::source_ip::resolve_for_targets;
 use futures::future::join_all;
 use pnet::datalink;
@@ -122,7 +120,8 @@ pub async fn run_discovery(
             let routed = Arc::clone(&routed);
             async move {
                 let targets_for_probe = probe_target_set(&probe, auto_arp, &all_targets, &routed);
-                let result = run_probe(&probe, targets_for_probe, timeout_override_ms, no_dns).await;
+                let result =
+                    run_probe(&probe, targets_for_probe, timeout_override_ms, no_dns).await;
                 (probe, result)
             }
         }))
@@ -172,29 +171,36 @@ async fn run_probe(
         DiscoveryProbe::IcmpTimestamp => {
             run_icmp_timestamp_discovery(targets.to_vec(), timeout_override_ms, no_dns).await
         }
-        DiscoveryProbe::TcpSyn { port } => run_tcp_syn_discovery(
-            resolve_for_targets(targets),
-            vec![*port],
-            timeout_override_ms,
-            no_dns,
-        )
-        .await,
-        DiscoveryProbe::TcpAck { port } => run_tcp_ack_discovery(
-            resolve_for_targets(targets),
-            vec![*port],
-            timeout_override_ms,
-            no_dns,
-        )
-        .await,
-        DiscoveryProbe::Udp { port } => run_udp_discovery(
-            resolve_for_targets(targets),
-            vec![*port],
-            timeout_override_ms,
-            no_dns,
-        )
-        .await,
+        DiscoveryProbe::TcpSyn { port } => {
+            run_tcp_syn_discovery(
+                resolve_for_targets(targets),
+                vec![*port],
+                timeout_override_ms,
+                no_dns,
+            )
+            .await
+        }
+        DiscoveryProbe::TcpAck { port } => {
+            run_tcp_ack_discovery(
+                resolve_for_targets(targets),
+                vec![*port],
+                timeout_override_ms,
+                no_dns,
+            )
+            .await
+        }
+        DiscoveryProbe::Udp { port } => {
+            run_udp_discovery(
+                resolve_for_targets(targets),
+                vec![*port],
+                timeout_override_ms,
+                no_dns,
+            )
+            .await
+        }
         DiscoveryProbe::TcpConnect { port } => {
-            run_tcp_connect_discovery(targets.to_vec(), vec![*port], timeout_override_ms, no_dns).await
+            run_tcp_connect_discovery(targets.to_vec(), vec![*port], timeout_override_ms, no_dns)
+                .await
         }
     };
     outcome.map(|(rows, summary)| (rows, summary.packets_sent))
@@ -295,7 +301,12 @@ mod tests {
         let targets = vec![Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(2, 2, 2, 2)];
         let result = run_discovery(&plan, &targets, Some(100), false, true).await;
         assert_eq!(result.per_probe.len(), 2);
-        assert!(result.per_probe.iter().all(|r| r.is_up && r.reply_type == "user-set"));
+        assert!(
+            result
+                .per_probe
+                .iter()
+                .all(|r| r.is_up && r.reply_type == "user-set")
+        );
         assert_eq!(result.packets_sent, 0);
     }
 

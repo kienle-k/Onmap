@@ -52,7 +52,11 @@ fn host_reason_name(reason: &str) -> &str {
     }
 }
 
-pub fn save_to_file_xml_host_discovery(path: &str, results: (&Vec<HostDiscoverySingleResult>, &HostDiscoveryAllResult), verbosity: u8) -> std::io::Result<()> {
+pub fn save_to_file_xml_host_discovery(
+    path: &str,
+    results: (&Vec<HostDiscoverySingleResult>, &HostDiscoveryAllResult),
+    verbosity: u8,
+) -> std::io::Result<()> {
     let (single_results, summary) = results;
     let mut file = File::create(path)?;
 
@@ -110,7 +114,11 @@ pub fn save_to_file_xml_host_discovery(path: &str, results: (&Vec<HostDiscoveryS
         .unwrap_or_default()
         .as_secs_f64();
     let timestr = xml_time(summary.end_time);
-    let ip_word = if total_hosts == 1 { "IP address" } else { "IP addresses" };
+    let ip_word = if total_hosts == 1 {
+        "IP address"
+    } else {
+        "IP addresses"
+    };
     let host_word = if hosts_up == 1 { "host" } else { "hosts" };
     let summary_line = format!(
         "Onmap done at {}; {} {} ({} {} up) scanned in {:.2} seconds",
@@ -191,7 +199,9 @@ mod tests {
         assert!(xml.contains("<status state=\"up\" reason=\"syn-ack\" reason_ttl=\"64\"/>"));
         assert!(!xml.contains("<status state=\"down\""));
         assert!(!xml.contains("192.0.2.2"));
-        assert!(xml.contains("<hostnames><hostname name=\"up.example\" type=\"PTR\"/></hostnames>"));
+        assert!(
+            xml.contains("<hostnames><hostname name=\"up.example\" type=\"PTR\"/></hostnames>")
+        );
         assert!(!xml.contains("<times "));
         assert!(!xml.contains("<downhosts "));
         assert!(xml.contains("<hosts up=\"1\" down=\"1\" total=\"2\"/>"));
@@ -220,7 +230,8 @@ mod tests {
             dns_elapsed_secs: 0.0,
         };
 
-        let path = std::env::temp_dir().join(format!("onmap-host-xml-v-{}.xml", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("onmap-host-xml-v-{}.xml", std::process::id()));
         save_to_file_xml_host_discovery(path.to_str().unwrap(), (&hosts, &summary), 1).unwrap();
         let xml = fs::read_to_string(&path).unwrap();
         let _ = fs::remove_file(&path);
@@ -253,7 +264,8 @@ mod tests {
             dns_elapsed_secs: 0.0,
         };
 
-        let path = std::env::temp_dir().join(format!("onmap-host-xml-escape-{}.xml", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("onmap-host-xml-escape-{}.xml", std::process::id()));
         save_to_file_xml_host_discovery(path.to_str().unwrap(), (&hosts, &summary), 0).unwrap();
         let xml = fs::read_to_string(&path).unwrap();
         let _ = fs::remove_file(&path);

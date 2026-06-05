@@ -170,7 +170,6 @@ pub enum VersionFormat {
     Json,
 }
 
-
 pub type HostDiscoveryResult = (Vec<HostDiscoverySingleResult>, HostDiscoveryAllResult);
 pub type PortScanResult = (Vec<PortScanSingleResult>, PortScanAllResult);
 

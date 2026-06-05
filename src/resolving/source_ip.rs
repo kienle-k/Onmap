@@ -54,10 +54,7 @@ mod tests {
 
     #[test]
     fn resolve_for_targets_drops_nothing_for_loopback() {
-        let pairs = resolve_for_targets(&[
-            Ipv4Addr::LOCALHOST,
-            Ipv4Addr::new(127, 0, 0, 5),
-        ]);
+        let pairs = resolve_for_targets(&[Ipv4Addr::LOCALHOST, Ipv4Addr::new(127, 0, 0, 5)]);
         assert_eq!(pairs.len(), 2);
         assert!(pairs.iter().all(|(_, src)| *src == Ipv4Addr::LOCALHOST));
     }

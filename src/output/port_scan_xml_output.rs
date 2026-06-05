@@ -121,7 +121,11 @@ pub fn save_to_file_xml_port_scan(
         host_map.entry(res.ip_address).or_default().push(res);
     }
     let hosts_up = host_map.len();
-    let total_hosts = if host_up.is_empty() { hosts_up } else { host_up.len() };
+    let total_hosts = if host_up.is_empty() {
+        hosts_up
+    } else {
+        host_up.len()
+    };
     let hosts_down = total_hosts.saturating_sub(hosts_up);
 
     for (ip, host_results) in host_map {
@@ -198,7 +202,11 @@ pub fn save_to_file_xml_port_scan(
         .unwrap_or_default()
         .as_secs_f64();
     let timestr = xml_time(summary.end_time);
-    let ip_word = if total_hosts == 1 { "IP address" } else { "IP addresses" };
+    let ip_word = if total_hosts == 1 {
+        "IP address"
+    } else {
+        "IP addresses"
+    };
     let host_word = if hosts_up == 1 { "host" } else { "hosts" };
     let summary_line = format!(
         "Onmap done at {}; {} {} ({} {} up) scanned in {:.2} seconds",
@@ -233,7 +241,12 @@ mod tests {
     use std::net::Ipv4Addr;
     use std::time::SystemTime;
 
-    fn port(ip: IpAddr, port: u16, state: PortStates, reason: PortStateReasons) -> PortScanSingleResult {
+    fn port(
+        ip: IpAddr,
+        port: u16,
+        state: PortStates,
+        reason: PortStateReasons,
+    ) -> PortScanSingleResult {
         PortScanSingleResult {
             ip_address: ip,
             port,
@@ -357,7 +370,8 @@ mod tests {
         let mut summary = PortScanAllResult::new();
         summary.scan_type = Some(PortScanOption::ConnectScan);
 
-        let path = std::env::temp_dir().join(format!("onmap-xml-counts-{}.xml", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("onmap-xml-counts-{}.xml", std::process::id()));
         save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary), &host_up, 0)
             .unwrap();
         let xml = fs::read_to_string(&path).unwrap();
@@ -389,7 +403,8 @@ mod tests {
             ttl: 0,
         }];
 
-        let path = std::env::temp_dir().join(format!("onmap-xml-escape-{}.xml", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("onmap-xml-escape-{}.xml", std::process::id()));
         save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary), &host_up, 0)
             .unwrap();
         let xml = fs::read_to_string(&path).unwrap();

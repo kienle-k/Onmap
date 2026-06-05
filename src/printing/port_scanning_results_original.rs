@@ -143,7 +143,10 @@ pub async fn print_port_scan_results_original(
             }
         } else {
             if show_reason {
-                println!("{:<10} {:<14} {:<20} {}", "PORT", "STATE", "SERVICE", "REASON");
+                println!(
+                    "{:<10} {:<14} {:<20} {}",
+                    "PORT", "STATE", "SERVICE", "REASON"
+                );
             } else {
                 println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
             }
@@ -173,7 +176,11 @@ pub async fn print_port_scan_results_original(
     // "IP addresses" counts every target given (incl. hosts dropped as down);
     // "hosts up" counts only those that survived discovery and were scanned.
     let hosts_up = results_by_ip.len();
-    let ip_word = if total_targets == 1 { "IP address" } else { "IP addresses" };
+    let ip_word = if total_targets == 1 {
+        "IP address"
+    } else {
+        "IP addresses"
+    };
     let host_word = if hosts_up == 1 { "host" } else { "hosts" };
 
     println!(

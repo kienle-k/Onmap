@@ -37,7 +37,7 @@ use crate::output::{
     save_to_file_normal_host_discovery, save_to_file_normal_port_scan,
     save_to_file_xml_host_discovery, save_to_file_xml_port_scan,
 };
-use crate::tui::{run_tui, App};
+use crate::tui::{App, run_tui};
 use models::{
     Cli, DiscoveryMode, DiscoveryPlan, DiscoveryProbe, ExecutionCommand, HostDiscoveryAllResult,
     HostDiscoveryOption, HostDiscoveryResult, HostDiscoverySingleResult, HostMergeState,
@@ -45,7 +45,7 @@ use models::{
     PortScanSingleResult, VersionFormat,
 };
 
-use crate::host_discovery::engine::{run_discovery, DiscoveryResult};
+use crate::host_discovery::engine::{DiscoveryResult, run_discovery};
 use crate::host_discovery::planner::{default_set, plan_discovery};
 use crate::resolving::source_ip::resolve_for_targets;
 use printing::{
@@ -293,7 +293,6 @@ pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
     Ok(())
 }
 
-
 fn build_command_from_tui(
     main_selected: Option<MainMenuItem>,
     host_discovery_selected: Option<HostDiscoveryOption>,
@@ -372,9 +371,7 @@ fn tui_option_to_probes(
     ports: Option<Vec<u16>>,
 ) -> Result<Vec<DiscoveryProbe>, String> {
     match option {
-        HostDiscoveryOption::ListScan => {
-            Err("List scan is not implemented".to_string())
-        }
+        HostDiscoveryOption::ListScan => Err("List scan is not implemented".to_string()),
         HostDiscoveryOption::PingScan => Ok(vec![DiscoveryProbe::IcmpEcho]),
         HostDiscoveryOption::ArpDiscovery => Ok(vec![DiscoveryProbe::Arp]),
         HostDiscoveryOption::IcmpEcho => Ok(vec![DiscoveryProbe::IcmpEcho]),
@@ -402,7 +399,6 @@ fn tui_option_to_probes(
         }
     }
 }
-
 
 fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String> {
     validate_discovery_port_flags(cli)?;
@@ -461,7 +457,7 @@ fn build_command_from_cli(cli: &Cli) -> Result<Option<ExecutionCommand>, String>
                     cli.host_discovery_targets
                         .as_deref()
                         .ok_or_else(|| "Host discovery targets must be provided".to_string())?,
-                    )?,
+                )?,
                 timeout_override_ms: cli.host_discovery_timeout_ms,
                 no_dns: cli.no_dns,
             }
@@ -644,7 +640,8 @@ async fn execute_command(
             let engine_result =
                 run_discovery(&plan, &ipv4_targets, timeout_override_ms, no_dns, is_root).await;
             let end_time = SystemTime::now();
-            let result = discovery_to_legacy(engine_result, &ipv4_targets, &plan, start_time, end_time);
+            let result =
+                discovery_to_legacy(engine_result, &ipv4_targets, &plan, start_time, end_time);
 
             let elapsed = result
                 .1
@@ -683,8 +680,7 @@ async fn execute_command(
             let original_targets = to_ipv4_vec(&targets)?;
             let nmap_targets = original_targets.clone();
 
-            let run_discovery_phase =
-                !matches!(plan.mode, DiscoveryMode::SkipDiscoveryTreatAllUp);
+            let run_discovery_phase = !matches!(plan.mode, DiscoveryMode::SkipDiscoveryTreatAllUp);
             if run_discovery_phase {
                 log::info!(
                     "Initiating Host Discovery at {} [{} probe(s)/host, {} target(s)]",
@@ -733,12 +729,23 @@ async fn execute_command(
                 let total = original_targets.len();
                 println!();
                 if total == 1 {
-                    println!("Note: Host seems down. If it is really up, but blocking our ping probes, try -Pn");
+                    println!(
+                        "Note: Host seems down. If it is really up, but blocking our ping probes, try -Pn"
+                    );
                 } else {
-                    println!("Note: Hosts seem down. If they are really up, but blocking our ping probes, try -Pn");
+                    println!(
+                        "Note: Hosts seem down. If they are really up, but blocking our ping probes, try -Pn"
+                    );
                 }
-                let ip_word = if total == 1 { "IP address" } else { "IP addresses" };
-                println!("Onmap done: {} {} (0 hosts up) scanned in {:.2} seconds", total, ip_word, elapsed);
+                let ip_word = if total == 1 {
+                    "IP address"
+                } else {
+                    "IP addresses"
+                };
+                println!(
+                    "Onmap done: {} {} (0 hosts up) scanned in {:.2} seconds",
+                    total, ip_word, elapsed
+                );
                 println!();
                 // Return the discovery result (down hosts) rather than nothing so a
                 // requested XML/normal/grepable path still produces a parseable
@@ -827,8 +834,13 @@ async fn execute_command(
             result.1.scan_type = Some(method);
 
             if use_original_printing {
-                print_port_scan_results_original(&result, original_targets.len(), verbosity, no_dns)
-                    .await;
+                print_port_scan_results_original(
+                    &result,
+                    original_targets.len(),
+                    verbosity,
+                    no_dns,
+                )
+                .await;
             } else {
                 print_port_scan_results(&result);
             }
@@ -880,8 +892,7 @@ fn discovery_to_legacy(
     start_time: SystemTime,
     end_time: SystemTime,
 ) -> HostDiscoveryResult {
-    let scanned_addresses: Vec<IpAddr> =
-        ipv4_targets.iter().map(|ip| IpAddr::V4(*ip)).collect();
+    let scanned_addresses: Vec<IpAddr> = ipv4_targets.iter().map(|ip| IpAddr::V4(*ip)).collect();
     let hosts_up = engine.hosts_up().len() as u64;
     let hosts_dns_resolution = engine
         .per_probe
@@ -1079,10 +1090,7 @@ mod tests {
                         ]
                     );
                 } else {
-                    assert_eq!(
-                        plan.probes,
-                        vec![DiscoveryProbe::TcpConnect { port: 22 }]
-                    );
+                    assert_eq!(plan.probes, vec![DiscoveryProbe::TcpConnect { port: 22 }]);
                 }
             }
             other => panic!("expected host discovery command, got {:?}", other),

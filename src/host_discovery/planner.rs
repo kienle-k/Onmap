@@ -11,13 +11,12 @@ pub fn plan_discovery(cli: &Cli, is_root: bool) -> Result<DiscoveryPlan, String>
     if cli.pn && cli.ping_scan {
         return Err("-Pn cannot be combined with -sn".to_string());
     }
-    let port_scan_selected =
-        cli.syn_scan || cli.connect_scan || cli.ack_scan || cli.udp_scan;
-
+    let port_scan_selected = cli.syn_scan || cli.connect_scan || cli.ack_scan || cli.udp_scan;
 
     if cli.ping_scan && port_scan_selected {
         return Err(
-            "-sn (skip port scan) cannot be combined with a port-scan flag (-sS, -sT, -sA, -sU)".to_string(),
+            "-sn (skip port scan) cannot be combined with a port-scan flag (-sS, -sT, -sA, -sU)"
+                .to_string(),
         );
     }
     let ports_provided = cli.scan_ports.is_some();
@@ -266,7 +265,10 @@ mod tests {
         let plan = plan_discovery(&cli, true).unwrap();
         assert_eq!(
             plan.probes,
-            vec![DiscoveryProbe::IcmpEcho, DiscoveryProbe::TcpAck { port: 80 }]
+            vec![
+                DiscoveryProbe::IcmpEcho,
+                DiscoveryProbe::TcpAck { port: 80 }
+            ]
         );
     }
 

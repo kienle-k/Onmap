@@ -38,10 +38,7 @@ pub fn collapse_threshold(verbosity: u8) -> usize {
 }
 
 /// Split a host's port results into shown vs collapsed per the threshold rule.
-pub fn summarize_ports<'a>(
-    results: &[&'a PortScanSingleResult],
-    verbosity: u8,
-) -> PortSummary<'a> {
+pub fn summarize_ports<'a>(results: &[&'a PortScanSingleResult], verbosity: u8) -> PortSummary<'a> {
     let threshold = collapse_threshold(verbosity);
 
     let mut by_state: HashMap<PortStates, Vec<&'a PortScanSingleResult>> = HashMap::new();
