@@ -1,7 +1,7 @@
 use crate::models::{
     HostDiscoverySingleResult, PortScanAllResult, PortScanOption, PortScanSingleResult, Protocols,
 };
-use crate::port_summary::{
+use crate::output::port_result_processing::{
     extraport_reason_name, format_port_ranges, port_state_name, protocol_name, state_reason_name,
     summarize_ports,
 };
@@ -63,12 +63,15 @@ pub fn save_to_file_xml_port_scan(
         .collect();
 
     // Union of every scanned port, for <scaninfo> numservices/services.
-    let mut scanned_ports: Vec<u16> = single_results.iter().map(|r| r.port).collect();
+    let mut scanned_ports: Vec<u16> = single_results
+        .iter()
+        .map(|port_result| port_result.port)
+        .collect();
     scanned_ports.sort_unstable();
     scanned_ports.dedup();
     let protocol = single_results
         .first()
-        .map(|r| r.protocol)
+        .map(|port_result| port_result.protocol)
         .unwrap_or(Protocols::TCP);
 
     let start_ts = epoch_secs(summary.start_time);

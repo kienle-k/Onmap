@@ -1,6 +1,8 @@
 use super::format_duration;
-use crate::models::{
-    PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+use crate::models::{PortScanAllResult, PortScanSingleResult};
+use crate::output::{
+    port_state_name, protocol_display_name, state_reason_display_name, summarize_ports,
+    ttl_display_value,
 };
 use prettytable::{Cell, Row, Table, format};
 use std::collections::HashMap;
@@ -14,9 +16,9 @@ use std::net::IpAddr;
 /// 1.  **Global Summary**: A brief table showing aggregate statistics for the
 ///     entire scan, such as total ports scanned, packets sent, and total duration.
 /// 2.  **Per-Host Details**: For each unique IP address scanned, a separate section
-///     is printed. This includes a detailed table listing all **open ports**,
-///     along with their protocol, determined service, TTL, and the reason they
-///     were marked as open.
+///     is printed. This includes a detailed table listing the ports selected by
+///     the shared port summary, along with their protocol, service, TTL, and
+///     reason.
 ///
 /// If a host has no open ports, a message indicating this is displayed for that host.
 ///
@@ -75,21 +77,17 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
     for (ip_address, host_results) in results_by_ip.iter() {
         println!("\n=== Host: {} ===", ip_address);
 
-        // Filter for only open or open|filtered ports to display them
-        let open_ports: Vec<&PortScanSingleResult> = host_results
-            .iter()
-            .filter(|r| {
-                r.port_state == PortStates::Open
-                    || r.port_state == PortStates::Unfiltered
-                    || r.port_state == PortStates::OpenOrFiltered
-            })
-            .copied()
-            .collect();
+        let summary = summarize_ports(host_results, 0);
 
-        if open_ports.is_empty() {
+        if !summary.extra.is_empty() {
+            let hidden_count: usize = summary.extra.iter().map(|group| group.count).sum();
+            println!("Not shown: {} ports in ignored states.", hidden_count);
+        }
+
+        if summary.shown.is_empty() {
             println!("No open ports discovered.");
         } else {
-            println!("\nOpen Ports:");
+            println!("\nPorts:");
 
             let mut open_port_table = Table::new();
             open_port_table.set_format(*format::consts::FORMAT_BOX_CHARS);
@@ -104,43 +102,15 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
                 Cell::new("Reason"),
             ]));
 
-            // Add each open port as a row, sorted by port number for consistency
-            let mut sorted_open_ports = open_ports;
-            sorted_open_ports.sort_by_key(|r| r.port);
-
-            for port_result in sorted_open_ports {
-                let state_str = match port_result.port_state {
-                    PortStates::Open => "open",
-                    PortStates::Unfiltered => "unfiltered",
-                    PortStates::Closed => "closed",
-                    PortStates::Filtered => "filtered",
-                    PortStates::OpenOrFiltered => "open|filtered",
-                    PortStates::ClosedOrFiltered => "closed|filtered",
-                };
-
-                // Convert enum values to strings for display
-                let protocol_str = match port_result.protocol {
-                    Protocols::TCP => "TCP",
-                    Protocols::UDP => "UDP",
-                };
-
-                let reason_str = match port_result.reason {
-                    PortStateReasons::SynAck => "SYN-ACK",
-                    PortStateReasons::Reset => "RST",
-                    PortStateReasons::UdpResponse => "UDP Response",
-                    PortStateReasons::IcmpPortUnreachable => "ICMP Port Unreachable",
-                    PortStateReasons::Unfiltered => "Unfiltered",
-                    PortStateReasons::Timeout => "Timeout",
-                };
-
+            for port_result in summary.shown {
                 // Add a single result as a row
                 open_port_table.add_row(Row::new(vec![
                     Cell::new(&port_result.port.to_string()),
-                    Cell::new(state_str),
-                    Cell::new(protocol_str),
+                    Cell::new(port_state_name(port_result.port_state)),
+                    Cell::new(protocol_display_name(port_result.protocol)),
                     Cell::new(&port_result.service),
-                    Cell::new(&port_result.ttl.to_string()),
-                    Cell::new(reason_str),
+                    Cell::new(&ttl_display_value(port_result.ttl)),
+                    Cell::new(state_reason_display_name(port_result.reason)),
                 ]));
             }
 

@@ -1,27 +1,10 @@
-use crate::models::{PortScanAllResult, PortScanSingleResult, PortStates, Protocols};
+use crate::models::{PortScanAllResult, PortScanSingleResult};
+use crate::output::{port_state_name, protocol_name, summarize_ports};
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::net::IpAddr;
-
-fn state_str(state: PortStates) -> &'static str {
-    match state {
-        PortStates::Open => "open",
-        PortStates::Closed => "closed",
-        PortStates::Filtered => "filtered",
-        PortStates::Unfiltered => "unfiltered",
-        PortStates::OpenOrFiltered => "open|filtered",
-        PortStates::ClosedOrFiltered => "closed|filtered",
-    }
-}
-
-fn proto_str(proto: Protocols) -> &'static str {
-    match proto {
-        Protocols::TCP => "tcp",
-        Protocols::UDP => "udp",
-    }
-}
 
 pub fn save_to_file_grepable_port_scan(
     path: &str,
@@ -41,14 +24,14 @@ pub fn save_to_file_grepable_port_scan(
     // Group by IP, preserving insertion order
     let mut order: Vec<IpAddr> = Vec::new();
     let mut by_ip: HashMap<IpAddr, Vec<&PortScanSingleResult>> = HashMap::new();
-    for r in single_results {
+    for port_result in single_results {
         by_ip
-            .entry(r.ip_address)
+            .entry(port_result.ip_address)
             .or_insert_with(|| {
-                order.push(r.ip_address);
+                order.push(port_result.ip_address);
                 Vec::new()
             })
-            .push(r);
+            .push(port_result);
     }
 
     for ip in &order {
@@ -57,37 +40,32 @@ pub fn save_to_file_grepable_port_scan(
         // Status line
         writeln!(file, "Host: {} ()\tStatus: Up", ip)?;
 
-        // Ports line: list all ports, then ignored state for closed/filtered
-        let port_entries: Vec<String> = ports
+        let summary = summarize_ports(ports, 0);
+
+        // Ports line: list shown ports, then the largest collapsed state.
+        let port_entries: Vec<String> = summary
+            .shown
             .iter()
-            .filter(|r| r.port_state != PortStates::Closed && r.port_state != PortStates::Filtered)
-            .map(|r| {
+            .map(|port_result| {
                 format!(
                     "{}/{}/{}//{}///",
-                    r.port,
-                    state_str(r.port_state),
-                    proto_str(r.protocol),
-                    r.service
+                    port_result.port,
+                    port_state_name(port_result.port_state),
+                    protocol_name(port_result.protocol),
+                    port_result.service
                 )
             })
             .collect();
 
-        let ignored_count = ports
-            .iter()
-            .filter(|r| r.port_state == PortStates::Closed || r.port_state == PortStates::Filtered)
-            .count();
+        let ignored_group = summary.extra.first();
 
-        if !port_entries.is_empty() || ignored_count > 0 {
+        if !port_entries.is_empty() || ignored_group.is_some() {
             let mut line = format!("Host: {} ()\tPorts: {}", ip, port_entries.join(", "));
-            if ignored_count > 0 {
-                let ignored_state = if ports.iter().any(|r| r.port_state == PortStates::Closed) {
-                    "closed"
-                } else {
-                    "filtered"
-                };
+            if let Some(group) = ignored_group {
                 line.push_str(&format!(
                     "\tIgnored State: {} ({})",
-                    ignored_state, ignored_count
+                    port_state_name(group.state),
+                    group.count
                 ));
             }
             writeln!(file, "{}", line)?;

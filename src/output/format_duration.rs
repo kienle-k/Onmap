@@ -17,7 +17,7 @@ use std::time::Duration;
 ///
 /// ```
 /// # use std::time::Duration;
-/// # use onmap::printing::format_duration::format_duration;
+/// # use onmap::output::format_duration::format_duration;
 ///
 /// let d = Duration::from_millis(1234);
 /// assert_eq!(format_duration(&d), "1s 234ms");

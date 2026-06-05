@@ -1,5 +1,7 @@
-use crate::models::{PortScanAllResult, PortScanSingleResult, PortStateReasons};
-use crate::port_summary::{port_state_name, protocol_name, state_reason_name, summarize_ports};
+use crate::models::{PortScanAllResult, PortScanSingleResult};
+use crate::output::port_result_processing::{
+    port_state_name, protocol_name, state_reason_name, state_reason_with_ttl, summarize_ports,
+};
 use crate::resolving::resolve_hostname;
 use chrono::Local;
 use std::collections::HashMap;
@@ -150,18 +152,21 @@ pub async fn print_port_scan_results_original(
             } else {
                 println!("{:<7}  {:<14} {}", "PORT", "STATE", "SERVICE");
             }
-            for r in &summary.shown {
-                let state = port_state_name(r.port_state);
+            for port_result in &summary.shown {
+                let state = port_state_name(port_result.port_state);
                 if show_reason {
-                    let reason = match r.reason {
-                        PortStateReasons::Timeout | PortStateReasons::IcmpPortUnreachable => {
-                            state_reason_name(r.reason).to_string()
-                        }
-                        _ => format!("{} ttl {}", state_reason_name(r.reason), r.ttl),
-                    };
-                    println!("{:<10} {:<14} {:<20} {}", r.port, state, r.service, reason);
+                    let reason = state_reason_with_ttl(port_result.reason, port_result.ttl);
+                    println!(
+                        "{:<10} {:<14} {:<20} {}",
+                        port_result.port, state, port_result.service, reason
+                    );
                 } else {
-                    println!("{:<7}  {:<14} {}", &r.port.to_string(), state, &r.service);
+                    println!(
+                        "{:<7}  {:<14} {}",
+                        &port_result.port.to_string(),
+                        state,
+                        &port_result.service
+                    );
                 }
             }
         }

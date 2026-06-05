@@ -1,14 +1,12 @@
 // --- Module declarations ---
 mod host_discovery;
 mod port_scanning;
-mod port_summary;
 mod tui;
 
 // --- Public API modules ---
 pub mod models;
-mod output;
+pub mod output;
 pub mod parsing;
-pub mod printing;
 pub mod resolving;
 pub mod version;
 
@@ -33,9 +31,10 @@ use ratatui::terminal::Terminal;
 
 // --- Internal imports (from this crate) ---
 use crate::output::{
-    save_to_file_grepable_host_discovery, save_to_file_grepable_port_scan,
-    save_to_file_normal_host_discovery, save_to_file_normal_port_scan,
-    save_to_file_xml_host_discovery, save_to_file_xml_port_scan,
+    print_host_discovery_results, print_host_discovery_results_original, print_port_scan_results,
+    print_port_scan_results_original, save_to_file_grepable_host_discovery,
+    save_to_file_grepable_port_scan, save_to_file_normal_host_discovery,
+    save_to_file_normal_port_scan, save_to_file_xml_host_discovery, save_to_file_xml_port_scan,
 };
 use crate::tui::{App, run_tui};
 use models::{
@@ -48,10 +47,6 @@ use models::{
 use crate::host_discovery::engine::{DiscoveryResult, run_discovery};
 use crate::host_discovery::planner::{default_set, plan_discovery};
 use crate::resolving::source_ip::resolve_for_targets;
-use printing::{
-    print_host_discovery_results, print_host_discovery_results_original, print_port_scan_results,
-    print_port_scan_results_original,
-};
 use version::{version_json, version_text};
 
 // --- Main public entry point ---
