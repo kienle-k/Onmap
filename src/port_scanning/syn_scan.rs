@@ -129,7 +129,7 @@ pub async fn port_syn_scan(
                     {
                         let flags = packet.get_flags();
                         if (flags & TcpFlags::SYN != 0) && (flags & TcpFlags::ACK != 0) {
-                            let ttl = 63; // Placeholder, real TTL extraction is not implemented yet
+                            let ttl = 0;
                             return Ok(PortScanSingleResult {
                                 ip_address,
                                 port,
@@ -145,7 +145,7 @@ pub async fn port_syn_scan(
                             });
                         }
                         if flags & TcpFlags::RST != 0 {
-                            let ttl = 63; // Placeholder, real TTL extractions is not implemented yet
+                            let ttl = 0;
                             return Ok(PortScanSingleResult {
                                 ip_address,
                                 port,

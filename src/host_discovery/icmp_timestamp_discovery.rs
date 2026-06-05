@@ -36,14 +36,13 @@ pub async fn run_icmp_timestamp_discovery(
             let dns_resolve = None;
             let mut is_reachable = false;
             let mut latency = None;
-            let mut ttl = 0;
+            let ttl = 0;
             let mut reply_type = HostDiscoveryReply::NoResponse;
 
             match icmp_result {
-                Ok((reachable, lat, received_ttl)) => {
+                Ok((reachable, lat, _received_ttl)) => {
                     is_reachable = reachable;
                     latency = lat;
-                    ttl = received_ttl.unwrap_or(0);
                     if is_reachable {
                         reply_type = HostDiscoveryReply::IcmpTimestampReply;
                     }
