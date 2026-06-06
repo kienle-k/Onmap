@@ -8,7 +8,7 @@ use crate::models::{
     HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult, PortStates,
 };
 use crate::port_scanning::connect_scan::port_tcp_connect_scan;
-use crate::resolving::get_service_name::load_protocol_map;
+use crate::resolving::get_service_name::load_service_map;
 use crate::resolving::resolve_hostname;
 
 const DEFAULT_TIMEOUT_MS: u64 = 300;
@@ -37,9 +37,9 @@ pub async fn run_tcp_connect_discovery(
     }
 
     let timeout = Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
-    let protocols = Arc::new(
-        load_protocol_map("src/resolving/port_service_mapping.json")
-            .map_err(|e| format!("Failed to load protocol map: {}", e))?,
+    let service_map = Arc::new(
+        load_service_map("src/resolving/port_service_mapping.json")
+            .map_err(|e| format!("Failed to load service map: {}", e))?,
     );
 
     let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|ip| IpAddr::V4(*ip)).collect();
@@ -65,7 +65,7 @@ pub async fn run_tcp_connect_discovery(
         let ip = *ip;
         for &port in &ports {
             let sem_clone = Arc::clone(&semaphore);
-            let protocols_clone = Arc::clone(&protocols);
+            let service_map_clone = Arc::clone(&service_map);
 
             futures.push(async move {
                 let _permit = sem_clone
@@ -74,7 +74,7 @@ pub async fn run_tcp_connect_discovery(
                     .expect("Semaphore should not be closed");
                 let start = Instant::now();
                 let result =
-                    port_tcp_connect_scan(IpAddr::V4(ip), port, timeout, &protocols_clone).await;
+                    port_tcp_connect_scan(IpAddr::V4(ip), port, timeout, &service_map_clone).await;
                 let latency = start.elapsed();
                 (ip, port, latency, result)
             });

@@ -1,4 +1,4 @@
-use crate::resolving::get_service_name::{ProtocolMap, get_service_name, load_protocol_map};
+use crate::resolving::get_service_name::{ServiceMap, get_service_name, load_service_map};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::tcp::{MutableTcpPacket, TcpFlags};
 use pnet::transport::tcp_packet_iter;
@@ -26,7 +26,7 @@ use crate::models::{
 /// * `ip_address` - The target `IpAddr` to scan.
 /// * `port` - The target port number to scan.
 /// * `local_ip_address` - The source `Ipv4Addr` to use for the packet.
-/// * `protocols` - A map of protocols and services for service name resolution.
+/// * `service_map` - A port-to-service lookup map for service name resolution.
 /// * `timeout_override_ms` - Optional receive timeout in milliseconds.
 ///
 /// # Returns
@@ -42,7 +42,7 @@ pub async fn port_syn_scan(
     ip_address: IpAddr,
     port: u16,
     local_ip_address: Ipv4Addr,
-    protocols: Arc<ProtocolMap>,
+    service_map: Arc<ServiceMap>,
     timeout_override_ms: Option<u64>,
 ) -> Result<PortScanSingleResult, String> {
     // Only IPv4 is supported for this implementation
@@ -103,7 +103,7 @@ pub async fn port_syn_scan(
         return Err(format!("Failed to send packet: {}", e));
     };
 
-    let protocols_clone_for_response = Arc::clone(&protocols);
+    let service_map_clone_for_response = Arc::clone(&service_map);
     let rx_clone = Arc::clone(&rx);
 
     const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
@@ -138,7 +138,7 @@ pub async fn port_syn_scan(
                                 ttl,
                                 reason: PortStateReasons::SynAck,
                                 service: get_service_name(
-                                    &protocols_clone_for_response,
+                                    &service_map_clone_for_response,
                                     "tcp",
                                     port,
                                 ),
@@ -154,7 +154,7 @@ pub async fn port_syn_scan(
                                 ttl,
                                 reason: PortStateReasons::Reset,
                                 service: get_service_name(
-                                    &protocols_clone_for_response,
+                                    &service_map_clone_for_response,
                                     "tcp",
                                     port,
                                 ),
@@ -179,7 +179,7 @@ pub async fn port_syn_scan(
             port_state: PortStates::Filtered,
             ttl: 0,
             reason: PortStateReasons::Timeout,
-            service: get_service_name(&protocols_clone_for_response, "tcp", port),
+            service: get_service_name(&service_map_clone_for_response, "tcp", port),
         })
     });
 
@@ -216,9 +216,9 @@ pub async fn run_syn_scan(
     ports_arr: Vec<u16>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    // Load the protocol/service data from the json file
-    let protocols = Arc::new(
-        load_protocol_map("src/resolving/port_service_mapping.json")
+    // Load the service data from the json file
+    let service_map = Arc::new(
+        load_service_map("src/resolving/port_service_mapping.json")
             .map_err(|e| format!("Failed to load service names: {}", e))?,
     );
 
@@ -243,7 +243,7 @@ pub async fn run_syn_scan(
             let open_ports_clone = Arc::clone(&open_ports);
             let packets_sent_clone = Arc::clone(&packets_sent);
             let sem_clone = Arc::clone(&semaphore);
-            let protocols_clone = Arc::clone(&protocols);
+            let service_map_clone = Arc::clone(&service_map);
 
             // Spawn a Tokio task for each scan
             let task = tokio::spawn(async move {
@@ -260,7 +260,7 @@ pub async fn run_syn_scan(
                     IpAddr::V4(ip),
                     port,
                     source_ip,
-                    protocols_clone,
+                    service_map_clone,
                     timeout_override_ms,
                 )
                 .await
