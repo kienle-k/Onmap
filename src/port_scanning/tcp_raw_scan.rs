@@ -63,14 +63,18 @@ struct ProbeKey {
     source_port: u16,
 }
 
-/// A probe queued to send. Carries `attempts` so a re-queued (retransmitted)
-/// probe is indistinguishable from a fresh one except by its count.
+/// A probe queued to send. `attempts` distinguishes a retransmit from a fresh
+/// probe; `source_port` is assigned on the first send (`None` before) and then
+/// reused on every retransmit so the demux key is stable across attempts — a
+/// *late* reply to an earlier send still matches and completes the probe,
+/// instead of being discarded because the original used a different port.
 struct Probe {
     target_ip: Ipv4Addr,
     source_ip: Ipv4Addr,
     target_port: u16,
     result_index: usize,
     attempts: u8,
+    source_port: Option<u16>,
 }
 
 /// A probe that has been sent and is awaiting a reply. `sent_at` lets us report
@@ -154,10 +158,10 @@ fn scan_blocking(
         // SEND: fill the in-flight window. The window size is the throttle; the
         // optional per-send interval only applies when configured non-zero.
         while in_flight.len() < config.max_in_flight && Instant::now() >= next_send_at {
-            let Some(probe) = to_send.pop_front() else {
+            let Some(mut probe) = to_send.pop_front() else {
                 break;
             };
-            let key = send_probe(&mut tx, packet_flags, &probe)?;
+            let key = send_probe(&mut tx, packet_flags, &mut probe)?;
             packets_sent = packets_sent.saturating_add(1);
             if !config.min_send_interval.is_zero() {
                 next_send_at = Instant::now() + config.min_send_interval;
@@ -235,21 +239,30 @@ fn scan_blocking(
     Ok(batch_result(results, ports_scanned, packets_sent, start_time))
 }
 
-/// Builds the send queue, one probe per `(target, port)`, in input order. The
-/// `result_index` ties each probe to its stable slot in the results vector.
+/// Builds the send queue, one probe per `(target, port)`.
+///
+/// Ordered **port-major** (round-robin across hosts): port P for every host,
+/// then port P+1 for every host, and so on. This interleaves hosts in the send
+/// stream, so the bounded in-flight window holds probes spread across *all*
+/// hosts at once and their reply waits overlap. A host-major order would fill
+/// the window with one host's probes and effectively scan hosts serially —
+/// total time scaling with host count instead of overlapping (the cause of poor
+/// multi-host scaling). `result_index` still pins each probe to a stable slot,
+/// so send order does not affect where results land.
 fn queue_probes(ip_addresses: &[(Ipv4Addr, Ipv4Addr)], ports: &[u16]) -> VecDeque<Probe> {
     let mut queue = VecDeque::with_capacity(ip_addresses.len() * ports.len());
-    let mut result_index = 0;
-    for &(target_ip, source_ip) in ip_addresses {
-        for &target_port in ports {
+    for (port_index, &target_port) in ports.iter().enumerate() {
+        for (host_index, &(target_ip, source_ip)) in ip_addresses.iter().enumerate() {
+            // Stable slot per (host, port), independent of send order.
+            let result_index = host_index * ports.len() + port_index;
             queue.push_back(Probe {
                 target_ip,
                 source_ip,
                 target_port,
                 result_index,
                 attempts: 0,
+                source_port: None,
             });
-            result_index += 1;
         }
     }
     queue
@@ -261,13 +274,17 @@ fn open_channel() -> Result<(TransportSender, pnet::transport::TransportReceiver
         .map_err(|e| format!("Error creating transport channel: {}. Try running with sudo.", e))
 }
 
-/// Sends one probe with a fresh random source port and returns its demux key.
+/// Sends one probe and returns its demux key. The source port is assigned once
+/// (random, ephemeral range) on the first send and reused on retransmits, so a
+/// late reply to an earlier send still matches this probe's key.
 fn send_probe(
     tx: &mut TransportSender,
     packet_flags: u16,
-    probe: &Probe,
+    probe: &mut Probe,
 ) -> Result<ProbeKey, String> {
-    let source_port = rand::thread_rng().gen_range(49152..65535);
+    let source_port = *probe
+        .source_port
+        .get_or_insert_with(|| rand::thread_rng().gen_range(49152..65535));
 
     // 20 bytes = exactly one TCP header with data_offset=5 (no options). A
     // larger buffer would send uninitialised bytes past the header.

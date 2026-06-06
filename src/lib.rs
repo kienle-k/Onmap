@@ -1057,7 +1057,7 @@ fn print_startup_message() {
     let version = env!("CARGO_PKG_VERSION");
     let name = env!("CARGO_PKG_NAME");
     println!(
-        "\nStarting {} {} (https://github.com/kienle-k/Onmap) at {}",
+        "\nStarting {} v{} (https://github.com/kienle-k/Onmap) at {}",
         name, version, formatted_time
     );
 }
