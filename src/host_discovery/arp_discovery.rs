@@ -177,9 +177,11 @@ async fn arp_ping_host_with_details(
         arp_packet.set_target_proto_addr(target_ip);
 
         let start_time = Instant::now();
-        let _ = tx
-            .send_to(ethernet_packet.packet(), None)
-            .expect("Failed to send ARP request");
+        match tx.send_to(ethernet_packet.packet(), None) {
+            Some(Ok(())) => {}
+            Some(Err(e)) => return Err(format!("Failed to send ARP request: {}", e)),
+            None => return Err("Failed to send ARP request: sender unavailable".to_string()),
+        }
 
         let timeout_duration = Duration::from_millis(scan_window_ms);
         while start_time.elapsed() < timeout_duration {

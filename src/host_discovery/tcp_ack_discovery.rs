@@ -71,10 +71,17 @@ pub async fn run_tcp_ack_discovery(
             continue;
         }
 
-        let entry = host_states
-            .get_mut(&probe.ip_address)
-            .expect("Host state missing for IP");
-        if entry.latency.is_none_or(|existing| probe.latency < existing) {
+        let Some(entry) = host_states.get_mut(&probe.ip_address) else {
+            log::debug!(
+                "Ignoring TCP ACK discovery reply for unexpected host {}",
+                probe.ip_address
+            );
+            continue;
+        };
+        if entry
+            .latency
+            .is_none_or(|existing| probe.latency < existing)
+        {
             entry.is_up = true;
             entry.latency = Some(probe.latency);
             entry.ttl = 0;
@@ -87,7 +94,12 @@ pub async fn run_tcp_ack_discovery(
 
     let mut host_results = Vec::new();
     for (ip, _) in ip_addresses {
-        let state = host_states.remove(&ip).expect("Host state missing for IP");
+        let state = host_states.remove(&ip).unwrap_or(HostProbeState {
+            is_up: false,
+            latency: None,
+            ttl: 0,
+            reply_type: HostDiscoveryReply::NoResponse,
+        });
 
         let dns_resolve = None;
 

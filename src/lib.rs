@@ -53,7 +53,7 @@ use version::{version_json, version_text};
 /// Runs the Onmap application with the given CLI arguments.
 /// Handles both TUI and CLI modes.
 
-#[tokio::main]
+/// Async entry point; the caller owns the runtime (see `main`).
 pub async fn run_onmap(cli: Cli) -> Result<(), io::Error> {
     if let Some(format) = &cli.version {
         match format {

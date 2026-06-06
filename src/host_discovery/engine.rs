@@ -14,6 +14,7 @@ use crate::models::{
 };
 use crate::resolving::source_ip::filter_resolved_targets;
 use futures::future::join_all;
+use futures::stream::{FuturesUnordered, StreamExt};
 use pnet::datalink;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
@@ -111,41 +112,35 @@ pub async fn run_discovery(
         }
     }
 
-    // Plan probes run in parallel. When auto-ARP ran, it covers local hosts so
-    // IP probes only target routed hosts. When auto-ARP did not run (non-root,
-    // --disable-arp-ping, or no local targets), IP/TCP-connect probes must cover
-    // every target so local-link hosts still get their planned fallback probes.
+    // Parallelism is host-major: every host races all its applicable probes at
+    // once, and the FIRST probe that reports the host up settles it — the host's
+    // remaining probes are dropped, so an up host never waits on slower probes.
+    // A host is only declared down once every one of its probes has answered
+    // (silently), so the down-verdict still sees all the evidence.
+    //
+    // `probe_target_set` decides which probes apply to a host (auto-ARP already
+    // covers local hosts, so IP probes skip them); a host only races the probes
+    // whose target set contains it.
     if !plan.probes.is_empty() {
         let all_targets = Arc::new(targets.to_vec());
         let routed = Arc::new(routed);
 
-        let probe_results = join_all(plan.probes.iter().map(|probe| {
-            let probe = probe.clone();
-            let all_targets = Arc::clone(&all_targets);
-            let routed = Arc::clone(&routed);
+        let host_results = join_all(targets.iter().map(|&host| {
+            let applicable: Vec<DiscoveryProbe> = plan
+                .probes
+                .iter()
+                .filter(|probe| probe_target_set(probe, auto_arp, &all_targets, &routed).contains(&host))
+                .cloned()
+                .collect();
             async move {
-                let targets_for_probe = probe_target_set(&probe, auto_arp, &all_targets, &routed);
-                let result = run_probe(
-                    &probe,
-                    targets_for_probe,
-                    source_pairs,
-                    timeout_override_ms,
-                    no_dns,
-                )
-                .await;
-                (probe, result)
+                discover_one_host(host, applicable, source_pairs, timeout_override_ms, no_dns).await
             }
         }))
         .await;
 
-        for (probe, result) in probe_results {
-            match result {
-                Ok((rows, sent)) => {
-                    per_probe.extend(rows);
-                    packets_sent = packets_sent.saturating_add(sent);
-                }
-                Err(e) => eprintln!("warning: {probe:?} discovery failed: {e}"),
-            }
+        for (rows, sent) in host_results {
+            per_probe.extend(rows);
+            packets_sent = packets_sent.saturating_add(sent);
         }
     }
 
@@ -153,6 +148,47 @@ pub async fn run_discovery(
         per_probe,
         packets_sent,
     }
+}
+
+/// Races all `probes` against a single host. Returns as soon as one probe finds
+/// the host up (dropping the rest); otherwise waits for every probe and returns
+/// the down rows. Yields `(rows, packets_sent)`.
+async fn discover_one_host(
+    host: Ipv4Addr,
+    probes: Vec<DiscoveryProbe>,
+    source_pairs: &[(Ipv4Addr, Ipv4Addr)],
+    timeout_override_ms: Option<u64>,
+    no_dns: bool,
+) -> (Vec<HostDiscoverySingleResult>, u64) {
+    let target = [host];
+    let mut probe_futs: FuturesUnordered<_> = probes
+        .iter()
+        .map(|probe| async move {
+            let result = run_probe(probe, &target, source_pairs, timeout_override_ms, no_dns).await;
+            (probe.clone(), result)
+        })
+        .collect();
+
+    let mut down_rows: Vec<HostDiscoverySingleResult> = Vec::new();
+    let mut packets_sent: u64 = 0;
+
+    while let Some((probe, result)) = probe_futs.next().await {
+        match result {
+            Ok((rows, sent)) => {
+                packets_sent = packets_sent.saturating_add(sent);
+                // First probe to prove the host up wins: return its up row and
+                // drop the still-pending probes (probe_futs is dropped here).
+                if let Some(up_row) = rows.iter().find(|r| r.is_up) {
+                    return (vec![up_row.clone()], packets_sent);
+                }
+                down_rows.extend(rows);
+            }
+            Err(e) => eprintln!("warning: {probe:?} discovery failed: {e}"),
+        }
+    }
+
+    // No probe found the host up; report the accumulated (down) rows.
+    (down_rows, packets_sent)
 }
 
 fn treat_as_up(ip: &Ipv4Addr) -> HostDiscoverySingleResult {

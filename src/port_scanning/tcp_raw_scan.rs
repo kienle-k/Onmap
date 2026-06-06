@@ -29,6 +29,10 @@ pub(crate) struct ScanConfig {
     pub(crate) max_attempts: u8,
 }
 
+/// Demux key for matching a reply to its probe. Unique per in-flight probe
+/// because each `(host, port)` is probed once at a time: two in-flight probes to
+/// the same host always differ in `target_port`, so a random `source_port`
+/// collision between them cannot alias their keys.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct ProbeKey {
     target_ip: Ipv4Addr,
@@ -264,6 +268,10 @@ fn next_probe(
             };
             let port_index = host.next_port_index;
             host.next_port_index += 1;
+            // Invariant: every host scans the same `ports` slice, so the result
+            // slot for (host, port) is `host_index * ports.len() + port_index`.
+            // A future caller wanting per-host port lists must change this
+            // mapping (and the `total_probes` sizing in `scan_blocking`).
             Probe {
                 host_index,
                 target_ip: host.target_ip,

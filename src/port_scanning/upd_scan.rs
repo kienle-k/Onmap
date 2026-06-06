@@ -92,9 +92,13 @@ async fn udp_probe_with_details(
     });
 
     match timeout(Duration::from_millis(outer_timeout_ms), task).await {
-        Ok(Ok(result)) => result.expect("UDP probe task should return a result"),
-        Ok(Err(e)) => {
+        Ok(Ok(Ok(result))) => result,
+        Ok(Ok(Err(e))) => {
             log::warn!("UDP probe failed for {}:{}: {}", target_ip, port, e);
+            (PortStates::Filtered, PortStateReasons::Timeout)
+        }
+        Ok(Err(e)) => {
+            log::warn!("UDP probe task failed for {}:{}: {}", target_ip, port, e);
             (PortStates::Filtered, PortStateReasons::Timeout)
         }
         Err(_) => (PortStates::OpenOrFiltered, PortStateReasons::Timeout),
