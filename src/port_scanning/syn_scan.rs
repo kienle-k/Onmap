@@ -9,15 +9,11 @@ use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
 
-/// SYN scan defaults. Replies (SYN+ACK or RST) are reliable, so no retransmit.
 const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
 const MAX_SYN_IN_FLIGHT: usize = 100;
-/// Window-only throttle (no per-send delay); pacing is available but unused.
 const MIN_SEND_INTERVAL: Duration = Duration::ZERO;
 const MAX_SYN_ATTEMPTS: u8 = 1;
 
-/// Maps one raw probe outcome to a SYN-scan port state: SYN+ACK is open, RST is
-/// closed, anything else (or no reply) is filtered.
 fn syn_result_from_probe(probe: TcpProbeResult) -> PortScanSingleResult {
     let (port_state, reason) = match probe.outcome {
         TcpProbeOutcome::Reply { flags }
@@ -43,25 +39,6 @@ fn syn_result_from_probe(probe: TcpProbeResult) -> PortScanSingleResult {
     }
 }
 
-/// Orchestrates a TCP SYN scan across multiple IPs and ports.
-///
-/// Probes are sent through the shared, paced raw-socket engine in
-/// [`super::tcp_raw_scan`]; this function only chooses the SYN flag and maps the
-/// engine's raw outcomes to port states.
-///
-/// # Arguments
-///
-/// * `ip_addresses` - `(target, source)` IPv4 pairs to scan.
-/// * `ports_arr` - port numbers to scan on each target.
-/// * `timeout_override_ms` - optional per-probe receive timeout in milliseconds.
-///
-/// # Returns
-///
-/// On success, the per-port results and an aggregate [`PortScanAllResult`].
-///
-/// # Errors
-///
-/// Requires root to open a raw socket; returns `Err` if the channel cannot be created.
 pub async fn run_syn_scan(
     ip_addresses: Vec<(Ipv4Addr, Ipv4Addr)>,
     ports_arr: Vec<u16>,
@@ -75,8 +52,12 @@ pub async fn run_syn_scan(
     };
     let raw = scan_tcp_probes(ip_addresses, ports_arr, TcpFlags::SYN, config).await?;
 
-    let single_results: Vec<PortScanSingleResult> =
-        raw.results.iter().copied().map(syn_result_from_probe).collect();
+    let single_results: Vec<PortScanSingleResult> = raw
+        .results
+        .iter()
+        .copied()
+        .map(syn_result_from_probe)
+        .collect();
     let open_ports = single_results
         .iter()
         .filter(|r| r.port_state == PortStates::Open)
@@ -102,10 +83,8 @@ fn syn_scan_summary(raw: &TcpProbeBatchResult, open_ports: Vec<u16>) -> PortScan
 
 #[cfg(test)]
 mod tests {
-    //! Unit tests for the SYN scan module.
     use super::*;
 
-    /// Tests that `run_syn_scan` handles empty IP input without failing.
     #[tokio::test]
     async fn test_run_syn_scan_empty_ips() {
         let ips: Vec<(Ipv4Addr, Ipv4Addr)> = Vec::new();
