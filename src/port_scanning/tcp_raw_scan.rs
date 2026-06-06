@@ -47,8 +47,11 @@ struct Probe {
 }
 
 struct HostState {
+    target_ip: Ipv4Addr,
+    source_ip: Ipv4Addr,
     in_flight: usize,
-    queue: VecDeque<Probe>,
+    next_port_index: usize,
+    retry_queue: VecDeque<Probe>,
 }
 
 struct InFlight {
@@ -109,7 +112,7 @@ fn scan_blocking(
         return Ok(batch_result(Vec::new(), ports_scanned, 0, start_time));
     }
 
-    let mut hosts = queue_probes(&ip_addresses, &ports);
+    let mut hosts = queue_probes(&ip_addresses);
     let mut results: Vec<Option<TcpProbeResult>> = vec![None; total_probes];
     let mut in_flight: HashMap<ProbeKey, InFlight> = HashMap::new();
     let mut completed = 0usize;
@@ -118,6 +121,7 @@ fn scan_blocking(
     let global_limit = per_host_limit.saturating_mul(hosts.len()).max(1);
     let mut next_host_index = 0usize;
     let mut next_send_at = Instant::now();
+    let mut rng = rand::thread_rng();
 
     let (mut tx, mut rx) = open_channel()?;
     let rx_fd = rx.socket.fd;
@@ -130,16 +134,17 @@ fn scan_blocking(
             if sends_this_tick >= MAX_SENDS_PER_TICK {
                 break;
             }
-            let Some(mut probe) = next_probe(&mut hosts, per_host_limit, &mut next_host_index)
+            let Some(mut probe) =
+                next_probe(&mut hosts, &ports, per_host_limit, &mut next_host_index)
             else {
                 break;
             };
             let host_index = probe.host_index;
-            let key = match send_probe(&mut tx, packet_flags, &mut probe) {
+            let key = match send_probe(&mut tx, packet_flags, &mut probe, &mut rng) {
                 Ok(key) => key,
                 Err(SendProbeError::Backpressure(probe)) => {
                     hosts[host_index].in_flight = hosts[host_index].in_flight.saturating_sub(1);
-                    hosts[host_index].queue.push_front(probe);
+                    hosts[host_index].retry_queue.push_front(probe);
                     next_send_at = Instant::now() + SEND_BACKPRESSURE_WAIT;
                     break;
                 }
@@ -181,12 +186,12 @@ fn scan_blocking(
             config.max_attempts,
         );
 
-        if in_flight.is_empty() && hosts_done(&hosts) {
+        if in_flight.is_empty() && hosts_done(&hosts, ports.len()) {
             break;
         }
 
-        let waiting_to_send =
-            in_flight.len() < global_limit && has_send_capacity(&hosts, per_host_limit);
+        let waiting_to_send = in_flight.len() < global_limit
+            && has_send_capacity(&hosts, ports.len(), per_host_limit);
         if waiting_to_send && Instant::now() >= next_send_at {
             continue;
         }
@@ -220,33 +225,22 @@ fn scan_blocking(
     ))
 }
 
-fn queue_probes(ip_addresses: &[(Ipv4Addr, Ipv4Addr)], ports: &[u16]) -> Vec<HostState> {
+fn queue_probes(ip_addresses: &[(Ipv4Addr, Ipv4Addr)]) -> Vec<HostState> {
     ip_addresses
         .iter()
-        .enumerate()
-        .map(|(host_index, &(target_ip, source_ip))| {
-            let mut queue = VecDeque::with_capacity(ports.len());
-            for (port_index, &target_port) in ports.iter().enumerate() {
-                queue.push_back(Probe {
-                    host_index,
-                    target_ip,
-                    source_ip,
-                    target_port,
-                    result_index: host_index * ports.len() + port_index,
-                    attempts: 0,
-                    source_port: None,
-                });
-            }
-            HostState {
-                in_flight: 0,
-                queue,
-            }
+        .map(|&(target_ip, source_ip)| HostState {
+            target_ip,
+            source_ip,
+            in_flight: 0,
+            next_port_index: 0,
+            retry_queue: VecDeque::new(),
         })
         .collect()
 }
 
 fn next_probe(
     hosts: &mut [HostState],
+    ports: &[u16],
     per_host_limit: usize,
     next_host_index: &mut usize,
 ) -> Option<Probe> {
@@ -261,8 +255,24 @@ fn next_probe(
         if host.in_flight >= per_host_limit {
             continue;
         }
-        let Some(probe) = host.queue.pop_front() else {
-            continue;
+
+        let probe = if let Some(probe) = host.retry_queue.pop_front() {
+            probe
+        } else {
+            let Some(&target_port) = ports.get(host.next_port_index) else {
+                continue;
+            };
+            let port_index = host.next_port_index;
+            host.next_port_index += 1;
+            Probe {
+                host_index,
+                target_ip: host.target_ip,
+                source_ip: host.source_ip,
+                target_port,
+                result_index: host_index * ports.len() + port_index,
+                attempts: 0,
+                source_port: None,
+            }
         };
         host.in_flight += 1;
         return Some(probe);
@@ -271,16 +281,17 @@ fn next_probe(
     None
 }
 
-fn hosts_done(hosts: &[HostState]) -> bool {
-    hosts
-        .iter()
-        .all(|host| host.in_flight == 0 && host.queue.is_empty())
+fn hosts_done(hosts: &[HostState], ports_len: usize) -> bool {
+    hosts.iter().all(|host| {
+        host.in_flight == 0 && host.retry_queue.is_empty() && host.next_port_index >= ports_len
+    })
 }
 
-fn has_send_capacity(hosts: &[HostState], per_host_limit: usize) -> bool {
-    hosts
-        .iter()
-        .any(|host| host.in_flight < per_host_limit && !host.queue.is_empty())
+fn has_send_capacity(hosts: &[HostState], ports_len: usize, per_host_limit: usize) -> bool {
+    hosts.iter().any(|host| {
+        host.in_flight < per_host_limit
+            && (!host.retry_queue.is_empty() || host.next_port_index < ports_len)
+    })
 }
 
 fn open_channel() -> Result<(TransportSender, pnet::transport::TransportReceiver), String> {
@@ -332,16 +343,17 @@ fn send_probe(
     tx: &mut TransportSender,
     packet_flags: u16,
     probe: &mut Probe,
+    rng: &mut impl Rng,
 ) -> Result<ProbeKey, SendProbeError> {
     let source_port = *probe
         .source_port
-        .get_or_insert_with(|| rand::thread_rng().gen_range(49152..65535));
+        .get_or_insert_with(|| rng.gen_range(49152..65535));
 
     let mut buffer = [0u8; 20];
     let mut packet = MutableTcpPacket::new(&mut buffer).expect("20 bytes fits a TCP header");
     packet.set_source(source_port);
     packet.set_destination(probe.target_port);
-    packet.set_sequence(rand::thread_rng().r#gen::<u32>());
+    packet.set_sequence(rng.r#gen::<u32>());
     packet.set_acknowledgement(0);
     packet.set_data_offset(5);
     packet.set_flags(packet_flags);
@@ -488,7 +500,7 @@ fn expire_due(
         let host_index = entry.probe.host_index;
         hosts[host_index].in_flight = hosts[host_index].in_flight.saturating_sub(1);
         if entry.probe.attempts + 1 < max_attempts {
-            hosts[host_index].queue.push_back(Probe {
+            hosts[host_index].retry_queue.push_back(Probe {
                 attempts: entry.probe.attempts + 1,
                 ..entry.probe
             });

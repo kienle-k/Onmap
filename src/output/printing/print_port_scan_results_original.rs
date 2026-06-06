@@ -137,12 +137,20 @@ pub async fn print_port_scan_results_original(
 
         if summary.shown.is_empty() {
             if !host_results.is_empty() {
-                println!(
-                    "All {} scanned ports on {} ({}) are in ignored states.",
-                    host_results.len(),
-                    hostname,
-                    ip_address
-                );
+                if hostname != "-"{
+                    println!(
+                        "All {} scanned ports on {} ({}) are in ignored states.",
+                        host_results.len(),
+                        hostname,
+                        ip_address
+                    );
+                } else {
+                    println!(
+                        "All {} scanned ports on {} are in ignored states.",
+                        host_results.len(),
+                        ip_address
+                    );
+                }
             }
         } else {
             if show_reason {
