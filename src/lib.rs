@@ -44,9 +44,9 @@ use models::{
     PortScanSingleResult, VersionFormat,
 };
 
-use crate::host_discovery::engine::{DiscoveryResult, run_discovery};
+use crate::host_discovery::engine::{DiscoveryResult, discovery_needs_source_pairs, run_discovery};
 use crate::host_discovery::planner::{default_set, plan_discovery};
-use crate::resolving::source_ip::resolve_for_targets;
+use crate::resolving::source_ip::{filter_resolved_targets, resolve_for_targets};
 use version::{version_json, version_text};
 
 // --- Main public entry point ---
@@ -632,8 +632,20 @@ async fn execute_command(
             );
 
             let start_time = SystemTime::now();
-            let engine_result =
-                run_discovery(&plan, &ipv4_targets, timeout_override_ms, no_dns, is_root).await;
+            let source_pairs = if discovery_needs_source_pairs(&plan, &ipv4_targets, is_root) {
+                resolve_for_targets(&ipv4_targets)
+            } else {
+                Vec::new()
+            };
+            let engine_result = run_discovery(
+                &plan,
+                &ipv4_targets,
+                &source_pairs,
+                timeout_override_ms,
+                no_dns,
+                is_root,
+            )
+            .await;
             let end_time = SystemTime::now();
             let result =
                 discovery_to_legacy(engine_result, &ipv4_targets, &plan, start_time, end_time);
@@ -674,6 +686,13 @@ async fn execute_command(
         } => {
             let original_targets = to_ipv4_vec(&targets)?;
             let nmap_targets = original_targets.clone();
+            let discovery_uses_source_pairs =
+                discovery_needs_source_pairs(&plan, &original_targets, is_root);
+            let source_pairs = if discovery_uses_source_pairs {
+                resolve_for_targets(&original_targets)
+            } else {
+                Vec::new()
+            };
 
             let run_discovery_phase = !matches!(plan.mode, DiscoveryMode::SkipDiscoveryTreatAllUp);
             if run_discovery_phase {
@@ -688,6 +707,7 @@ async fn execute_command(
             let host_disc = run_pre_scan_discovery(
                 &plan,
                 &original_targets,
+                &source_pairs,
                 timeout_override_ms,
                 discovery_start,
                 no_dns,
@@ -771,7 +791,11 @@ async fn execute_command(
 
             let mut result = match method {
                 PortScanOption::SynScan => {
-                    let pairs = resolve_for_targets(&ipv4_targets);
+                    let pairs = if discovery_uses_source_pairs {
+                        filter_resolved_targets(&source_pairs, &ipv4_targets)
+                    } else {
+                        resolve_for_targets(&ipv4_targets)
+                    };
                     port_scanning::run_syn_scan(pairs, ports, timeout_override_ms).await?
                 }
                 PortScanOption::ConnectScan => {
@@ -779,7 +803,11 @@ async fn execute_command(
                         .await?
                 }
                 PortScanOption::AckScan => {
-                    let pairs = resolve_for_targets(&ipv4_targets);
+                    let pairs = if discovery_uses_source_pairs {
+                        filter_resolved_targets(&source_pairs, &ipv4_targets)
+                    } else {
+                        resolve_for_targets(&ipv4_targets)
+                    };
                     port_scanning::run_ack_scan(pairs, &ports, timeout_override_ms).await?
                 }
                 PortScanOption::WindowScan => {
@@ -803,7 +831,11 @@ async fn execute_command(
                     return Ok((None, None));
                 }
                 PortScanOption::UdpScan => {
-                    let pairs = resolve_for_targets(&ipv4_targets);
+                    let pairs = if discovery_uses_source_pairs {
+                        filter_resolved_targets(&source_pairs, &ipv4_targets)
+                    } else {
+                        resolve_for_targets(&ipv4_targets)
+                    };
                     port_scanning::run_udp_scan(pairs, ports, timeout_override_ms).await?
                 }
             };
@@ -869,12 +901,21 @@ async fn execute_command(
 async fn run_pre_scan_discovery(
     plan: &DiscoveryPlan,
     targets: &[Ipv4Addr],
+    source_pairs: &[(Ipv4Addr, Ipv4Addr)],
     timeout_override_ms: Option<u64>,
     start_time: SystemTime,
     no_dns: bool,
     is_root: bool,
 ) -> HostDiscoveryResult {
-    let engine = run_discovery(plan, targets, timeout_override_ms, no_dns, is_root).await;
+    let engine = run_discovery(
+        plan,
+        targets,
+        source_pairs,
+        timeout_override_ms,
+        no_dns,
+        is_root,
+    )
+    .await;
     discovery_to_legacy(engine, targets, plan, start_time, SystemTime::now())
 }
 

@@ -6,6 +6,7 @@
 //! `resolve_for_targets` to convert their target list into `(target, source)`
 //! pairs once; the probe functions then iterate the pairs directly.
 
+use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 
@@ -36,6 +37,17 @@ pub fn resolve_for_targets(targets: &[Ipv4Addr]) -> Vec<(Ipv4Addr, Ipv4Addr)> {
         .collect()
 }
 
+pub fn filter_resolved_targets(
+    resolved: &[(Ipv4Addr, Ipv4Addr)],
+    targets: &[Ipv4Addr],
+) -> Vec<(Ipv4Addr, Ipv4Addr)> {
+    let by_target: HashMap<Ipv4Addr, Ipv4Addr> = resolved.iter().copied().collect();
+    targets
+        .iter()
+        .filter_map(|target| by_target.get(target).map(|source| (*target, *source)))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,5 +69,22 @@ mod tests {
         let pairs = resolve_for_targets(&[Ipv4Addr::LOCALHOST, Ipv4Addr::new(127, 0, 0, 5)]);
         assert_eq!(pairs.len(), 2);
         assert!(pairs.iter().all(|(_, src)| *src == Ipv4Addr::LOCALHOST));
+    }
+
+    #[test]
+    fn filter_resolved_targets_preserves_requested_order_and_drops_unresolved() {
+        let resolved = vec![
+            (Ipv4Addr::new(192, 0, 2, 1), Ipv4Addr::new(10, 0, 0, 1)),
+            (Ipv4Addr::new(192, 0, 2, 2), Ipv4Addr::new(10, 0, 0, 2)),
+        ];
+        let filtered = filter_resolved_targets(
+            &resolved,
+            &[Ipv4Addr::new(192, 0, 2, 2), Ipv4Addr::new(192, 0, 2, 3)],
+        );
+
+        assert_eq!(
+            filtered,
+            vec![(Ipv4Addr::new(192, 0, 2, 2), Ipv4Addr::new(10, 0, 0, 2))]
+        );
     }
 }
