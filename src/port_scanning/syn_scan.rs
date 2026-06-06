@@ -1,296 +1,103 @@
-use pnet::packet::ip::IpNextHeaderProtocols;
-use pnet::packet::tcp::{MutableTcpPacket, TcpFlags};
-use pnet::transport::tcp_packet_iter;
-use pnet::transport::{TransportChannelType, TransportProtocol, transport_channel};
-use rand::Rng;
+use pnet::packet::tcp::TcpFlags;
 use std::net::{IpAddr, Ipv4Addr};
-use std::result::Result;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::Duration;
 
+use super::tcp_raw_scan::{
+    ScanConfig, TcpProbeBatchResult, TcpProbeOutcome, TcpProbeResult, scan_tcp_probes,
+};
 use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
 
-/// Performs a TCP SYN scan on a single port for a given IP address.
-///
-/// This function crafts and sends a raw TCP packet with the SYN flag set. It then listens
-/// for a response to determine the port's state:
-/// - **Open**: A SYN/ACK response is received.
-/// - **Closed**: A RST response is received.
-/// - **Filtered**: No response is received within the timeout period.
-///
-/// # Arguments
-///
-/// * `ip_address` - The target `IpAddr` to scan.
-/// * `port` - The target port number to scan.
-/// * `local_ip_address` - The source `Ipv4Addr` to use for the packet.
-/// * `timeout_override_ms` - Optional receive timeout in milliseconds.
-///
-/// # Returns
-///
-/// A `Result` containing either a `PortScanSingleResult` with the scan details
-/// or a `String` describing an error.
-///
-/// # Errors
-///
-/// This function will return an `Err` if it fails to create the transport channel,
-/// which typically requires administrator/root privileges. It also returns an error for IPv6 addresses.
-pub async fn port_syn_scan(
-    ip_address: IpAddr,
-    port: u16,
-    local_ip_address: Ipv4Addr,
-    timeout_override_ms: Option<u64>,
-) -> Result<PortScanSingleResult, String> {
-    // Only IPv4 is supported for this implementation
-    let ipv4 = match ip_address {
-        IpAddr::V4(ipv4) => ipv4,
-        IpAddr::V6(_) => return Err("IPv6 is not supported for SYN scanning".to_string()),
-    };
+/// SYN scan defaults. Replies (SYN+ACK or RST) are reliable, so no retransmit.
+const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+const MAX_SYN_IN_FLIGHT: usize = 100;
+/// Window-only throttle (no per-send delay); pacing is available but unused.
+const MIN_SEND_INTERVAL: Duration = Duration::ZERO;
+const MAX_SYN_ATTEMPTS: u8 = 1;
 
-    // Create a raw transport channel for sending and receiving TCP packets
-    let protocol = TransportProtocol::Ipv4(IpNextHeaderProtocols::Tcp);
-    let (mut tx, rx) = match transport_channel(4096, TransportChannelType::Layer4(protocol)) {
-        Ok((tx, rx)) => (tx, rx),
-        Err(e) => {
-            return Err(format!(
-                "Error creating transport channel: {}. Try running with sudo.",
-                e
-            ));
+/// Maps one raw probe outcome to a SYN-scan port state: SYN+ACK is open, RST is
+/// closed, anything else (or no reply) is filtered.
+fn syn_result_from_probe(probe: TcpProbeResult) -> PortScanSingleResult {
+    let (port_state, reason) = match probe.outcome {
+        TcpProbeOutcome::Reply { flags }
+            if flags & TcpFlags::SYN != 0 && flags & TcpFlags::ACK != 0 =>
+        {
+            (PortStates::Open, PortStateReasons::SynAck)
+        }
+        TcpProbeOutcome::Reply { flags } if flags & TcpFlags::RST != 0 => {
+            (PortStates::Closed, PortStateReasons::Reset)
+        }
+        TcpProbeOutcome::Reply { .. } | TcpProbeOutcome::Timeout => {
+            (PortStates::Filtered, PortStateReasons::Timeout)
         }
     };
 
-    // Create an Arc<Mutex<...>> for the receiver so it can be moved into the blocking task
-    let rx = Arc::new(Mutex::new(rx));
-
-    // Generate a random source port from the ephemeral range
-    let source_port = rand::thread_rng().gen_range(49152..65535);
-
-    // Create a SYN packet (header only, no options)
-    let mut tcp_buffer = [0u8; 20];
-    let mut tcp_packet =
-        MutableTcpPacket::new(&mut tcp_buffer).expect("Failed to create TCP packet buffer");
-
-    // Configure TCP header
-    tcp_packet.set_source(source_port);
-    tcp_packet.set_destination(port);
-    tcp_packet.set_sequence(rand::thread_rng().r#gen::<u32>());
-    tcp_packet.set_acknowledgement(0);
-    tcp_packet.set_data_offset(5); // Standard TCP header length
-    tcp_packet.set_flags(TcpFlags::SYN);
-    tcp_packet.set_window(64240);
-    tcp_packet.set_urgent_ptr(0);
-
-    // Calculate checksum using the source and destination IPs
-    let checksum =
-        pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &local_ip_address, &ipv4);
-    tcp_packet.set_checksum(checksum);
-
-    // eprintln!(
-    //     "SYN DEBUG send: target={} local_ip={} source_port={} target_port={} checksum=0x{:04x}",
-    //     ip_address,
-    //     local_ip_address,
-    //     source_port,
-    //     port,
-    //     checksum
-    // );
-
-    // Send the packet
-    if let Err(e) = tx.send_to(tcp_packet, ip_address) {
-        return Err(format!("Failed to send packet: {}", e));
-    };
-
-    let rx_clone = Arc::clone(&rx);
-
-    const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
-    let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
-
-    let response_task = tokio::task::spawn_blocking(move || {
-        let mut rx_guard = rx_clone.lock().expect("Mutex was poisoned");
-        let mut iter = tcp_packet_iter(&mut *rx_guard);
-        let timeout_duration = Duration::from_millis(read_timeout_ms);
-        let start_time = Instant::now();
-
-        loop {
-            let remaining_time = timeout_duration.saturating_sub(start_time.elapsed());
-            if remaining_time.is_zero() {
-                break;
-            }
-
-            match iter.next_with_timeout(remaining_time) {
-                Ok(Some((packet, addr))) => {
-                    if packet.get_destination() == source_port
-                        && addr == ip_address
-                        && packet.get_source() == port
-                    {
-                        let flags = packet.get_flags();
-                        if (flags & TcpFlags::SYN != 0) && (flags & TcpFlags::ACK != 0) {
-                            let ttl = 0;
-                            return Ok(PortScanSingleResult {
-                                ip_address,
-                                port,
-                                protocol: Protocols::TCP,
-                                port_state: PortStates::Open,
-                                ttl,
-                                reason: PortStateReasons::SynAck,
-                            });
-                        }
-                        if flags & TcpFlags::RST != 0 {
-                            let ttl = 0;
-                            return Ok(PortScanSingleResult {
-                                ip_address,
-                                port,
-                                protocol: Protocols::TCP,
-                                port_state: PortStates::Closed,
-                                ttl,
-                                reason: PortStateReasons::Reset,
-                            });
-                        }
-                    }
-                }
-                Ok(None) => {
-                    continue;
-                }
-                Err(e) => {
-                    eprintln!("Error receiving packet: {}", e);
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-            }
-        }
-
-        Ok(PortScanSingleResult {
-            ip_address,
-            port,
-            protocol: Protocols::TCP,
-            port_state: PortStates::Filtered,
-            ttl: 0,
-            reason: PortStateReasons::Timeout,
-        })
-    });
-
-    match response_task.await {
-        Ok(result) => result,
-        Err(e) => Err(format!("Blocking task panicked: {}", e)),
+    PortScanSingleResult {
+        ip_address: IpAddr::V4(probe.ip_address),
+        port: probe.port,
+        protocol: Protocols::TCP,
+        port_state,
+        ttl: 0,
+        reason,
     }
 }
 
-/// Orchestrates an asynchronous TCP SYN scan across multiple IPs and ports.
+/// Orchestrates a TCP SYN scan across multiple IPs and ports.
 ///
-/// This function serves as the main entry point for conducting a SYN scan. It spawns
-/// concurrent tasks for each target IP and port, managing concurrency with a semaphore
-/// to avoid overwhelming the network or the host system.
+/// Probes are sent through the shared, paced raw-socket engine in
+/// [`super::tcp_raw_scan`]; this function only chooses the SYN flag and maps the
+/// engine's raw outcomes to port states.
 ///
 /// # Arguments
 ///
-/// * `ip_address_arr` - A `Result` containing either a `Vec<Ipv4Addr>` of targets or an error string.
-/// * `ports_arr` - A vector of `u16` port numbers to scan on each target.
-/// * `local_ip_address` - The source `Ipv4Addr` to be used for sending packets.
+/// * `ip_addresses` - `(target, source)` IPv4 pairs to scan.
+/// * `ports_arr` - port numbers to scan on each target.
+/// * `timeout_override_ms` - optional per-probe receive timeout in milliseconds.
 ///
 /// # Returns
 ///
-/// A `Result` which, on success, contains a tuple of:
-/// * `Vec<PortScanSingleResult>`: A detailed list of results for each port scanned.
-/// * `PortScanAllResult`: An aggregate summary of the entire scan operation.
+/// On success, the per-port results and an aggregate [`PortScanAllResult`].
 ///
 /// # Errors
 ///
-/// This function requires administrator/root privileges to create raw sockets for packet crafting.
-/// It will return an `Err` if the underlying `port_syn_scan` calls fail due to permission issues.
+/// Requires root to open a raw socket; returns `Err` if the channel cannot be created.
 pub async fn run_syn_scan(
     ip_addresses: Vec<(Ipv4Addr, Ipv4Addr)>,
     ports_arr: Vec<u16>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    // Record the start time to calculate total scan duration later.
-    let start_time = SystemTime::now();
-
-    // Create a vector to hold the handles for all the asynchronous tasks we're about to spawn.
-    let mut tasks = Vec::new();
-
-    // Create thread-safe, shared containers for the results.
-    let single_results = Arc::new(Mutex::new(Vec::<PortScanSingleResult>::new()));
-    let open_ports = Arc::new(Mutex::new(Vec::<u16>::new()));
-    let packets_sent = Arc::new(Mutex::new(0u32));
-
-    // Use a semaphore to limit concurrent scans to 100 at a time.
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
-
-    // Create a task for each IP/port combination
-    for (ip, source_ip) in ip_addresses {
-        for &port in &ports_arr {
-            let single_results_clone = Arc::clone(&single_results);
-            let open_ports_clone = Arc::clone(&open_ports);
-            let packets_sent_clone = Arc::clone(&packets_sent);
-            let sem_clone = Arc::clone(&semaphore);
-
-            // Spawn a Tokio task for each scan
-            let task = tokio::spawn(async move {
-                // Acquire a permit from the semaphore before scanning
-                let _permit = sem_clone
-                    .acquire()
-                    .await
-                    .expect("Semaphore should not be closed");
-
-                // Increment packets sent counter safely
-                *packets_sent_clone.lock().expect("Mutex was poisoned") += 1;
-
-                match port_syn_scan(IpAddr::V4(ip), port, source_ip, timeout_override_ms).await {
-                    Ok(result) => {
-                        // If port is open, add it to the shared list of open ports
-                        if result.port_state == PortStates::Open {
-                            open_ports_clone
-                                .lock()
-                                .expect("Mutex was poisoned")
-                                .push(port);
-                            log::info!("Discovered open port {}/tcp on {}", port, ip);
-                        }
-                        // Add the detailed result to the shared list of all results
-                        single_results_clone
-                            .lock()
-                            .expect("Mutex was poisoned")
-                            .push(result);
-                    }
-                    Err(e) => {
-                        log::warn!("Error scanning {}:{}: {}", ip, port, e);
-                    }
-                }
-            });
-            tasks.push(task);
-        }
-    }
-
-    // Wait for all scan tasks to complete
-    for task in tasks {
-        let _ = task.await;
-    }
-
-    let end_time = SystemTime::now();
-
-    // Unwrap the results from their thread-safe containers
-    let single_results = Arc::try_unwrap(single_results)
-        .expect("Mutex still has references")
-        .into_inner()
-        .expect("Mutex was poisoned");
-    let open_ports = Arc::try_unwrap(open_ports)
-        .expect("Mutex still has references")
-        .into_inner()
-        .expect("Mutex was poisoned");
-    let packets_sent = Arc::try_unwrap(packets_sent)
-        .expect("Mutex still has references")
-        .into_inner()
-        .expect("Mutex was poisoned");
-
-    // Create the final summary result
-    let all_result = PortScanAllResult {
-        ports_scanned: ports_arr.len() as u16,
-        packets_sent,
-        open_ports,
-        start_time,
-        end_time,
-        scan_type: None,
+    let config = ScanConfig {
+        timeout: Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS)),
+        max_in_flight: MAX_SYN_IN_FLIGHT,
+        min_send_interval: MIN_SEND_INTERVAL,
+        max_attempts: MAX_SYN_ATTEMPTS,
     };
+    let raw = scan_tcp_probes(ip_addresses, ports_arr, TcpFlags::SYN, config).await?;
 
-    Ok((single_results, all_result))
+    let single_results: Vec<PortScanSingleResult> =
+        raw.results.iter().copied().map(syn_result_from_probe).collect();
+    let open_ports = single_results
+        .iter()
+        .filter(|r| r.port_state == PortStates::Open)
+        .map(|r| {
+            log::info!("Discovered open port {}/tcp on {}", r.port, r.ip_address);
+            r.port
+        })
+        .collect();
+
+    Ok((single_results, syn_scan_summary(&raw, open_ports)))
+}
+
+fn syn_scan_summary(raw: &TcpProbeBatchResult, open_ports: Vec<u16>) -> PortScanAllResult {
+    PortScanAllResult {
+        ports_scanned: raw.ports_scanned as u16,
+        packets_sent: raw.packets_sent,
+        open_ports,
+        start_time: raw.start_time,
+        end_time: raw.end_time,
+        scan_type: None,
+    }
 }
 
 #[cfg(test)]

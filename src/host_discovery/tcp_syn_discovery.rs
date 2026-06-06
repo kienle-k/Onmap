@@ -1,14 +1,17 @@
-use futures::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
+use pnet::packet::tcp::TcpFlags;
+
 use crate::models::{
-    HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult, PortStates,
+    HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult, PortStateReasons,
 };
-use crate::port_scanning::syn_scan::port_syn_scan;
+use crate::port_scanning::tcp_raw_scan::{ScanConfig, TcpProbeOutcome, scan_tcp_probes};
 use crate::resolving::resolve_hostname;
+
+const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+const MAX_IN_FLIGHT: usize = 100;
 
 struct HostProbeState {
     is_up: bool,
@@ -47,56 +50,42 @@ pub async fn run_tcp_syn_discovery(
         })
         .collect();
 
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
-    let mut futures = FuturesUnordered::new();
+    let config = ScanConfig {
+        timeout: Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS)),
+        max_in_flight: MAX_IN_FLIGHT,
+        min_send_interval: Duration::ZERO,
+        max_attempts: 1,
+    };
 
-    for (ip, source_ip) in &ip_addresses {
-        let (ip, source_ip) = (*ip, *source_ip);
-        for &port in &ports {
-            let sem_clone = Arc::clone(&semaphore);
+    // One shared socket for the whole scan: every (host, port) probe is in
+    // flight together and demuxed by target IP. Fold the replies into per-host
+    // state, grouped by IP, fastest reply wins. A SYN+ACK or a RST both prove
+    // the host is alive.
+    let raw = scan_tcp_probes(ip_addresses.clone(), ports.clone(), TcpFlags::SYN, config).await?;
 
-            futures.push(async move {
-                let _permit = sem_clone
-                    .acquire()
-                    .await
-                    .expect("Semaphore should not be closed");
-                let start = Instant::now();
-                let result =
-                    port_syn_scan(IpAddr::V4(ip), port, source_ip, timeout_override_ms).await;
-                let latency = start.elapsed();
-                (ip, port, latency, result)
-            });
-        }
-    }
+    for probe in raw.results {
+        let TcpProbeOutcome::Reply { flags } = probe.outcome else {
+            continue;
+        };
+        let reason = if flags & TcpFlags::SYN != 0 && flags & TcpFlags::ACK != 0 {
+            PortStateReasons::SynAck
+        } else if flags & TcpFlags::RST != 0 {
+            PortStateReasons::Reset
+        } else {
+            continue;
+        };
 
-    while let Some((ip, port, latency, result)) = futures.next().await {
-        let entry = host_states.get_mut(&ip).expect("Host state missing for IP");
-
-        match result {
-            Ok(port_result) => match port_result.port_state {
-                PortStates::Open | PortStates::Closed => {
-                    let should_update = match entry.latency {
-                        None => true,
-                        Some(existing) => latency < existing,
-                    };
-
-                    if should_update {
-                        entry.is_up = true;
-                        entry.latency = Some(latency);
-                        entry.ttl = port_result.ttl;
-                        entry.reply_type = HostDiscoveryReply::TcpSyn {
-                            port,
-                            reason: port_result.reason,
-                        };
-                    }
-                }
-                _ => {}
-            },
-            Err(e) => {
-                if !entry.is_up && entry.reply_type == HostDiscoveryReply::NoResponse {
-                    entry.reply_type = HostDiscoveryReply::Error(e);
-                }
-            }
+        let entry = host_states
+            .get_mut(&probe.ip_address)
+            .expect("Host state missing for IP");
+        if entry.latency.is_none_or(|existing| probe.latency < existing) {
+            entry.is_up = true;
+            entry.latency = Some(probe.latency);
+            entry.ttl = 0;
+            entry.reply_type = HostDiscoveryReply::TcpSyn {
+                port: probe.port,
+                reason,
+            };
         }
     }
 

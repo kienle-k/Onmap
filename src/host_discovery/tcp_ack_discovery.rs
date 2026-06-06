@@ -1,14 +1,17 @@
-use futures::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
+
+use pnet::packet::tcp::TcpFlags;
 
 use crate::models::{
     HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult, PortStateReasons,
 };
-use crate::port_scanning::ack_scan::port_ack_scan;
+use crate::port_scanning::tcp_raw_scan::{ScanConfig, TcpProbeOutcome, scan_tcp_probes};
 use crate::resolving::resolve_hostname;
+
+const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+const MAX_IN_FLIGHT: usize = 100;
 
 struct HostProbeState {
     is_up: bool,
@@ -47,46 +50,38 @@ pub async fn run_tcp_ack_discovery(
         })
         .collect();
 
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
-    let mut futures = FuturesUnordered::new();
+    let config = ScanConfig {
+        timeout: Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS)),
+        max_in_flight: MAX_IN_FLIGHT,
+        min_send_interval: Duration::ZERO,
+        max_attempts: 1,
+    };
 
-    for (ip, source_ip) in &ip_addresses {
-        let (ip, source_ip) = (*ip, *source_ip);
-        for &port in &ports {
-            let sem_clone = Arc::clone(&semaphore);
+    // One shared socket for the whole scan: every (host, port) probe is in
+    // flight together and demuxed by target IP. Fold the replies into per-host
+    // state, grouped by IP, fastest reply wins. A RST to an ACK probe proves
+    // the host is alive (the port is unfiltered).
+    let raw = scan_tcp_probes(ip_addresses.clone(), ports.clone(), TcpFlags::ACK, config).await?;
 
-            futures.push(async move {
-                let _permit = sem_clone
-                    .acquire()
-                    .await
-                    .expect("Semaphore should not be closed");
-                let start = Instant::now();
-                let (is_unfiltered, ttl) =
-                    port_ack_scan(ip, port, source_ip, timeout_override_ms).await;
-                let latency = start.elapsed();
-                (ip, port, latency, is_unfiltered, ttl)
-            });
+    for probe in raw.results {
+        let TcpProbeOutcome::Reply { flags } = probe.outcome else {
+            continue;
+        };
+        if flags & TcpFlags::RST == 0 {
+            continue;
         }
-    }
 
-    while let Some((ip, port, latency, is_unfiltered, ttl)) = futures.next().await {
-        let entry = host_states.get_mut(&ip).expect("Host state missing for IP");
-
-        if is_unfiltered {
-            let should_update = match entry.latency {
-                None => true,
-                Some(existing) => latency < existing,
+        let entry = host_states
+            .get_mut(&probe.ip_address)
+            .expect("Host state missing for IP");
+        if entry.latency.is_none_or(|existing| probe.latency < existing) {
+            entry.is_up = true;
+            entry.latency = Some(probe.latency);
+            entry.ttl = 0;
+            entry.reply_type = HostDiscoveryReply::TcpAck {
+                port: probe.port,
+                reason: PortStateReasons::Unfiltered,
             };
-
-            if should_update {
-                entry.is_up = true;
-                entry.latency = Some(latency);
-                entry.ttl = ttl.unwrap_or(0);
-                entry.reply_type = HostDiscoveryReply::TcpAck {
-                    port,
-                    reason: PortStateReasons::Unfiltered,
-                };
-            }
         }
     }
 

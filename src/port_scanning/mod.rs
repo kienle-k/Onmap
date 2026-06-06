@@ -9,6 +9,8 @@
 
 // --- TCP Scans ---
 
+pub(crate) mod tcp_raw_scan;
+
 /// Implements a TCP SYN scan, also known as a "half-open" or "stealth" scan.
 pub mod syn_scan;
 pub use syn_scan::run_syn_scan;
