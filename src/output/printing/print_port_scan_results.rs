@@ -1,9 +1,9 @@
-use super::format_duration;
 use crate::models::{PortScanAllResult, PortScanSingleResult};
 use crate::output::{
-    port_state_name, protocol_display_name, state_reason_display_name, summarize_ports,
-    ttl_display_value,
+    format_duration, port_state_name, protocol_display_name, state_reason_display_name,
+    summarize_ports, ttl_display_value,
 };
+use crate::resolving::get_service_name::get_service_name;
 use prettytable::{Cell, Row, Table, format};
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -108,7 +108,7 @@ pub fn print_port_scan_results(results: &(Vec<PortScanSingleResult>, PortScanAll
                     Cell::new(&port_result.port.to_string()),
                     Cell::new(port_state_name(port_result.port_state)),
                     Cell::new(protocol_display_name(port_result.protocol)),
-                    Cell::new(&port_result.service),
+                    Cell::new(get_service_name(port_result.protocol, port_result.port)),
                     Cell::new(&ttl_display_value(port_result.ttl)),
                     Cell::new(state_reason_display_name(port_result.reason)),
                 ]));

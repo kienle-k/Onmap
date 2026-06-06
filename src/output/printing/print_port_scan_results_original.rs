@@ -2,6 +2,7 @@ use crate::models::{PortScanAllResult, PortScanSingleResult};
 use crate::output::port_result_processing::{
     port_state_name, protocol_name, state_reason_name, state_reason_with_ttl, summarize_ports,
 };
+use crate::resolving::get_service_name::get_service_name;
 use crate::resolving::resolve_hostname;
 use chrono::Local;
 use std::collections::HashMap;
@@ -156,16 +157,18 @@ pub async fn print_port_scan_results_original(
                 let state = port_state_name(port_result.port_state);
                 if show_reason {
                     let reason = state_reason_with_ttl(port_result.reason, port_result.ttl);
+                    let service = get_service_name(port_result.protocol, port_result.port);
                     println!(
                         "{:<10} {:<14} {:<20} {}",
-                        port_result.port, state, port_result.service, reason
+                        port_result.port, state, service, reason
                     );
                 } else {
+                    let service = get_service_name(port_result.protocol, port_result.port);
                     println!(
                         "{:<7}  {:<14} {}",
                         &port_result.port.to_string(),
                         state,
-                        &port_result.service
+                        service
                     );
                 }
             }

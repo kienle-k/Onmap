@@ -11,7 +11,6 @@ use tokio::time::timeout;
 use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
-use crate::resolving::get_service_name::{get_service_name, load_service_map};
 
 async fn udp_probe_with_details(
     target_ip: Ipv4Addr,
@@ -108,11 +107,6 @@ pub async fn run_udp_scan(
     ports: Vec<u16>,
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    let service_map = Arc::new(
-        load_service_map("src/resolving/port_service_mapping.json")
-            .map_err(|e| format!("Failed to load service names: {}", e))?,
-    );
-
     let start_time = SystemTime::now();
     let semaphore = Arc::new(Semaphore::new(200));
     let mut futs = FuturesUnordered::new();
@@ -120,7 +114,6 @@ pub async fn run_udp_scan(
     for &(ip, source_ip) in &ip_addresses {
         for &port in &ports {
             let sem_clone = semaphore.clone();
-            let service_map_clone = Arc::clone(&service_map);
 
             futs.push(async move {
                 let _permit = sem_clone
@@ -141,7 +134,6 @@ pub async fn run_udp_scan(
                     port_state: state,
                     ttl: 0,
                     reason,
-                    service: get_service_name(&service_map_clone, "udp", port),
                 }
             });
         }

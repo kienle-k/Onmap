@@ -8,6 +8,7 @@ use crate::output::{
         state_reason_name, summarize_ports,
     },
 };
+use crate::resolving::get_service_name::get_service_name;
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::fs::File;
@@ -174,7 +175,7 @@ pub fn save_to_file_xml_port_scan(
             writeln!(
                 file,
                 "        <service name=\"{}\" method=\"table\" conf=\"3\"/>",
-                xml_attr(&result.service)
+                xml_attr(get_service_name(result.protocol, result.port))
             )?;
             writeln!(file, "      </port>")?;
         }
@@ -242,7 +243,6 @@ mod tests {
             port_state: state,
             ttl: 0,
             reason,
-            service: "svc".to_string(),
         }
     }
 
@@ -388,7 +388,6 @@ mod tests {
             port_state: PortStates::Open,
             ttl: 0,
             reason: PortStateReasons::SynAck,
-            service: "a&b\"<c>".to_string(),
         }];
         let summary = PortScanAllResult::new();
         let host_up = vec![HostDiscoverySingleResult {
@@ -409,6 +408,7 @@ mod tests {
 
         assert!(xml.contains("<scaninfo type=\"unknown\""));
         assert!(xml.contains("reason=\"user-set\""));
-        assert!(xml.contains("service name=\"a&amp;b&quot;&lt;c&gt;\""));
+        assert!(xml.contains("service name=\"https\""));
+        assert_eq!(xml_attr("a&b\"<c>"), "a&amp;b&quot;&lt;c&gt;");
     }
 }

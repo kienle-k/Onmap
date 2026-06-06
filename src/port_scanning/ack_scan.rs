@@ -15,7 +15,6 @@ use tokio::time::timeout;
 use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
-use crate::resolving::get_service_name::{get_service_name, load_service_map};
 
 /// Sends a single TCP ACK packet using a Layer 4 channel and returns its status.
 ///
@@ -139,12 +138,6 @@ pub async fn run_ack_scan(
     ports: &[u16],
     timeout_override_ms: Option<u64>,
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
-    // Load service name data once, share cheaply across all tasks then.
-    let service_map = Arc::new(
-        load_service_map("src/resolving/port_service_mapping.json")
-            .map_err(|e| format!("Failed to load service names: {}", e))?,
-    );
-
     let start_time = SystemTime::now();
     // Semaphore limits the number of concurrent in-flight scans.
     let semaphore = Arc::new(Semaphore::new(200));
@@ -153,7 +146,6 @@ pub async fn run_ack_scan(
     for &(ip, source_ip) in &ip_addresses {
         for &port in ports {
             let sem_clone = semaphore.clone();
-            let service_map_clone = Arc::clone(&service_map);
 
             futs.push(async move {
                 // Wait for a permit from the semaphore before starting the scan.
@@ -180,7 +172,6 @@ pub async fn run_ack_scan(
                     } else {
                         PortStateReasons::Timeout
                     },
-                    service: get_service_name(&service_map_clone, "tcp", port),
                 }
             });
         }

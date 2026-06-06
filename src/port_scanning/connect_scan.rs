@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex};
 use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
-use crate::resolving::get_service_name::{ServiceMap, get_service_name, load_service_map};
 
 /// Performs a TCP connect scan on a single IP address and port.
 ///
@@ -24,7 +23,6 @@ use crate::resolving::get_service_name::{ServiceMap, get_service_name, load_serv
 /// * `ip_address` - The target IP address.
 /// * `port` - The target port to scan.
 /// * `timeout_duration` - The maximum duration to wait for a connection attempt.
-/// * `service_map` - A reference to the TCP/UDP port-to-service lookup map.
 ///
 /// # Returns
 /// * `Ok(PortScanSingleResult)` if the scan completes successfully.
@@ -38,7 +36,6 @@ pub async fn port_tcp_connect_scan(
     ip_address: IpAddr,
     port: u16,
     timeout_duration: Duration,
-    service_map: &ServiceMap,
 ) -> Result<PortScanSingleResult, String> {
     // Function to automatically create the struct
     let make_result = |state, reason| PortScanSingleResult {
@@ -48,7 +45,6 @@ pub async fn port_tcp_connect_scan(
         port_state: state,
         ttl: 0, // TTL only meaningful for raw scans like SYN or ACK (here, the OS handles the packets -> no ttl insight)
         reason,
-        service: get_service_name(service_map, "tcp", port),
     };
 
     let socket_addr = SocketAddr::new(ip_address, port);
@@ -100,7 +96,7 @@ pub async fn port_tcp_connect_scan(
 ///
 /// # Returns
 /// * `Ok((Vec<PortScanSingleResult>, PortScanAllResult))` if all scans complete without critical error.
-/// * `Err(String)` if IP resolution or service map loading fails.
+/// * `Err(String)` if IP resolution fails.
 ///
 /// # Notes
 /// * Limits concurrent tasks using a semaphore (max 100).
@@ -113,12 +109,6 @@ pub async fn run_connect_scan(
 ) -> Result<(Vec<PortScanSingleResult>, PortScanAllResult), String> {
     const DEFAULT_TIMEOUT_MS: u64 = 300;
     let timeout = Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
-
-    // let service_map = Arc::new(load_service_map("src/resolving/port_service_mapping.json").expect("Failed to load service names"));
-    let service_map = Arc::new(
-        load_service_map("src/resolving/port_service_mapping.json")
-            .map_err(|e| format!("Failed to load service names: {}", e))?,
-    );
 
     let start_time = SystemTime::now();
     let mut tasks = Vec::new();
@@ -140,7 +130,6 @@ pub async fn run_connect_scan(
             let open_ports_clone = Arc::clone(&open_ports);
             let packets_sent_clone = Arc::clone(&packets_sent);
             let sem_clone = Arc::clone(&semaphore);
-            let service_map_clone = Arc::clone(&service_map);
             let scan_error_clone = Arc::clone(&scan_error);
 
             // Spawn a task for each scan
@@ -166,7 +155,7 @@ pub async fn run_connect_scan(
                     *counter += 1;
                 }
 
-                match port_tcp_connect_scan(ip_addr, port, timeout, &service_map_clone).await {
+                match port_tcp_connect_scan(ip_addr, port, timeout).await {
                     Ok(result) => {
                         let mut results = match single_results_clone.lock() {
                             Ok(guard) => guard,

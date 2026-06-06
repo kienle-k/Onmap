@@ -1,5 +1,6 @@
 use crate::models::{PortScanAllResult, PortScanSingleResult};
 use crate::output::{port_state_name, protocol_name, summarize_ports};
+use crate::resolving::get_service_name::get_service_name;
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::fs::File;
@@ -52,7 +53,7 @@ pub fn save_to_file_grepable_port_scan(
                     port_result.port,
                     port_state_name(port_result.port_state),
                     protocol_name(port_result.protocol),
-                    port_result.service
+                    get_service_name(port_result.protocol, port_result.port)
                 )
             })
             .collect();

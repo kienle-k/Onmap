@@ -500,8 +500,6 @@ pub struct PortScanSingleResult {
     pub ttl: u8,
     /// The network reason for the determined port state (e.g., SynAck).
     pub reason: PortStateReasons,
-    /// The potential service running on the port (e.g., "http").
-    pub service: String,
 }
 
 /// Holds the summary and aggregate results of a port scan operation across multiple ports.

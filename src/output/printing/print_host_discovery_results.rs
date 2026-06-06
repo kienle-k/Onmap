@@ -1,5 +1,5 @@
-use super::format_duration;
 use crate::models::{HostDiscoveryAllResult, HostDiscoverySingleResult};
+use crate::output::format_duration;
 use crate::output::host_reply_display_name;
 use prettytable::{Cell, Row, Table, format};
 

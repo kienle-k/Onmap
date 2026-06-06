@@ -8,7 +8,6 @@ use crate::models::{
     HostDiscoveryAllResult, HostDiscoveryReply, HostDiscoverySingleResult, PortStates,
 };
 use crate::port_scanning::syn_scan::port_syn_scan;
-use crate::resolving::get_service_name::load_service_map;
 use crate::resolving::resolve_hostname;
 
 struct HostProbeState {
@@ -31,11 +30,6 @@ pub async fn run_tcp_syn_discovery(
     if ports.is_empty() {
         return Err("At least one port is required for TCP SYN discovery".to_string());
     }
-
-    let service_map = Arc::new(
-        load_service_map("src/resolving/port_service_mapping.json")
-            .map_err(|e| format!("Failed to load service map: {}", e))?,
-    );
 
     let all_ips: Vec<IpAddr> = ip_addresses.iter().map(|(ip, _)| IpAddr::V4(*ip)).collect();
     let mut host_states: HashMap<Ipv4Addr, HostProbeState> = ip_addresses
@@ -60,7 +54,6 @@ pub async fn run_tcp_syn_discovery(
         let (ip, source_ip) = (*ip, *source_ip);
         for &port in &ports {
             let sem_clone = Arc::clone(&semaphore);
-            let service_map_clone = Arc::clone(&service_map);
 
             futures.push(async move {
                 let _permit = sem_clone
@@ -68,14 +61,8 @@ pub async fn run_tcp_syn_discovery(
                     .await
                     .expect("Semaphore should not be closed");
                 let start = Instant::now();
-                let result = port_syn_scan(
-                    IpAddr::V4(ip),
-                    port,
-                    source_ip,
-                    service_map_clone,
-                    timeout_override_ms,
-                )
-                .await;
+                let result =
+                    port_syn_scan(IpAddr::V4(ip), port, source_ip, timeout_override_ms).await;
                 let latency = start.elapsed();
                 (ip, port, latency, result)
             });

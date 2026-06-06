@@ -1,5 +1,6 @@
 use crate::models::{PortScanAllResult, PortScanSingleResult, PortStates};
 use crate::output::{port_state_name, protocol_name};
+use crate::resolving::get_service_name::get_service_name;
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::fs::File;
@@ -90,7 +91,7 @@ pub fn save_to_file_normal_port_scan(
                     "{:<8} {:<6} {}",
                     port_proto,
                     port_state_name(port_result.port_state),
-                    port_result.service
+                    get_service_name(port_result.protocol, port_result.port)
                 )?;
             }
         }
