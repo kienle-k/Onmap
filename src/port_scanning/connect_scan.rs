@@ -2,16 +2,21 @@ use std::time::{Duration, SystemTime};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
+use futures::stream::{self, StreamExt};
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::result::Result;
-use std::sync::{Arc, Mutex};
 
 use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
+
+/// Maximum connect attempts in flight at once. The stream window is the only
+/// concurrency limit (no semaphore) and bounds live futures, so memory stays
+/// flat regardless of the port count.
+const MAX_IN_FLIGHT: usize = 100;
 
 /// Performs a TCP connect scan on a single IP address and port.
 ///
@@ -99,8 +104,8 @@ pub async fn port_tcp_connect_scan(
 /// * `Err(String)` if IP resolution fails.
 ///
 /// # Notes
-/// * Limits concurrent tasks using a semaphore (max 100).
-/// * Uses `Arc<Mutex<...>>` to collect shared scan results safely across tasks.
+/// * Bounds concurrency with a stream window (`MAX_IN_FLIGHT`); only that many
+///   probe futures exist at once, so memory does not scale with the port count.
 /// * Accurately counts packets sent (connect + response for open ports).
 pub async fn run_connect_scan(
     ip_addresses: Vec<Ipv4Addr>,
@@ -111,146 +116,53 @@ pub async fn run_connect_scan(
     let timeout = Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
 
     let start_time = SystemTime::now();
-    let mut tasks = Vec::new();
-    let single_results = Arc::new(Mutex::new(Vec::<PortScanSingleResult>::new()));
-    let open_ports = Arc::new(Mutex::new(Vec::<u16>::new()));
-    let packets_sent = Arc::new(Mutex::new(0u32));
-    // First fatal per-port error, if any. A successful run leaves this `None`.
-    let scan_error = Arc::new(Mutex::new(None::<String>));
 
-    // Avoid overwhelming the network --> limit concurrent scans
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
+    // Lazily generate (ip, port) probes and keep at most MAX_IN_FLIGHT running.
+    let probes = ip_addresses.iter().flat_map(|&ip| {
+        let ip_addr = IpAddr::V4(ip);
+        ports_arr.iter().map(move |&port| (ip_addr, port))
+    });
+    let mut stream = stream::iter(probes)
+        .map(|(ip_addr, port)| async move {
+            (ip_addr, port, port_tcp_connect_scan(ip_addr, port, timeout).await)
+        })
+        .buffer_unordered(MAX_IN_FLIGHT);
 
-    // Create a task for each IP/port combination
-    for ip in ip_addresses {
-        let ip_addr = IpAddr::V4(ip); // Convert Ipv4Addr to IpAddr
-        for port in &ports_arr {
-            let port = *port;
-            let single_results_clone = Arc::clone(&single_results);
-            let open_ports_clone = Arc::clone(&open_ports);
-            let packets_sent_clone = Arc::clone(&packets_sent);
-            let sem_clone = Arc::clone(&semaphore);
-            let scan_error_clone = Arc::clone(&scan_error);
+    // Single consumer: no shared state, no locks.
+    let mut single_results = Vec::new();
+    let mut open_ports = Vec::new();
+    let mut packets_sent: u32 = 0;
 
-            // Spawn a task for each scan
-            let task = tokio::spawn(async move {
-                // Acquire a permit from the semaphore before scanning
-                let _permit = match sem_clone.acquire().await {
-                    Ok(permit) => permit,
-                    Err(e) => {
-                        eprintln!("Semaphore acquire error: {}", e);
-                        return; // exit this task
-                    }
-                };
-
-                // Increment packets sent counter (Cause every check sends a SYN packet)
-                {
-                    let mut counter = match packets_sent_clone.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            eprintln!("Mutex poisoned: packets_sent");
-                            poisoned.into_inner()
-                        }
-                    };
-                    *counter += 1;
+    while let Some((ip_addr, port, outcome)) = stream.next().await {
+        // Every probe sends a SYN.
+        packets_sent += 1;
+        match outcome {
+            Ok(result) => {
+                if result.port_state == PortStates::Open {
+                    log::info!("Discovered open port {}/tcp on {}", port, ip_addr);
+                    open_ports.push(port);
+                    // Open ports also see the ACK and RST.
+                    packets_sent += 2;
                 }
-
-                match port_tcp_connect_scan(ip_addr, port, timeout).await {
-                    Ok(result) => {
-                        let mut results = match single_results_clone.lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => {
-                                eprintln!("Mutex poisoned: single_results");
-                                poisoned.into_inner()
-                            }
-                        };
-
-                        // If port is open, add it to the open ports list
-                        if result.port_state == PortStates::Open {
-                            log::info!("Discovered open port {}/tcp on {}", port, ip_addr);
-                            let mut open = match open_ports_clone.lock() {
-                                Ok(guard) => guard,
-                                Err(poisoned) => {
-                                    eprintln!("Mutex poisoned: open_ports");
-                                    poisoned.into_inner()
-                                }
-                            };
-                            open.push(port);
-                            {
-                                // Increment packets sent counter by 2 (cause of ACK and RST)
-                                let mut counter = match packets_sent_clone.lock() {
-                                    Ok(guard) => guard,
-                                    Err(poisoned) => {
-                                        eprintln!("Mutex poisoned: packets_sent");
-                                        poisoned.into_inner()
-                                    }
-                                };
-                                *counter += 2;
-                            }
-                        }
-                        results.push(result);
-                    }
-                    // A per-port error means a result is missing; never drop it silently.
-                    Err(e) => {
-                        log::error!("Connect scan failed for {}:{}: {}", ip_addr, port, e);
-                        let mut slot = match scan_error_clone.lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => {
-                                eprintln!("Mutex poisoned: scan_error");
-                                poisoned.into_inner()
-                            }
-                        };
-                        slot.get_or_insert(e);
-                    }
-                }
-            });
-
-            tasks.push(task);
+                single_results.push(result);
+            }
+            // A per-port error means a result is missing; fail the whole run
+            // rather than returning Ok with a port silently dropped.
+            Err(e) => {
+                log::error!("Connect scan failed for {}:{}: {}", ip_addr, port, e);
+                return Err(e);
+            }
         }
     }
 
-    // Wait for scans to complete
-    for task in tasks {
-        let _ = task.await;
-    }
-
-    // Fail the whole run rather than returning Ok with missing port results.
-    if let Some(error) = Arc::try_unwrap(scan_error)
-        .map_err(|_| "References still exist to scan_error")?
-        .into_inner()
-        .map_err(|_| "Mutex is poisoned: scan_error")?
-    {
-        return Err(error);
-    }
-
-    let end_time = SystemTime::now();
-
-    // Final results
-    let single_results = Arc::try_unwrap(single_results)
-        .map_err(|_| "References still exist to single_results")?
-        .into_inner()
-        .map_err(|_| "Mutex is poisoned: single_results")?;
-
-    let open_ports = Arc::try_unwrap(open_ports)
-        .map_err(|_| "References still exist to open_ports")?
-        .into_inner()
-        .map_err(|_| "Mutex is poisoned: open_ports")?;
-
-    let packets_sent = Arc::try_unwrap(packets_sent)
-        .map_err(|_| "References still exist to packets_sent")?
-        .into_inner()
-        .map_err(|_| "Mutex is poisoned: packets_sent")?;
-
-    // Create the PortScanAllResult
     let all_result = PortScanAllResult {
         ports_scanned: ports_arr.len() as u16,
         packets_sent,
         open_ports,
         start_time,
-        end_time,
+        end_time: SystemTime::now(),
         scan_type: None,
     };
 
-    // Return both result types
     Ok((single_results, all_result))
 }
