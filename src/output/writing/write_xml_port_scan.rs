@@ -109,7 +109,10 @@ pub fn save_to_file_xml_port_scan(
     for res in single_results {
         host_map.entry(res.ip_address).or_default().push(res);
     }
-    let hosts_up = host_map.len();
+    let mut hosts: Vec<(IpAddr, Vec<&PortScanSingleResult>)> = host_map.into_iter().collect();
+    hosts.sort_unstable_by_key(|(ip, _)| *ip);
+
+    let hosts_up = hosts.len();
     let total_hosts = if host_up.is_empty() {
         hosts_up
     } else {
@@ -117,7 +120,7 @@ pub fn save_to_file_xml_port_scan(
     };
     let hosts_down = total_hosts.saturating_sub(hosts_up);
 
-    for (ip, host_results) in host_map {
+    for (ip, host_results) in hosts {
         let (reason, reason_ttl) = host_status.get(&ip).copied().unwrap_or(("user-set", 0));
 
         writeln!(file, "  <host>")?;
@@ -376,6 +379,31 @@ mod tests {
 
         assert!(xml.contains("<hosts up=\"1\" down=\"1\" total=\"2\"/>"));
         assert!(xml.contains("2 IP addresses (1 host up)"));
+    }
+
+    #[test]
+    fn emits_hosts_in_stable_ip_order() {
+        let first = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let second = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
+        let results = vec![
+            port(second, 443, PortStates::Open, PortStateReasons::SynAck),
+            port(first, 80, PortStates::Open, PortStateReasons::SynAck),
+        ];
+        let mut summary = PortScanAllResult::new();
+        summary.scan_type = Some(PortScanOption::SynScan);
+
+        let path = std::env::temp_dir().join(format!("onmap-xml-order-{}.xml", std::process::id()));
+        save_to_file_xml_port_scan(path.to_str().unwrap(), (&results, &summary), &[], 0).unwrap();
+        let xml = fs::read_to_string(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        let first_pos = xml
+            .find("<address addr=\"10.0.0.1\" addrtype=\"ipv4\"/>")
+            .expect("first host should be emitted");
+        let second_pos = xml
+            .find("<address addr=\"10.0.0.2\" addrtype=\"ipv4\"/>")
+            .expect("second host should be emitted");
+        assert!(first_pos < second_pos);
     }
 
     #[test]
