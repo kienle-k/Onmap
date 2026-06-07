@@ -1,22 +1,21 @@
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use futures::stream::{self, StreamExt};
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::result::Result;
+use std::sync::Arc;
 
 use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
 
-/// Maximum connect attempts in flight at once. The stream window is the only
-/// concurrency limit (no semaphore) and bounds live futures, so memory stays
-/// flat regardless of the port count.
 const MAX_IN_FLIGHT: usize = 100;
+const MAX_TIMEOUT_RETRY_RATIO: usize = 4;
 
 /// Performs a TCP connect scan on a single IP address and port.
 ///
@@ -56,7 +55,15 @@ pub async fn port_tcp_connect_scan(
 
     // Map each connect outcome to a port state, mirroring Nmap's connect scan.
     match timeout(timeout_duration, TcpStream::connect(socket_addr)).await {
-        Ok(Ok(_)) => Ok(make_result(PortStates::Open, PortStateReasons::SynAck)),
+        Ok(Ok(stream)) => {
+            if is_loopback_self_connect(&stream) {
+                return Ok(make_result(
+                    PortStates::Closed,
+                    PortStateReasons::ConnRefused,
+                ));
+            }
+            Ok(make_result(PortStates::Open, PortStateReasons::SynAck))
+        }
         Ok(Err(e)) => {
             let (state, reason) = match e.kind() {
                 ErrorKind::ConnectionRefused => (PortStates::Closed, PortStateReasons::ConnRefused),
@@ -85,8 +92,16 @@ pub async fn port_tcp_connect_scan(
             };
             Ok(make_result(state, reason))
         }
-        Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::Timeout)), // tokio timeout
+        Err(_) => Ok(make_result(PortStates::Filtered, PortStateReasons::Timeout)),
     }
+}
+
+fn is_loopback_self_connect(stream: &TcpStream) -> bool {
+    let (Ok(local), Ok(peer)) = (stream.local_addr(), stream.peer_addr()) else {
+        return false;
+    };
+
+    local == peer && local.ip().is_loopback()
 }
 
 /// Runs a full TCP connect scan on multiple IP addresses and ports concurrently.
@@ -104,8 +119,9 @@ pub async fn port_tcp_connect_scan(
 /// * `Err(String)` if IP resolution fails.
 ///
 /// # Notes
-/// * Bounds concurrency with a stream window (`MAX_IN_FLIGHT`); only that many
-///   probe futures exist at once, so memory does not scale with the port count.
+/// * Limits active connect attempts with a semaphore.
+/// * Spawns every probe task up front; this intentionally preserves the older
+///   scheduler behavior because it benchmarked faster and more consistently.
 /// * Accurately counts packets sent (connect + response for open ports).
 pub async fn run_connect_scan(
     ip_addresses: Vec<Ipv4Addr>,
@@ -116,44 +132,51 @@ pub async fn run_connect_scan(
     let timeout = Duration::from_millis(timeout_override_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
 
     let start_time = SystemTime::now();
-
-    // Lazily generate (ip, port) probes and keep at most MAX_IN_FLIGHT running.
-    let probes = ip_addresses.iter().flat_map(|&ip| {
-        let ip_addr = IpAddr::V4(ip);
-        ports_arr.iter().map(move |&port| (ip_addr, port))
-    });
-    let mut stream = stream::iter(probes)
-        .map(|(ip_addr, port)| async move {
-            (ip_addr, port, port_tcp_connect_scan(ip_addr, port, timeout).await)
+    let targets: Vec<(IpAddr, u16)> = ip_addresses
+        .into_iter()
+        .flat_map(|ip| {
+            let ip_addr = IpAddr::V4(ip);
+            ports_arr.iter().map(move |&port| (ip_addr, port))
         })
-        .buffer_unordered(MAX_IN_FLIGHT);
+        .collect();
 
-    // Single consumer: no shared state, no locks.
-    let mut single_results = Vec::new();
-    let mut open_ports = Vec::new();
-    let mut packets_sent: u32 = 0;
+    let total_targets = targets.len();
+    let (mut single_results, mut packets_sent) = scan_connect_targets(targets, timeout).await?;
 
-    while let Some((ip_addr, port, outcome)) = stream.next().await {
-        // Every probe sends a SYN.
-        packets_sent += 1;
-        match outcome {
-            Ok(result) => {
-                if result.port_state == PortStates::Open {
-                    log::info!("Discovered open port {}/tcp on {}", port, ip_addr);
-                    open_ports.push(port);
-                    // Open ports also see the ACK and RST.
-                    packets_sent += 2;
-                }
-                single_results.push(result);
-            }
-            // A per-port error means a result is missing; fail the whole run
-            // rather than returning Ok with a port silently dropped.
-            Err(e) => {
-                log::error!("Connect scan failed for {}:{}: {}", ip_addr, port, e);
-                return Err(e);
+    let retry_targets = sparse_timeout_retry_targets(&single_results, total_targets);
+    if !retry_targets.is_empty() {
+        log::debug!(
+            "Retrying {} sparse TCP connect timeout result(s)",
+            retry_targets.len()
+        );
+        let (retry_results, retry_packets) = scan_connect_targets(retry_targets, timeout).await?;
+        packets_sent += retry_packets;
+
+        let mut retry_by_target: HashMap<(IpAddr, u16), PortScanSingleResult> = retry_results
+            .into_iter()
+            .map(|result| ((result.ip_address, result.port), result))
+            .collect();
+
+        for result in &mut single_results {
+            if let Some(retry_result) = retry_by_target.remove(&(result.ip_address, result.port)) {
+                *result = retry_result;
             }
         }
     }
+
+    let open_ports: Vec<u16> = single_results
+        .iter()
+        .filter(|result| result.port_state == PortStates::Open)
+        .map(|result| {
+            log::info!(
+                "Discovered open port {}/tcp on {}",
+                result.port,
+                result.ip_address
+            );
+            result.port
+        })
+        .collect();
+    packets_sent += (open_ports.len() as u32) * 2;
 
     let all_result = PortScanAllResult {
         ports_scanned: ports_arr.len() as u16,
@@ -165,4 +188,54 @@ pub async fn run_connect_scan(
     };
 
     Ok((single_results, all_result))
+}
+
+async fn scan_connect_targets(
+    targets: Vec<(IpAddr, u16)>,
+    timeout: Duration,
+) -> Result<(Vec<PortScanSingleResult>, u32), String> {
+    let packets_sent = targets.len() as u32;
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(MAX_IN_FLIGHT));
+    let mut tasks = Vec::with_capacity(targets.len());
+
+    for (ip_addr, port) in targets {
+        let semaphore = Arc::clone(&semaphore);
+        tasks.push(tokio::spawn(async move {
+            let _permit = semaphore
+                .acquire_owned()
+                .await
+                .map_err(|e| format!("Semaphore acquire error: {}", e))?;
+
+            port_tcp_connect_scan(ip_addr, port, timeout).await
+        }));
+    }
+
+    let mut results = Vec::with_capacity(tasks.len());
+    for task in tasks {
+        let result = task
+            .await
+            .map_err(|e| format!("Connect scan task failed: {}", e))??;
+        results.push(result);
+    }
+
+    Ok((results, packets_sent))
+}
+
+fn sparse_timeout_retry_targets(
+    results: &[PortScanSingleResult],
+    total_targets: usize,
+) -> Vec<(IpAddr, u16)> {
+    let retry_targets: Vec<(IpAddr, u16)> = results
+        .iter()
+        .filter(|result| {
+            result.port_state == PortStates::Filtered && result.reason == PortStateReasons::Timeout
+        })
+        .map(|result| (result.ip_address, result.port))
+        .collect();
+
+    if retry_targets.len() * MAX_TIMEOUT_RETRY_RATIO <= total_targets {
+        retry_targets
+    } else {
+        Vec::new()
+    }
 }
