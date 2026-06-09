@@ -232,3 +232,101 @@ async fn icmp_timestamp_host_with_details(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The origin timestamp must fit within one day's worth of milliseconds
+    /// (0..86_400_000), as required by the ICMP Timestamp specification.
+    #[test]
+    fn origin_ms_is_within_valid_day_range() {
+        let ts = icmp_timestamp_origin_ms();
+        assert!(
+            ts < 86_400_000,
+            "origin timestamp {ts} exceeds max ms-since-midnight (86_400_000)"
+        );
+    }
+
+    /// Two calls made in rapid succession must return non-decreasing values —
+    /// time must not appear to go backwards.
+    #[test]
+    fn origin_ms_does_not_go_backwards() {
+        let first = icmp_timestamp_origin_ms();
+        let second = icmp_timestamp_origin_ms();
+        assert!(
+            second >= first,
+            "second call ({second}) was less than first call ({first})"
+        );
+    }
+
+    /// An empty target list must return no per-host results.
+    #[tokio::test]
+    async fn empty_input_returns_zero_results() {
+        let (results, _) = run_icmp_timestamp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert!(results.is_empty());
+    }
+
+    /// packets_sent must equal the number of probed targets.
+    #[tokio::test]
+    async fn empty_input_summary_packets_sent_is_zero() {
+        let (_, summary) = run_icmp_timestamp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert_eq!(summary.packets_sent, 0);
+    }
+
+    /// hosts_up must be zero when no targets were scanned.
+    #[tokio::test]
+    async fn empty_input_summary_hosts_up_is_zero() {
+        let (_, summary) = run_icmp_timestamp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert_eq!(summary.hosts_up, 0);
+    }
+
+    /// scanned_addresses in the summary must mirror the caller's input list.
+    #[tokio::test]
+    async fn empty_input_summary_scanned_addresses_matches_input() {
+        let (_, summary) = run_icmp_timestamp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert!(summary.scanned_addresses.is_empty());
+    }
+
+    /// With no_dns = true the DNS timing field must stay at exactly 0.0.
+    #[tokio::test]
+    async fn no_dns_flag_keeps_dns_elapsed_secs_at_zero() {
+        let (_, summary) = run_icmp_timestamp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert_eq!(summary.dns_elapsed_secs, 0.0);
+    }
+
+    /// With no_dns = true no result may carry a resolved hostname.
+    #[tokio::test]
+    async fn no_dns_flag_leaves_all_dns_resolves_empty() {
+        let (results, _) = run_icmp_timestamp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert!(results.iter().all(|r| r.dns_resolve.is_none()));
+    }
+
+    /// end_time must not precede start_time.
+    #[tokio::test]
+    async fn summary_end_time_not_before_start_time() {
+        let (_, summary) = run_icmp_timestamp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert!(summary.end_time >= summary.start_time);
+    }
+}
