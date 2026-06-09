@@ -245,3 +245,175 @@ async fn udp_probe_with_details(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Convenience alias: (target=loopback, source=loopback)
+    fn localhost_pair() -> (Ipv4Addr, Ipv4Addr) {
+        (Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST)
+    }
+
+    // Binds a UDP socket on loopback, spawns a task that echoes every datagram
+    // back to the sender, and returns the bound port.
+    fn spawn_udp_echo_server() -> u16 {
+        let socket =
+            UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
+        let port = socket.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 512];
+            // One echo is enough for a single test probe.
+            if let Ok((len, peer)) = socket.recv_from(&mut buf) {
+                let _ = socket.send_to(&buf[..len], peer);
+            }
+        });
+        port
+    }
+
+    // Returns a loopback UDP port that nothing listens on, so a send will
+    // receive ICMP port unreachable (ECONNREFUSED on Linux).
+    fn closed_udp_port() -> u16 {
+        let socket =
+            UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
+        let port = socket.local_addr().unwrap().port();
+        drop(socket); // Release the port immediately.
+        port
+    }
+
+    /// An empty port list must be rejected immediately with an Err.
+    #[tokio::test]
+    async fn empty_ports_returns_err() {
+        let result = run_udp_discovery(vec![], vec![], None, true).await;
+        assert!(result.is_err(), "expected Err for empty ports, got Ok");
+    }
+
+    /// The error message for an empty port list must mention "port".
+    #[tokio::test]
+    async fn empty_ports_error_message_mentions_port() {
+        let err = run_udp_discovery(vec![], vec![], None, true)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_lowercase().contains("port"),
+            "error should mention 'port', got: {err}"
+        );
+    }
+
+    /// An empty host list with a valid port must succeed and return no results.
+    #[tokio::test]
+    async fn empty_hosts_returns_zero_results() {
+        let (results, _) = run_udp_discovery(vec![], vec![53], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert!(results.is_empty());
+    }
+
+    /// hosts_up must be zero when no hosts were scanned.
+    #[tokio::test]
+    async fn empty_hosts_summary_hosts_up_is_zero() {
+        let (_, summary) = run_udp_discovery(vec![], vec![53], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert_eq!(summary.hosts_up, 0);
+    }
+
+    /// packets_sent = ports × hosts.  With no hosts this is always zero.
+    #[tokio::test]
+    async fn empty_hosts_summary_packets_sent_is_zero() {
+        let (_, summary) = run_udp_discovery(vec![], vec![53, 123], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert_eq!(summary.packets_sent, 0);
+    }
+
+    /// scanned_addresses must mirror the caller's input list.
+    #[tokio::test]
+    async fn empty_hosts_summary_scanned_addresses_is_empty() {
+        let (_, summary) = run_udp_discovery(vec![], vec![53], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert!(summary.scanned_addresses.is_empty());
+    }
+
+    /// ports_per_host must equal the number of ports provided.
+    #[tokio::test]
+    async fn summary_ports_per_host_matches_port_count() {
+        let (_, summary) = run_udp_discovery(vec![], vec![53, 123, 161], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert_eq!(summary.ports_per_host, 3);
+    }
+
+    /// With no_dns = true the DNS timing field must stay at exactly 0.0.
+    #[tokio::test]
+    async fn no_dns_flag_keeps_dns_elapsed_secs_at_zero() {
+        let (_, summary) = run_udp_discovery(vec![], vec![53], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert_eq!(summary.dns_elapsed_secs, 0.0);
+    }
+
+    /// With no_dns = true no result may carry a resolved hostname.
+    #[tokio::test]
+    async fn no_dns_flag_leaves_all_dns_resolves_empty() {
+        let (results, _) = run_udp_discovery(vec![], vec![53], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert!(results.iter().all(|r| r.dns_resolve.is_none()));
+    }
+
+    /// end_time must not precede start_time.
+    #[tokio::test]
+    async fn summary_end_time_not_before_start_time() {
+        let (_, summary) = run_udp_discovery(vec![], vec![53], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert!(summary.end_time >= summary.start_time);
+    }
+
+    /// A host that responds to a UDP probe must be reported as up.
+    #[tokio::test]
+    async fn udp_response_marks_host_as_up() {
+        let port = spawn_udp_echo_server();
+
+        let (results, _) = run_udp_discovery(vec![localhost_pair()], vec![port], Some(300), true)
+            .await
+            .expect("scan must not fail");
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].is_up,
+            "host that replied to UDP probe should be up"
+        );
+    }
+
+    /// A host that returns ICMP port unreachable (closed UDP port, ECONNREFUSED
+    /// on Linux) must also be reported as up — the ICMP proves reachability.
+    #[tokio::test]
+    async fn icmp_port_unreachable_marks_host_as_up() {
+        let port = closed_udp_port();
+
+        let (results, _) = run_udp_discovery(vec![localhost_pair()], vec![port], Some(300), true)
+            .await
+            .expect("scan must not fail");
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].is_up,
+            "host that returned ICMP port unreachable should be up"
+        );
+    }
+
+    /// The result for a scanned host must carry the correct IP address.
+    #[tokio::test]
+    async fn result_ip_address_matches_input() {
+        let port = closed_udp_port();
+
+        let (results, _) = run_udp_discovery(vec![localhost_pair()], vec![port], Some(300), true)
+            .await
+            .expect("scan must not fail");
+
+        assert_eq!(results[0].ip_address, IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+}
