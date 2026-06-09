@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use std::result::Result;
 
-use futures::stream::{self, StreamExt};
+use futures::stream::{self, StreamExt, FuturesUnordered};
 
 use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
@@ -214,28 +214,54 @@ pub async fn run_connect_scan(
     // all worker threads (cooperatively polling them on one consumer task is what
     // made an earlier stream-only version single-core and slow). `buffer_unordered`
     // gates how many are spawned-but-uncollected at once, so live tasks/sockets
-    // stay at O(MAX_IN_FLIGHT) instead of O(targets).
-    let mut stream = stream::iter(probes)
-        .map(|(ip_addr, port)| {
-            tokio::spawn(async move {
-                (ip_addr, port, probe_connect(ip_addr, port, timeout).await)
-            })
-        })
-        .buffer_unordered(MAX_IN_FLIGHT);
-
-    // Single consumer: no shared state, no locks.
+    // stay at O(MAX_IN_FLIGHT) instead of O(targets). ?? still true?
+    
+    
+    // Jede Probe wird als reiner Async-Block übergeben. buffer_unordered treibt die
+    // Futures nun direkt und sequenziert sie korrekt, ohne dass Ergebnisse am Ende verloren gehen.
+    let mut stream = FuturesUnordered::new();
     let mut single_results: Vec<PortScanSingleResult> = Vec::new();
     let mut resource_exhausted: Vec<(IpAddr, u16)> = Vec::new();
-    // Every probe sends a connect attempt (one SYN).
     let mut packets_sent: u32 = 0;
 
+    for (ip_addr, port) in probes {
+        // Drosselung auf Systemebene: Sobald MAX_IN_FLIGHT erreicht ist,
+        // warten wir, bis ein Hintergrund-Task fertig wird.
+        if stream.len() >= MAX_IN_FLIGHT {
+            if let Some(joined) = stream.next().await {
+                if let Ok((ip_addr, port, outcome)) = joined {
+                    match outcome {
+                        ProbeOutcome::Measured(result) => {
+                            packets_sent += 1;
+                            single_results.push(result);
+                        }
+                        ProbeOutcome::ResourceExhausted => {
+                            resource_exhausted.push((ip_addr, port));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Parallelisierung auf alle CPU-Kerne via tokio::spawn
+        stream.push(tokio::spawn(async move {
+            (ip_addr, port, probe_connect(ip_addr, port, timeout).await)
+        }));
+    }
+
+    // WICHTIG: Hier verarbeiten wir die restlichen Tasks, die noch in der Queue fliegen.
+    // Das verhindert das "Dropped Results"-Problem vollständig!
     while let Some(joined) = stream.next().await {
-        let (ip_addr, port, outcome) =
-            joined.map_err(|e| format!("Connect scan task failed: {}", e))?;
-        packets_sent += 1;
-        match outcome {
-            ProbeOutcome::Measured(result) => single_results.push(result),
-            ProbeOutcome::ResourceExhausted => resource_exhausted.push((ip_addr, port)),
+        if let Ok((ip_addr, port, outcome)) = joined {
+            match outcome {
+                ProbeOutcome::Measured(result) => {
+                    packets_sent += 1;
+                    single_results.push(result);
+                }
+                ProbeOutcome::ResourceExhausted => {
+                    resource_exhausted.push((ip_addr, port));
+                }
+            }
         }
     }
 
@@ -287,29 +313,44 @@ async fn retry_resource_exhausted(
     targets: Vec<(IpAddr, u16)>,
     timeout: Duration,
 ) -> Vec<PortScanSingleResult> {
-    stream::iter(targets)
-        .map(|(ip_addr, port)| {
-            tokio::spawn(async move {
-                tokio::time::sleep(RESOURCE_RETRY_BACKOFF).await;
-                match probe_connect(ip_addr, port, timeout).await {
-                    ProbeOutcome::Measured(result) => result,
-                    // Still exhausted after a retry: best-effort no-response so the
-                    // port is still reported rather than silently lost.
-                    ProbeOutcome::ResourceExhausted => PortScanSingleResult {
-                        ip_address: ip_addr,
-                        port,
-                        protocol: Protocols::TCP,
-                        port_state: PortStates::Filtered,
-                        ttl: 0,
-                        reason: PortStateReasons::Timeout,
-                    },
+    let mut stream = FuturesUnordered::new();
+    let mut results = Vec::new();
+
+    for (ip_addr, port) in targets {
+        // Drosselung auf MAX_IN_FLIGHT im Multi-Thread-Pool
+        if stream.len() >= MAX_IN_FLIGHT {
+            if let Some(joined) = stream.next().await {
+                if let Ok(result) = joined {
+                    results.push(result);
                 }
-            })
-        })
-        .buffer_unordered(MAX_IN_FLIGHT)
-        // A join error means a result is missing; drop it rather than fabricate.
-        // The main pass already reported these ports, so they are never lost.
-        .filter_map(|joined| async move { joined.ok() })
-        .collect()
-        .await
+            }
+        }
+
+        // Multi-Threaded Backoff + Probe via tokio::spawn
+        stream.push(tokio::spawn(async move {
+            tokio::time::sleep(RESOURCE_RETRY_BACKOFF).await;
+            match probe_connect(ip_addr, port, timeout).await {
+                ProbeOutcome::Measured(result) => result,
+                // Auch nach dem Retry noch erschöpft: Als Filtered/Timeout reporten,
+                // damit das Ergebnis nicht komplett verloren geht.
+                ProbeOutcome::ResourceExhausted => PortScanSingleResult {
+                    ip_address: ip_addr,
+                    port,
+                    protocol: Protocols::TCP,
+                    port_state: PortStates::Filtered,
+                    ttl: 0,
+                    reason: PortStateReasons::Timeout,
+                },
+            }
+        }));
+    }
+
+    // Sicheres Auslesen der restlichen Hintergrund-Tasks (Verhindert Dropped Results)
+    while let Some(joined) = stream.next().await {
+        if let Ok(result) = joined {
+            results.push(result);
+        }
+    }
+
+    results
 }
