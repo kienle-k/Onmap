@@ -226,3 +226,89 @@ async fn arp_ping_host_with_details(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `select_interface_for_ip` must return an error for an IP that is not
+    /// assigned to any local interface.  This does NOT require root privileges.
+    #[test]
+    fn test_select_interface_unknown_ip_returns_err() {
+        let bogus_ip: Ipv4Addr = "192.0.2.1".parse().unwrap(); // TEST-NET-1, never assigned locally
+        let result = select_interface_for_ip(bogus_ip);
+        assert!(
+            result.is_err(),
+            "Expected Err for unknown IP, got Ok({:?})",
+            result.ok().map(|i| i.name)
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("192.0.2.1"),
+            "Error message should contain the IP address, got: {msg}"
+        );
+    }
+
+    /// An empty target list must succeed immediately and return correct zeroed
+    /// summary fields without attempting any network I/O.
+    #[tokio::test]
+    async fn test_run_arp_discovery_empty_input() {
+        let (results, summary) = run_arp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan should not fail");
+
+        assert!(results.is_empty(), "Expected no host results");
+        assert_eq!(summary.hosts_up, 0);
+        assert_eq!(summary.packets_sent, 0);
+        assert_eq!(summary.hosts_dns_resolution, 0);
+        assert!(
+            summary.scanned_addresses.is_empty(),
+            "Expected no scanned addresses"
+        );
+    }
+
+    /// With `no_dns = true` the DNS elapsed time must stay at zero and no
+    /// hostname resolution must be recorded, even when results claim hosts are up.
+    /// We verify this via the empty-input path (no network needed).
+    #[tokio::test]
+    async fn test_run_arp_discovery_no_dns_flag() {
+        let (results, summary) = run_arp_discovery(vec![], None, true)
+            .await
+            .expect("empty scan should not fail");
+
+        assert_eq!(
+            summary.dns_elapsed_secs, 0.0,
+            "DNS timing should be zero when no_dns is true"
+        );
+        assert!(
+            results.iter().all(|r| r.dns_resolve.is_none()),
+            "No DNS resolution should occur when no_dns is true"
+        );
+    }
+
+    /// Verify that `select_interface_for_ip` succeeds for at least one real
+    /// local interface.  Finds the first IPv4 address assigned to any interface
+    /// and expects the function to return that interface back.
+    /// Skipped silently when no IPv4 interface is available (e.g. CI containers).
+    #[test]
+    fn test_select_interface_known_ip_succeeds() {
+        use pnet::datalink;
+        let local_ipv4 = datalink::interfaces()
+            .into_iter()
+            .flat_map(|iface| iface.ips)
+            .find_map(|net| match net.ip() {
+                IpAddr::V4(v4) if !v4.is_loopback() => Some(v4),
+                _ => None,
+            });
+
+        if let Some(ip) = local_ipv4 {
+            let result = select_interface_for_ip(ip);
+            assert!(
+                result.is_ok(),
+                "Expected Ok for known local IP {ip}, got: {:?}",
+                result.err()
+            );
+        }
+        // If no non-loopback IPv4 exists the test passes vacuously.
+    }
+}

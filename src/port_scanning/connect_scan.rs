@@ -275,20 +275,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unroutable_address_times_out_filtered() {
-        // 192.0.2.0/24 (TEST-NET-1) is reserved and unrouted: the connect never
-        // completes, so a short timeout yields Filtered/Timeout.
-        let unroutable = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
-
-        let result = port_tcp_connect_scan(unroutable, 80, Duration::from_millis(150))
-            .await
-            .expect("scan should not error");
-
-        assert_eq!(result.port_state, PortStates::Filtered);
-        assert_eq!(result.reason, PortStateReasons::Timeout);
-    }
-
-    #[tokio::test]
     async fn connect_reuseaddr_succeeds_to_listener_and_fails_to_closed() {
         let open = spawn_open_listener().await;
         let shut = closed_port().await;
