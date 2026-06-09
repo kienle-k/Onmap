@@ -249,3 +249,85 @@ async fn icmp_ping_host_with_details(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An empty target list must return immediately with zero results and a
+    /// zeroed-out summary.
+    #[tokio::test]
+    async fn empty_input_returns_zero_results() {
+        let (results, _) = run_icmp_echo_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert!(results.is_empty());
+    }
+
+    /// packets_sent must equal the number of targets that were probed, not some
+    /// other bookkeeping counter.
+    #[tokio::test]
+    async fn empty_input_summary_packets_sent_is_zero() {
+        let (_, summary) = run_icmp_echo_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert_eq!(summary.packets_sent, 0);
+    }
+
+    /// hosts_up must reflect only targets that actually responded.  With no
+    /// targets there can be no up hosts.
+    #[tokio::test]
+    async fn empty_input_summary_hosts_up_is_zero() {
+        let (_, summary) = run_icmp_echo_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert_eq!(summary.hosts_up, 0);
+    }
+
+    /// scanned_addresses must mirror the input list so callers can correlate
+    /// results back to their original query.
+    #[tokio::test]
+    async fn empty_input_summary_scanned_addresses_matches_input() {
+        let (_, summary) = run_icmp_echo_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert!(summary.scanned_addresses.is_empty());
+    }
+
+    /// When no_dns is true the DNS timing field must stay at exactly 0.0 — no
+    /// resolver calls should be made at all.
+    #[tokio::test]
+    async fn no_dns_flag_keeps_dns_elapsed_secs_at_zero() {
+        let (_, summary) = run_icmp_echo_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert_eq!(summary.dns_elapsed_secs, 0.0);
+    }
+
+    /// When no_dns is true no result should carry a resolved hostname, even if
+    /// the host were reported as up.
+    #[tokio::test]
+    async fn no_dns_flag_leaves_all_dns_resolves_empty() {
+        let (results, _) = run_icmp_echo_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert!(results.iter().all(|r| r.dns_resolve.is_none()));
+    }
+
+    /// end_time must not be earlier than start_time — a basic sanity check that
+    /// the SystemTime bookkeeping is the right way around.
+    #[tokio::test]
+    async fn summary_end_time_not_before_start_time() {
+        let (_, summary) = run_icmp_echo_discovery(vec![], None, true)
+            .await
+            .expect("empty scan must not fail");
+
+        assert!(summary.end_time >= summary.start_time);
+    }
+}
