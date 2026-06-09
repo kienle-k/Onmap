@@ -28,7 +28,7 @@ pub async fn print_port_scan_results_original(
             .push(result);
     }
 
-    // --- DNS resolution phase (batch, for verbosity messages) ---
+    // DNS resolution phase (batch, for verbosity messages).
     // `-n` (no_dns) must suppress all reverse DNS here, mirroring discovery.
     let host_count = results_by_ip.len();
     let mut hostname_map: HashMap<IpAddr, String> = HashMap::new();
@@ -84,7 +84,7 @@ pub async fn print_port_scan_results_original(
         );
     }
 
-    // --- Per-host printing ---
+    // Per-host printing.
     let show_reason = verbosity >= 2;
 
     for (ip_address, host_results) in results_by_ip.iter() {
@@ -137,7 +137,7 @@ pub async fn print_port_scan_results_original(
 
         if summary.shown.is_empty() {
             if !host_results.is_empty() {
-                if hostname != "-"{
+                if hostname != "-" {
                     println!(
                         "All {} scanned ports on {} ({}) are in ignored states.",
                         host_results.len(),

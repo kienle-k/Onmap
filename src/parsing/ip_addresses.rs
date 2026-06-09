@@ -46,7 +46,6 @@ use std::str::FromStr; // For DNS resolution
 /// let ips = parse_ip_addresses("10.0.0.1,10.0.0.3-4,10.0.0.10/31").expect("Could not parse ip addresses with mixed notation");
 /// assert_eq!(ips.len(), 5);
 /// ```
-// --- parse_ip_addresses (main function) ---
 pub fn parse_ip_addresses(input: &str) -> Result<Vec<Ipv4Addr>, String> {
     let mut result = Vec::new();
 
@@ -204,8 +203,7 @@ fn parse_cidr(cidr_str: &str) -> Result<Vec<Ipv4Addr>, String> {
         _ => return Err(format!("Invalid prefix length in CIDR: {}", parts[1])),
     };
 
-    // --- Perform bitwise calculations to determine the exact IP range ---
-
+    // Bitwise derivation of the address range from the CIDR.
     // Create a subnet mask from the prefix length. For a /24, this would be
     // `u32::MAX << (32 - 24)`, resulting in `0xFFFFFF00`.
     let mask = u32::MAX << (32 - prefix_len);

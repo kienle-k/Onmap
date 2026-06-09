@@ -1,23 +1,19 @@
-// --- Module declarations ---
 mod host_discovery;
 mod port_scanning;
 mod tui;
 
-// --- Public API modules ---
 pub mod models;
 pub mod output;
 pub mod parsing;
 pub mod resolving;
 pub mod version;
 
-// --- Standard library imports ---
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::SystemTime;
 
-// --- External crate imports ---
 use chrono::prelude::*;
 use chrono_tz::Tz;
 use crossterm::{
@@ -29,7 +25,6 @@ use iana_time_zone::get_timezone;
 use ratatui::backend::CrosstermBackend;
 use ratatui::terminal::Terminal;
 
-// --- Internal imports (from this crate) ---
 use crate::output::{
     print_host_discovery_results, print_host_discovery_results_original, print_port_scan_results,
     print_port_scan_results_original, save_to_file_grepable_host_discovery,
@@ -49,7 +44,6 @@ use crate::host_discovery::planner::{default_set, plan_discovery};
 use crate::resolving::source_ip::{filter_resolved_targets, resolve_for_targets};
 use version::{version_json, version_text};
 
-// --- Main public entry point ---
 /// Runs the Onmap application with the given CLI arguments.
 /// Handles both TUI and CLI modes.
 

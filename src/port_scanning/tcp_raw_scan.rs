@@ -1,9 +1,3 @@
-//! # Shared TCP Raw Scan Engine
-//!
-//! One blocking raw TCP engine for SYN/ACK scans. It owns sending, receiving,
-//! timeout handling, retries, host scheduling, and result slots in one event
-//! loop. There is no receiver thread and no cross-thread demux state.
-
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::tcp::MutableTcpPacket;
 use pnet::transport::{
@@ -22,18 +16,16 @@ const RAW_SOCKET_RECV_BUFFER_BYTES: libc::c_int = 8 * 1024 * 1024;
 #[derive(Clone, Copy)]
 pub(crate) struct ScanConfig {
     pub(crate) timeout: Duration,
-    /// Maximum probes awaiting replies per host.
+    // Max probes per host awaiting a reply.
     pub(crate) max_in_flight: usize,
-    /// Reserved for callers that explicitly choose pacing. Current SYN/ACK
-    /// defaults set this to zero.
+    // Optional send pacing; SYN/ACK leave it at zero.
     pub(crate) min_send_interval: Duration,
     pub(crate) max_attempts: u8,
 }
 
-/// Demux key for matching a reply to its probe. Unique per in-flight probe
-/// because each `(host, port)` is probed once at a time: two in-flight probes to
-/// the same host always differ in `target_port`, so a random `source_port`
-/// collision between them cannot alias their keys.
+// Matches a reply to its probe. Unique per in-flight probe: a host scans each
+// port once at a time, so two in-flight probes to one host differ in target_port
+// even if their random source_port collides.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct ProbeKey {
     target_ip: Ipv4Addr,
@@ -270,10 +262,9 @@ fn next_probe(
             };
             let port_index = host.next_port_index;
             host.next_port_index += 1;
-            // Invariant: every host scans the same `ports` slice, so the result
-            // slot for (host, port) is `host_index * ports.len() + port_index`.
-            // A future caller wanting per-host port lists must change this
-            // mapping (and the `total_probes` sizing in `scan_blocking`).
+            // Every host scans the same ports slice, so its result slot is
+            // host_index * ports.len() + port_index. Per-host port lists would
+            // need this mapping and total_probes changed together.
             Probe {
                 host_index,
                 target_ip: host.target_ip,
@@ -572,5 +563,160 @@ fn batch_result(
         packets_sent,
         start_time,
         end_time: SystemTime::now(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ip(d: u8) -> Ipv4Addr {
+        Ipv4Addr::new(10, 0, 0, d)
+    }
+
+    fn config(timeout_ms: u64, max_attempts: u8) -> ScanConfig {
+        ScanConfig {
+            timeout: Duration::from_millis(timeout_ms),
+            max_in_flight: 1,
+            min_send_interval: Duration::ZERO,
+            max_attempts,
+        }
+    }
+
+    fn in_flight_entry() -> (ProbeKey, InFlight) {
+        let key = ProbeKey {
+            target_ip: ip(1),
+            target_port: 80,
+            source_port: 50000,
+        };
+        let entry = InFlight {
+            probe: Probe {
+                host_index: 0,
+                target_ip: ip(1),
+                source_ip: ip(254),
+                target_port: 80,
+                result_index: 0,
+                attempts: 0,
+                source_port: Some(50000),
+            },
+            sent_at: Instant::now(),
+            deadline: Instant::now() - Duration::from_millis(1),
+        };
+        (key, entry)
+    }
+
+    #[tokio::test]
+    async fn empty_input_returns_no_probes_without_socket() {
+        // No targets: scan_blocking returns before opening a raw socket, so this
+        // runs unprivileged.
+        let result = scan_tcp_probes(Vec::new(), vec![80], 0, config(100, 1))
+            .await
+            .expect("empty scan should succeed");
+        assert!(result.results.is_empty());
+        assert_eq!(result.packets_sent, 0);
+        assert_eq!(result.ports_scanned, 1);
+    }
+
+    #[test]
+    fn next_probe_round_robins_and_maps_result_index() {
+        let mut hosts = queue_probes(&[(ip(1), ip(254)), (ip(2), ip(254))]);
+        let ports = vec![80, 443];
+        let mut next = 0;
+
+        let p0 = next_probe(&mut hosts, &ports, 1, &mut next).unwrap();
+        let p1 = next_probe(&mut hosts, &ports, 1, &mut next).unwrap();
+        assert_eq!((p0.host_index, p0.target_port), (0, 80));
+        assert_eq!((p1.host_index, p1.target_port), (1, 80));
+        // result_index == host_index * ports.len() + port_index
+        assert_eq!(p0.result_index, 0);
+        assert_eq!(p1.result_index, 2);
+    }
+
+    #[test]
+    fn next_probe_respects_per_host_limit() {
+        let mut hosts = queue_probes(&[(ip(1), ip(254))]);
+        let ports = vec![80, 443];
+        let mut next = 0;
+
+        assert!(next_probe(&mut hosts, &ports, 1, &mut next).is_some());
+        assert!(next_probe(&mut hosts, &ports, 1, &mut next).is_none());
+    }
+
+    #[test]
+    fn next_probe_prefers_retry_queue() {
+        let mut hosts = queue_probes(&[(ip(1), ip(254))]);
+        let ports = vec![80];
+        hosts[0].retry_queue.push_back(Probe {
+            host_index: 0,
+            target_ip: ip(1),
+            source_ip: ip(254),
+            target_port: 9999,
+            result_index: 0,
+            attempts: 1,
+            source_port: Some(50000),
+        });
+
+        let mut next = 0;
+        let p = next_probe(&mut hosts, &ports, 2, &mut next).unwrap();
+        assert_eq!(p.target_port, 9999);
+        assert_eq!(p.attempts, 1);
+    }
+
+    #[test]
+    fn hosts_done_only_when_fully_drained() {
+        let mut hosts = queue_probes(&[(ip(1), ip(254))]);
+        assert!(!hosts_done(&hosts, 1));
+        hosts[0].next_port_index = 1;
+        assert!(hosts_done(&hosts, 1));
+        hosts[0].in_flight = 1;
+        assert!(!hosts_done(&hosts, 1));
+    }
+
+    #[test]
+    fn expire_due_retries_until_attempts_exhausted() {
+        let mut hosts = queue_probes(&[(ip(1), ip(254))]);
+        hosts[0].in_flight = 1;
+        let mut results = vec![None];
+        let mut completed = 0;
+        let (key, entry) = in_flight_entry();
+        let mut in_flight = HashMap::from([(key, entry)]);
+
+        // max_attempts 2: first expiry re-queues rather than finalizing.
+        expire_due(&mut in_flight, &mut hosts, &mut results, &mut completed, 2);
+        assert_eq!(completed, 0);
+        assert_eq!(hosts[0].retry_queue.len(), 1);
+        assert!(results[0].is_none());
+    }
+
+    #[test]
+    fn expire_due_times_out_on_last_attempt() {
+        let mut hosts = queue_probes(&[(ip(1), ip(254))]);
+        hosts[0].in_flight = 1;
+        let mut results = vec![None];
+        let mut completed = 0;
+        let (key, entry) = in_flight_entry();
+        let mut in_flight = HashMap::from([(key, entry)]);
+
+        // max_attempts 1: the only attempt is final, so it becomes a Timeout.
+        expire_due(&mut in_flight, &mut hosts, &mut results, &mut completed, 1);
+        assert_eq!(completed, 1);
+        assert!(hosts[0].retry_queue.is_empty());
+        assert!(matches!(
+            results[0].unwrap().outcome,
+            TcpProbeOutcome::Timeout
+        ));
+    }
+
+    #[test]
+    fn backpressure_errors_are_classified() {
+        assert!(is_send_backpressure(&io::Error::from_raw_os_error(
+            libc::ENOBUFS
+        )));
+        assert!(is_send_backpressure(&io::Error::from(
+            ErrorKind::WouldBlock
+        )));
+        assert!(!is_send_backpressure(&io::Error::from(
+            ErrorKind::PermissionDenied
+        )));
     }
 }

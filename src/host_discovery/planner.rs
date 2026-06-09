@@ -1,9 +1,3 @@
-//! Central host-discovery planner.
-//!
-//! Maps CLI flags + privilege into a `DiscoveryPlan` the engine executes.
-//! Mirrors Nmap: explicit `-P*` flags replace the default probe set; `-sn`
-//! runs discovery only; `-Pn` skips discovery.
-
 use crate::models::{Cli, DiscoveryMode, DiscoveryPlan, DiscoveryProbe};
 use crate::parsing::ports::convert_ports;
 
@@ -139,7 +133,7 @@ fn select_unprivileged_probes(cli: &Cli) -> Result<Vec<DiscoveryProbe>, String> 
         .collect())
 }
 
-/// Default probe set when no `-P*` flag is explicit.
+/// Default probe set when no `-P*` flag is given.
 /// Root: ICMP echo + TCP SYN 443 + TCP ACK 80 + ICMP timestamp.
 /// Non-root: TCP connect 80, 443.
 pub fn default_set(is_root: bool) -> Vec<DiscoveryProbe> {
@@ -305,6 +299,46 @@ mod tests {
         let plan = plan_discovery(&cli, false).unwrap();
         assert_eq!(
             plan.probes,
+            vec![
+                DiscoveryProbe::TcpConnect { port: 80 },
+                DiscoveryProbe::TcpConnect { port: 443 },
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_pu_no_ports_defaults_to_udp_discovery_port() {
+        let cli = cli_from(&["-sS", "-PU", "1.2.3.4"]);
+        let plan = plan_discovery(&cli, true).unwrap();
+        assert_eq!(plan.probes, vec![DiscoveryProbe::Udp { port: 40125 }]);
+    }
+
+    #[test]
+    fn explicit_pr_non_root_falls_back_to_tcp_connect() {
+        // ARP needs raw sockets; unprivileged -PR adds no probe and falls back
+        // to the default TCP-connect set rather than emitting an ARP probe.
+        let cli = cli_from(&["-PR", "1.2.3.4"]);
+        let plan = plan_discovery(&cli, false).unwrap();
+        assert_eq!(
+            plan.probes,
+            vec![
+                DiscoveryProbe::TcpConnect { port: 80 },
+                DiscoveryProbe::TcpConnect { port: 443 },
+            ]
+        );
+    }
+
+    #[test]
+    fn invalid_probe_port_spec_errors() {
+        let cli = cli_from(&["-sS", "-PSnotaport", "1.2.3.4"]);
+        assert!(plan_discovery(&cli, true).is_err());
+    }
+
+    #[test]
+    fn default_set_differs_by_privilege() {
+        assert_eq!(default_set(true).len(), 4);
+        assert_eq!(
+            default_set(false),
             vec![
                 DiscoveryProbe::TcpConnect { port: 80 },
                 DiscoveryProbe::TcpConnect { port: 443 },

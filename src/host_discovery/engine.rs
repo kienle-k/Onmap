@@ -1,9 +1,3 @@
-//! Host-discovery execution engine.
-//!
-//! Consumes a `DiscoveryPlan` and runs the probes via the existing
-//! per-method modules. Partitions targets into local-Ethernet vs routed
-//! and dispatches ARP only to local ones.
-
 use crate::host_discovery::{
     run_arp_discovery, run_icmp_echo_discovery, run_icmp_timestamp_discovery,
     run_tcp_ack_discovery, run_tcp_connect_discovery, run_tcp_syn_discovery,
@@ -20,7 +14,7 @@ use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
-/// Flat per-probe, per-host result. `hosts_up()` derives the up-set.
+/// Flat per-probe, per-host results; `hosts_up` derives the up-set.
 pub struct DiscoveryResult {
     pub per_probe: Vec<HostDiscoverySingleResult>,
     pub packets_sent: u64,
@@ -52,17 +46,11 @@ pub async fn run_discovery(
     let (local, routed) = partition_targets(targets);
 
     if matches!(plan.mode, DiscoveryMode::SkipDiscoveryTreatAllUp) {
-        // `-Pn` skips the IP-level ping phase, so routed (off-link) targets are
-        // assumed up and scanned — nmap cannot ping across a router under -Pn
-        // either. But on a directly-connected segment, sending any IP packet
-        // first requires the target's MAC, which means ARP. nmap treats this
-        // ARP as mandatory link-layer resolution (not host discovery): it runs
-        // even under -Pn, and a host that never answers ARP has no MAC and
-        // cannot be scanned, so it is reported down. We mirror that here.
-        //
-        // ARP needs raw sockets; when it cannot run (non-root) or is suppressed
-        // (--disable-arp-ping), fall back to assume-up for local targets too so
-        // we never silently drop them.
+        // -Pn assumes every host up. Routed targets are taken at face value (nmap
+        // can't ping across a router either). Local targets still need ARP to learn
+        // their MAC before any packet can be sent, so a host that never answers ARP
+        // is unreachable and reported down. Without raw-socket privilege or with
+        // --disable-arp-ping, ARP can't run, so assume local targets up too.
         let arp_local = is_root && !plan.disable_arp_ping && !local.is_empty();
         if !arp_local {
             return DiscoveryResult {
@@ -95,11 +83,9 @@ pub async fn run_discovery(
     let mut per_probe = Vec::new();
     let mut packets_sent: u64 = 0;
 
-    // Nmap-style auto-ARP: local-Ethernet targets get ARP, regardless of plan —
-    // but only when raw-packet privilege is actually available. ARP needs raw
-    // sockets, so as non-root it cannot run; replacing the planned IP/TCP-connect
-    // probes with a method that can't run would silently leave local-link targets
-    // undiscovered. Suppressed by --disable-arp-ping.
+    // Auto-ARP: local targets get ARP regardless of plan, since on a local segment
+    // it's the most reliable probe. Needs raw sockets, so only as root and unless
+    // --disable-arp-ping suppresses it.
     let auto_arp = is_root && !plan.disable_arp_ping && !local.is_empty();
     if auto_arp {
         let local_pairs = filter_resolved_targets(source_pairs, &local);
@@ -112,15 +98,10 @@ pub async fn run_discovery(
         }
     }
 
-    // Parallelism is host-major: every host races all its applicable probes at
-    // once, and the FIRST probe that reports the host up settles it — the host's
-    // remaining probes are dropped, so an up host never waits on slower probes.
-    // A host is only declared down once every one of its probes has answered
-    // (silently), so the down-verdict still sees all the evidence.
-    //
-    // `probe_target_set` decides which probes apply to a host (auto-ARP already
-    // covers local hosts, so IP probes skip them); a host only races the probes
-    // whose target set contains it.
+    // Host-major: each host races its applicable probes, and the first probe to
+    // report it up wins (the rest are dropped). A host is only declared down once
+    // every probe has answered silently. probe_target_set picks which probes apply
+    // (auto-ARP already covered local hosts).
     if !plan.probes.is_empty() {
         let all_targets = Arc::new(targets.to_vec());
         let routed = Arc::new(routed);
@@ -129,7 +110,9 @@ pub async fn run_discovery(
             let applicable: Vec<DiscoveryProbe> = plan
                 .probes
                 .iter()
-                .filter(|probe| probe_target_set(probe, auto_arp, &all_targets, &routed).contains(&host))
+                .filter(|probe| {
+                    probe_target_set(probe, auto_arp, &all_targets, &routed).contains(&host)
+                })
                 .cloned()
                 .collect();
             async move {
@@ -150,9 +133,8 @@ pub async fn run_discovery(
     }
 }
 
-/// Races all `probes` against a single host. Returns as soon as one probe finds
-/// the host up (dropping the rest); otherwise waits for every probe and returns
-/// the down rows. Yields `(rows, packets_sent)`.
+// Races a host's probes. Returns as soon as one finds it up (dropping the rest),
+// else waits for all and returns the down rows. Yields (rows, packets_sent).
 async fn discover_one_host(
     host: Ipv4Addr,
     probes: Vec<DiscoveryProbe>,
@@ -265,13 +247,9 @@ fn probe_needs_source_pairs(probe: &DiscoveryProbe) -> bool {
     )
 }
 
-/// Select which targets a single planned probe runs against.
-///
-/// When auto-ARP ran, it already covered the local hosts, so IP-level probes
-/// target only `routed`. When auto-ARP did not run (non-root, `--disable-arp-ping`,
-/// or no local targets), IP-level probes must target every host so local-link
-/// targets still receive their planned (e.g. TCP-connect) probes. Explicit `-PR`
-/// ARP probes always target `routed` here (local hosts are auto-ARP's job).
+// Which targets a planned probe runs against. With auto-ARP on, local hosts are
+// already covered, so IP probes target only routed. With it off, they target all
+// hosts so local targets still get probed. Explicit ARP probes always go to routed.
 fn probe_target_set<'a>(
     probe: &DiscoveryProbe,
     auto_arp: bool,
@@ -285,8 +263,8 @@ fn probe_target_set<'a>(
     }
 }
 
-/// Split targets into (local-Ethernet, routed) by IPv4 CIDR membership in
-/// any non-loopback interface's network.
+// Split targets into (local, routed) by whether they fall in any non-loopback
+// interface's IPv4 network.
 fn partition_targets(targets: &[Ipv4Addr]) -> (Vec<Ipv4Addr>, Vec<Ipv4Addr>) {
     let local_networks: Vec<_> = datalink::interfaces()
         .into_iter()
@@ -377,8 +355,8 @@ mod tests {
     #[test]
     fn tcp_connect_probe_targets_all_hosts_when_auto_arp_off() {
         // Non-root / --disable-arp-ping / no local hosts: auto_arp == false.
-        // A local-link target would land only in `all_targets`, not `routed`,
-        // so the planned TCP-connect probe must run against `all_targets` or it
+        // A local-link target would land only in all_targets, not routed,
+        // so the planned TCP-connect probe must run against all_targets or it
         // would silently never probe local-link hosts (Issue 3).
         let local = Ipv4Addr::new(192, 168, 1, 5);
         let routed = Ipv4Addr::new(8, 8, 8, 8);
@@ -403,6 +381,45 @@ mod tests {
         let probe = DiscoveryProbe::TcpSyn { port: 443 };
         let selected = probe_target_set(&probe, true, &all, &routed_only);
         assert_eq!(selected, routed_only.as_slice());
+    }
+
+    #[test]
+    fn probe_needs_source_pairs_only_for_raw_socket_probes() {
+        assert!(probe_needs_source_pairs(&DiscoveryProbe::Arp));
+        assert!(probe_needs_source_pairs(&DiscoveryProbe::TcpSyn {
+            port: 80
+        }));
+        assert!(probe_needs_source_pairs(&DiscoveryProbe::TcpAck {
+            port: 80
+        }));
+        assert!(probe_needs_source_pairs(&DiscoveryProbe::Udp { port: 53 }));
+
+        assert!(!probe_needs_source_pairs(&DiscoveryProbe::IcmpEcho));
+        assert!(!probe_needs_source_pairs(&DiscoveryProbe::IcmpTimestamp));
+        assert!(!probe_needs_source_pairs(&DiscoveryProbe::TcpConnect {
+            port: 80
+        }));
+    }
+
+    #[test]
+    fn discovery_needs_source_pairs_follows_probe_set() {
+        // 8.8.8.8 is routed (not on any local interface), so the result is driven
+        // purely by whether a probe in the plan needs source pairs.
+        let routed = vec![Ipv4Addr::new(8, 8, 8, 8)];
+
+        let needs = DiscoveryPlan {
+            mode: DiscoveryMode::DiscoveryOnly,
+            probes: vec![DiscoveryProbe::TcpSyn { port: 443 }],
+            disable_arp_ping: true,
+        };
+        assert!(discovery_needs_source_pairs(&needs, &routed, false));
+
+        let no_need = DiscoveryPlan {
+            mode: DiscoveryMode::DiscoveryOnly,
+            probes: vec![DiscoveryProbe::IcmpEcho],
+            disable_arp_ping: true,
+        };
+        assert!(!discovery_needs_source_pairs(&no_need, &routed, false));
     }
 
     fn row(ip: Ipv4Addr, up: bool) -> HostDiscoverySingleResult {

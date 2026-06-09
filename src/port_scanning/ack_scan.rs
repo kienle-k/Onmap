@@ -92,4 +92,29 @@ mod tests {
         assert_eq!(all_result.packets_sent, 0);
         assert!(all_result.open_ports.is_empty());
     }
+
+    fn probe(outcome: TcpProbeOutcome) -> TcpProbeResult {
+        TcpProbeResult {
+            ip_address: Ipv4Addr::new(10, 0, 0, 1),
+            port: 80,
+            outcome,
+            latency: Duration::ZERO,
+        }
+    }
+
+    #[test]
+    fn rst_reply_is_unfiltered() {
+        let r = ack_result_from_probe(probe(TcpProbeOutcome::Reply {
+            flags: TcpFlags::RST,
+        }));
+        assert_eq!(r.port_state, PortStates::Unfiltered);
+        assert_eq!(r.reason, PortStateReasons::Unfiltered);
+    }
+
+    #[test]
+    fn timeout_is_filtered() {
+        let r = ack_result_from_probe(probe(TcpProbeOutcome::Timeout));
+        assert_eq!(r.port_state, PortStates::Filtered);
+        assert_eq!(r.reason, PortStateReasons::Timeout);
+    }
 }
