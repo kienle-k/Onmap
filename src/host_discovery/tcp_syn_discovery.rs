@@ -10,7 +10,7 @@ use crate::models::{
 use crate::port_scanning::tcp_raw_scan::{ScanConfig, TcpProbeOutcome, scan_tcp_probes};
 use crate::resolving::resolve_hostname;
 
-const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+const DEFAULT_READ_TIMEOUT_MS: u64 = 1000;
 const MAX_IN_FLIGHT: usize = 100;
 
 struct HostProbeState {

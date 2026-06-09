@@ -10,10 +10,10 @@ use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
 
-const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+const DEFAULT_READ_TIMEOUT_MS: u64 = 1000;
 const MAX_ACK_IN_FLIGHT: usize = 200;
 const MIN_SEND_INTERVAL: Duration = Duration::ZERO;
-const MAX_ACK_ATTEMPTS: u8 = 2;
+const MAX_ACK_ATTEMPTS: u8 = 1;
 
 fn ack_result_from_probe(probe: TcpProbeResult) -> PortScanSingleResult {
     let (port_state, reason) = match probe.outcome {

@@ -138,8 +138,8 @@ async fn icmp_ping_host_with_details(
 ) -> Result<(bool, Option<Duration>, Option<u8>), String> {
     let ip = *ip;
 
-    const DEFAULT_RECEIVE_TIMEOUT_MS: u64 = 2_000;
-    const DEFAULT_OUTER_PADDING_MS: u64 = 1_000;
+    const DEFAULT_RECEIVE_TIMEOUT_MS: u64 = 1_000;
+    const DEFAULT_OUTER_PADDING_MS: u64 = 200;
     let receive_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_RECEIVE_TIMEOUT_MS);
     let outer_timeout_ms = receive_timeout_ms + DEFAULT_OUTER_PADDING_MS;
 

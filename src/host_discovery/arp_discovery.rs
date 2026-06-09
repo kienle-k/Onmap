@@ -141,8 +141,8 @@ async fn arp_ping_host_with_details(
     timeout_override_ms: Option<u64>,
 ) -> Result<(bool, Option<Duration>), String> {
     const DEFAULT_READ_TIMEOUT_MS: u64 = 200;
-    const DEFAULT_SCAN_WINDOW_MS: u64 = 2_000;
-    const DEFAULT_OUTER_PADDING_MS: u64 = 1_000;
+    const DEFAULT_SCAN_WINDOW_MS: u64 = 500;
+    const DEFAULT_OUTER_PADDING_MS: u64 = 200;
     let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
     let scan_window_ms = timeout_override_ms.unwrap_or(DEFAULT_SCAN_WINDOW_MS);
     let outer_timeout_ms = scan_window_ms + DEFAULT_OUTER_PADDING_MS;

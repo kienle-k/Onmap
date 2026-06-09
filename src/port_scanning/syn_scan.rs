@@ -9,7 +9,7 @@ use crate::models::{
     PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
 };
 
-const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+const DEFAULT_READ_TIMEOUT_MS: u64 = 1000;
 const MAX_SYN_IN_FLIGHT: usize = 100;
 const MIN_SEND_INTERVAL: Duration = Duration::ZERO;
 const MAX_SYN_ATTEMPTS: u8 = 1;

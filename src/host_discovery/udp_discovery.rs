@@ -178,7 +178,7 @@ async fn udp_probe_with_details(
     source_ip: Ipv4Addr,
     timeout_override_ms: Option<u64>,
 ) -> Result<(UdpProbeStatus, Option<Duration>), String> {
-    const DEFAULT_READ_TIMEOUT_MS: u64 = 800;
+    const DEFAULT_READ_TIMEOUT_MS: u64 = 1000;
     const OUTER_PADDING_MS: u64 = 200;
     let read_timeout_ms = timeout_override_ms.unwrap_or(DEFAULT_READ_TIMEOUT_MS);
     let outer_timeout_ms = read_timeout_ms + OUTER_PADDING_MS;

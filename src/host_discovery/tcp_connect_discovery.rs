@@ -10,7 +10,7 @@ use crate::models::{
 use crate::port_scanning::connect_scan::port_tcp_connect_scan;
 use crate::resolving::resolve_hostname;
 
-const DEFAULT_TIMEOUT_MS: u64 = 300;
+const DEFAULT_TIMEOUT_MS: u64 = 1000;
 
 struct HostProbeState {
     is_up: bool,

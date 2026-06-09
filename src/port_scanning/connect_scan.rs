@@ -17,7 +17,7 @@ use crate::models::{
 // Max concurrent connects. Bounds memory and ephemeral-port use.
 const MAX_IN_FLIGHT: usize = 100;
 
-const DEFAULT_TIMEOUT_MS: u64 = 300;
+const DEFAULT_TIMEOUT_MS: u64 = 1000;
 
 // Close probe sockets with SO_LINGER 0 (RST instead of FIN) to skip TIME_WAIT
 // and relieve ephemeral-port exhaustion, like nmap's connect scan. Ruder to
