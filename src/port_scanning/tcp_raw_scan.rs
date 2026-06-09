@@ -17,6 +17,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 const MAX_SENDS_PER_TICK: usize = 128;
 const SEND_BACKPRESSURE_WAIT: Duration = Duration::from_millis(1);
+const RAW_SOCKET_RECV_BUFFER_BYTES: libc::c_int = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 pub(crate) struct ScanConfig {
@@ -129,6 +130,7 @@ fn scan_blocking(
 
     let (mut tx, mut rx) = open_channel()?;
     let rx_fd = rx.socket.fd;
+    set_receive_buffer(rx_fd)?;
     set_nonblocking(rx_fd)?;
     let mut iter = tcp_packet_iter(&mut rx);
 
@@ -310,6 +312,26 @@ fn open_channel() -> Result<(TransportSender, pnet::transport::TransportReceiver
             e
         )
     })
+}
+
+fn set_receive_buffer(fd: libc::c_int) -> Result<(), String> {
+    let size = RAW_SOCKET_RECV_BUFFER_BYTES;
+    let result = unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVBUF,
+            &size as *const _ as *const libc::c_void,
+            std::mem::size_of_val(&size) as libc::socklen_t,
+        )
+    };
+    if result < 0 {
+        return Err(format!(
+            "Failed to set raw socket receive buffer: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    Ok(())
 }
 
 fn set_nonblocking(fd: libc::c_int) -> Result<(), String> {

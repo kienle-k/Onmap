@@ -506,7 +506,7 @@ pub struct PortScanSingleResult {
 #[derive(Debug, Clone)]
 pub struct PortScanAllResult {
     /// The total number of ports that were scanned.
-    pub ports_scanned: u16,
+    pub ports_scanned: u32,
     /// The total number of packets sent during the scan.
     pub packets_sent: u32,
     /// A vector of port numbers that were found to be open.

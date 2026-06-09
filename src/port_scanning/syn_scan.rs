@@ -72,7 +72,7 @@ pub async fn run_syn_scan(
 
 fn syn_scan_summary(raw: &TcpProbeBatchResult, open_ports: Vec<u16>) -> PortScanAllResult {
     PortScanAllResult {
-        ports_scanned: raw.ports_scanned as u16,
+        ports_scanned: raw.ports_scanned as u32,
         packets_sent: raw.packets_sent,
         open_ports,
         start_time: raw.start_time,

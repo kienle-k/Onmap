@@ -70,7 +70,7 @@ pub async fn run_ack_scan(
 
 fn ack_scan_summary(raw: &TcpProbeBatchResult) -> PortScanAllResult {
     PortScanAllResult {
-        ports_scanned: raw.ports_scanned as u16,
+        ports_scanned: raw.ports_scanned as u32,
         packets_sent: raw.packets_sent,
         open_ports: Vec::new(),
         start_time: raw.start_time,

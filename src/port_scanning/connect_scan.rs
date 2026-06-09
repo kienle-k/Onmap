@@ -179,7 +179,7 @@ pub async fn run_connect_scan(
     packets_sent += (open_ports.len() as u32) * 2;
 
     let all_result = PortScanAllResult {
-        ports_scanned: ports_arr.len() as u16,
+        ports_scanned: ports_arr.len() as u32,
         packets_sent,
         open_ports,
         start_time,

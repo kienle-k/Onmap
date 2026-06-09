@@ -155,7 +155,7 @@ pub async fn run_udp_scan(
         .collect();
 
     let all_results = PortScanAllResult {
-        ports_scanned: ports.len() as u16,
+        ports_scanned: ports.len() as u32,
         packets_sent: (ip_addresses.len() * ports.len()) as u32,
         open_ports,
         start_time,
