@@ -169,3 +169,194 @@ pub async fn run_tcp_connect_discovery(
 
     Ok((host_results, summary))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::TcpListener;
+
+    // Binds a loopback listener that keeps accepting connections in the background
+    // and returns the bound port.
+    async fn spawn_open_listener() -> u16 {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("bind loopback listener");
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                drop(stream);
+            }
+        });
+        port
+    }
+
+    // Binds to get an OS-assigned port then drops the listener: any connect
+    // to the returned port will immediately receive a RST (Closed).
+    async fn closed_port() -> u16 {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("bind to find a free port");
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        port
+    }
+
+    /// An empty port list must be rejected with an Err before touching the network.
+    #[tokio::test]
+    async fn empty_ports_returns_err() {
+        let result = run_tcp_connect_discovery(vec![], vec![], None, true).await;
+        assert!(result.is_err(), "expected Err for empty ports, got Ok");
+    }
+
+    /// The error message for an empty port list must mention "port" so callers
+    /// understand why the call was rejected.
+    #[tokio::test]
+    async fn empty_ports_error_message_mentions_port() {
+        let err = run_tcp_connect_discovery(vec![], vec![], None, true)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_lowercase().contains("port"),
+            "error should mention 'port', got: {err}"
+        );
+    }
+
+    /// An empty host list with a valid port must succeed and return no per-host
+    /// results.
+    #[tokio::test]
+    async fn empty_hosts_returns_zero_results() {
+        let (results, _) = run_tcp_connect_discovery(vec![], vec![80], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert!(results.is_empty());
+    }
+
+    /// hosts_up must be zero when no hosts were scanned.
+    #[tokio::test]
+    async fn empty_hosts_summary_hosts_up_is_zero() {
+        let (_, summary) = run_tcp_connect_discovery(vec![], vec![80], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert_eq!(summary.hosts_up, 0);
+    }
+
+    /// packets_sent = attempts + 2×open_ports.  With no hosts, both terms are
+    /// zero.
+    #[tokio::test]
+    async fn empty_hosts_summary_packets_sent_is_zero() {
+        let (_, summary) = run_tcp_connect_discovery(vec![], vec![80, 443], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert_eq!(summary.packets_sent, 0);
+    }
+
+    /// scanned_addresses must mirror the caller's input list.
+    #[tokio::test]
+    async fn empty_hosts_summary_scanned_addresses_is_empty() {
+        let (_, summary) = run_tcp_connect_discovery(vec![], vec![80], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert!(summary.scanned_addresses.is_empty());
+    }
+
+    /// ports_per_host must equal the number of ports provided regardless of
+    /// how many hosts were in the list.
+    #[tokio::test]
+    async fn summary_ports_per_host_matches_port_count() {
+        let (_, summary) = run_tcp_connect_discovery(vec![], vec![22, 80, 443], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert_eq!(summary.ports_per_host, 3);
+    }
+
+    /// With no_dns = true the DNS timing field must stay at exactly 0.0.
+    #[tokio::test]
+    async fn no_dns_flag_keeps_dns_elapsed_secs_at_zero() {
+        let (_, summary) = run_tcp_connect_discovery(vec![], vec![80], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert_eq!(summary.dns_elapsed_secs, 0.0);
+    }
+
+    /// With no_dns = true no result may carry a resolved hostname.
+    #[tokio::test]
+    async fn no_dns_flag_leaves_all_dns_resolves_empty() {
+        let (results, _) = run_tcp_connect_discovery(vec![], vec![80], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert!(results.iter().all(|r| r.dns_resolve.is_none()));
+    }
+
+    /// end_time must not precede start_time.
+    #[tokio::test]
+    async fn summary_end_time_not_before_start_time() {
+        let (_, summary) = run_tcp_connect_discovery(vec![], vec![80], None, true)
+            .await
+            .expect("empty host list must not fail");
+        assert!(summary.end_time >= summary.start_time);
+    }
+
+    /// A host with a listening port must be reported as up.
+    #[tokio::test]
+    async fn open_port_on_localhost_marks_host_as_up() {
+        let port = spawn_open_listener().await;
+
+        let (results, _) =
+            run_tcp_connect_discovery(vec![Ipv4Addr::LOCALHOST], vec![port], Some(300), true)
+                .await
+                .expect("scan must not fail");
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_up, "localhost with open port should be up");
+    }
+
+    /// A host that refuses a connection (RST) must also be reported as up,
+    /// because a RST proves the host is reachable.
+    #[tokio::test]
+    async fn closed_port_on_localhost_marks_host_as_up() {
+        let port = closed_port().await;
+
+        let (results, _) =
+            run_tcp_connect_discovery(vec![Ipv4Addr::LOCALHOST], vec![port], Some(300), true)
+                .await
+                .expect("scan must not fail");
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].is_up,
+            "localhost with closed (RST) port should still be up"
+        );
+    }
+
+    /// For an open port the packets_sent accounting must be:
+    /// attempts (1) + handshake overhead (2) = 3.
+    #[tokio::test]
+    async fn packets_sent_includes_open_port_handshake_overhead() {
+        let port = spawn_open_listener().await;
+
+        let (_, summary) =
+            run_tcp_connect_discovery(vec![Ipv4Addr::LOCALHOST], vec![port], Some(300), true)
+                .await
+                .expect("scan must not fail");
+
+        // 1 attempt + 2 for the open-port handshake = 3
+        assert_eq!(
+            summary.packets_sent, 3,
+            "packets_sent should be attempts(1) + 2×open_ports(1) = 3"
+        );
+    }
+
+    /// The result for a scanned host must carry the correct IP address so
+    /// callers can match results back to their input.
+    #[tokio::test]
+    async fn result_ip_address_matches_input() {
+        let port = closed_port().await;
+
+        let (results, _) =
+            run_tcp_connect_discovery(vec![Ipv4Addr::LOCALHOST], vec![port], Some(300), true)
+                .await
+                .expect("scan must not fail");
+
+        assert_eq!(results[0].ip_address, IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+}
