@@ -128,8 +128,221 @@ mod tests {
     use super::*;
     use crate::models::{HostDiscoveryReply, PortStateReasons};
     use std::fs;
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
     use std::time::{Duration, SystemTime};
+
+    fn make_summary(scanned: Vec<IpAddr>, hosts_up: u64) -> HostDiscoveryAllResult {
+        let now = SystemTime::now();
+        HostDiscoveryAllResult {
+            scanned_addresses: scanned,
+            ports_per_host: 0,
+            hosts_up,
+            hosts_dns_resolution: 0,
+            start_time: now,
+            end_time: now,
+            packets_sent: 0,
+            dns_elapsed_secs: 0.0,
+        }
+    }
+
+    fn write_and_read(
+        results: (&Vec<HostDiscoverySingleResult>, &HostDiscoveryAllResult),
+        verbosity: u8,
+    ) -> String {
+        let path = std::env::temp_dir()
+            .join(format!("onmap_test_xml_hd_{}.xml", rand::random::<u64>()));
+        save_to_file_xml_host_discovery(path.to_str().unwrap(), results, verbosity)
+            .expect("write must not fail");
+        let content = fs::read_to_string(&path).expect("read must not fail");
+        let _ = fs::remove_file(&path);
+        content
+    }
+
+    fn up_host(ip: IpAddr) -> HostDiscoverySingleResult {
+        HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: None,
+            is_up: true,
+            reply_type: HostDiscoveryReply::IcmpEchoReply,
+            ttl: 64,
+        }
+    }
+
+    #[test]
+    fn xml_attr_escapes_ampersand() {
+        assert_eq!(xml_attr("a&b"), "a&amp;b");
+    }
+
+    #[test]
+    fn xml_attr_escapes_double_quote() {
+        assert_eq!(xml_attr("say \"hi\""), "say &quot;hi&quot;");
+    }
+
+    #[test]
+    fn xml_attr_escapes_less_than() {
+        assert_eq!(xml_attr("a<b"), "a&lt;b");
+    }
+
+    #[test]
+    fn xml_attr_escapes_greater_than() {
+        assert_eq!(xml_attr("a>b"), "a&gt;b");
+    }
+
+    #[test]
+    fn xml_attr_leaves_plain_text_unchanged() {
+        assert_eq!(xml_attr("hello world"), "hello world");
+    }
+
+    #[test]
+    fn addrtype_returns_ipv4_for_v4_address() {
+        assert_eq!(addrtype(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))), "ipv4");
+    }
+
+    #[test]
+    fn addrtype_returns_ipv6_for_v6_address() {
+        assert_eq!(addrtype(IpAddr::V6(Ipv6Addr::LOCALHOST)), "ipv6");
+    }
+
+    /// The output must begin with the XML declaration.
+    #[test]
+    fn output_starts_with_xml_declaration() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let summary = make_summary(vec![ip], 0);
+        let content = write_and_read((&vec![], &summary), 0);
+        assert!(
+            content.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"),
+            "output should start with XML declaration"
+        );
+    }
+
+    /// The root element must be <nmaprun>.
+    #[test]
+    fn output_has_nmaprun_root_element() {
+        let summary = make_summary(vec![], 0);
+        let content = write_and_read((&vec![], &summary), 0);
+        assert!(content.contains("<nmaprun "), "output should contain <nmaprun> root element");
+        assert!(content.contains("</nmaprun>"), "output should close </nmaprun>");
+    }
+
+    /// The crate version must appear in the <nmaprun> opening tag.
+    #[test]
+    fn nmaprun_contains_crate_version() {
+        let summary = make_summary(vec![], 0);
+        let content = write_and_read((&vec![], &summary), 0);
+        assert!(
+            content.contains(env!("CARGO_PKG_VERSION")),
+            "<nmaprun> should carry the crate version"
+        );
+    }
+
+    /// An up host must produce a `<status state="up">` element.
+    #[test]
+    fn up_host_has_status_state_up() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let summary = make_summary(vec![ip], 1);
+        let content = write_and_read((&vec![up_host(ip)], &summary), 0);
+        assert!(
+            content.contains("state=\"up\""),
+            "up host should have state=\"up\""
+        );
+    }
+
+    /// A down host must be omitted at verbosity 0.
+    #[test]
+    fn down_host_omitted_at_verbosity_zero() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
+        let host = HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: None,
+            is_up: false,
+            reply_type: HostDiscoveryReply::NoResponse,
+            ttl: 0,
+        };
+        let summary = make_summary(vec![ip], 0);
+        let content = write_and_read((&vec![host], &summary), 0);
+        assert!(
+            !content.contains("<host>"),
+            "down host should not appear at verbosity 0"
+        );
+    }
+
+    /// The <address> element must carry the correct addrtype attribute.
+    #[test]
+    fn address_element_has_correct_addrtype() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let summary = make_summary(vec![ip], 1);
+        let content = write_and_read((&vec![up_host(ip)], &summary), 0);
+        assert!(
+            content.contains("addrtype=\"ipv4\""),
+            "IPv4 host should have addrtype=\"ipv4\""
+        );
+    }
+
+    /// When no DNS name is available no <hostnames> element must be emitted.
+    #[test]
+    fn no_hostname_element_when_dns_not_resolved() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let summary = make_summary(vec![ip], 1);
+        let content = write_and_read((&vec![up_host(ip)], &summary), 0);
+        assert!(
+            !content.contains("<hostnames>"),
+            "no <hostnames> element should be emitted when DNS is absent"
+        );
+    }
+
+    /// When DNS resolves the hostname must appear inside a <hostnames> element.
+    #[test]
+    fn hostname_element_present_when_dns_resolved() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let host = HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: Some("myhost.local".to_string()),
+            latency: None,
+            is_up: true,
+            reply_type: HostDiscoveryReply::IcmpEchoReply,
+            ttl: 64,
+        };
+        let summary = make_summary(vec![ip], 1);
+        let content = write_and_read((&vec![host], &summary), 0);
+        assert!(
+            content.contains("<hostnames>"),
+            "<hostnames> element should be present when DNS was resolved"
+        );
+        assert!(
+            content.contains("myhost.local"),
+            "hostname should contain the resolved name"
+        );
+    }
+
+    /// The <runstats> block must be present and carry the <hosts> element.
+    #[test]
+    fn runstats_contains_hosts_element() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let summary = make_summary(vec![ip], 1);
+        let content = write_and_read((&vec![up_host(ip)], &summary), 0);
+        assert!(
+            content.contains("<runstats>"),
+            "output should contain <runstats>"
+        );
+        assert!(
+            content.contains("<hosts "),
+            "runstats should contain a <hosts> element"
+        );
+    }
+
+    /// The summary line must use the singular form for exactly one address.
+    #[test]
+    fn summary_line_uses_singular_for_one_address() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let summary = make_summary(vec![ip], 0);
+        let content = write_and_read((&vec![], &summary), 0);
+        assert!(
+            content.contains("1 IP address"),
+            "summary should use singular for 1 address, got: {content}"
+        );
+    }
 
     #[test]
     fn writes_nmaprun_header_and_hides_down_hosts_by_default() {

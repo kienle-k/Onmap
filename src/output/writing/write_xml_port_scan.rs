@@ -228,10 +228,74 @@ pub fn save_to_file_xml_port_scan(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{HostDiscoveryReply, PortStateReasons, PortStates};
+    use crate::models::{HostDiscoveryReply, PortScanOption, PortStateReasons, PortStates};
     use std::fs;
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
     use std::time::SystemTime;
+
+    #[test]
+    fn xml_attr_escapes_ampersand() {
+        assert_eq!(xml_attr("a&b"), "a&amp;b");
+    }
+
+    #[test]
+    fn xml_attr_escapes_double_quote() {
+        assert_eq!(xml_attr("say \"hi\""), "say &quot;hi&quot;");
+    }
+
+    #[test]
+    fn xml_attr_escapes_less_than() {
+        assert_eq!(xml_attr("a<b"), "a&lt;b");
+    }
+
+    #[test]
+    fn xml_attr_escapes_greater_than() {
+        assert_eq!(xml_attr("a>b"), "a&gt;b");
+    }
+
+    #[test]
+    fn xml_attr_leaves_plain_text_unchanged() {
+        assert_eq!(xml_attr("hello world"), "hello world");
+    }
+
+    #[test]
+    fn scan_type_name_syn_scan() {
+        assert_eq!(scan_type_name(Some(PortScanOption::SynScan)), "syn");
+    }
+
+    #[test]
+    fn scan_type_name_connect_scan() {
+        assert_eq!(scan_type_name(Some(PortScanOption::ConnectScan)), "connect");
+    }
+
+    #[test]
+    fn scan_type_name_ack_scan() {
+        assert_eq!(scan_type_name(Some(PortScanOption::AckScan)), "ack");
+    }
+
+    #[test]
+    fn scan_type_name_udp_scan() {
+        assert_eq!(scan_type_name(Some(PortScanOption::UdpScan)), "udp");
+    }
+
+    #[test]
+    fn scan_type_name_none_returns_unknown() {
+        assert_eq!(scan_type_name(None), "unknown");
+    }
+
+    // -------------------------------------------------------------------------
+    // addrtype — pure function, no I/O
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn addrtype_returns_ipv4_for_v4_address() {
+        assert_eq!(addrtype(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))), "ipv4");
+    }
+
+    #[test]
+    fn addrtype_returns_ipv6_for_v6_address() {
+        assert_eq!(addrtype(IpAddr::V6(Ipv6Addr::LOCALHOST)), "ipv6");
+    }
 
     fn port(
         ip: IpAddr,
