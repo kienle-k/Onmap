@@ -202,37 +202,34 @@ pub fn run_tui<B: Backend>(
                         }
                         // The following options select the host discovery method
                         KeyCode::Char('1') => {
-                            app.select_host_discovery(HostDiscoveryOption::ListScan);
+                            app.select_host_discovery(HostDiscoveryOption::TcpConnectDiscovery);
                             app.state = AppState::IpAddressInput;
+                            app.port_needed = true;
                         }
                         KeyCode::Char('2') => {
-                            app.select_host_discovery(HostDiscoveryOption::PingScan);
-                            app.state = AppState::IpAddressInput;
-                        }
-                        KeyCode::Char('3') => {
                             app.select_host_discovery(HostDiscoveryOption::TcpSynDiscovery);
                             app.state = AppState::IpAddressInput;
                             app.port_needed = true;
                         }
-                        KeyCode::Char('4') => {
+                        KeyCode::Char('3') => {
                             app.select_host_discovery(HostDiscoveryOption::TcpAckDiscovery);
                             app.state = AppState::IpAddressInput;
                             app.port_needed = true;
                         }
-                        KeyCode::Char('5') => {
+                        KeyCode::Char('4') => {
                             app.select_host_discovery(HostDiscoveryOption::UdpDiscovery);
                             app.state = AppState::IpAddressInput;
                             app.port_needed = true;
                         }
-                        KeyCode::Char('6') => {
+                        KeyCode::Char('5') => {
                             app.select_host_discovery(HostDiscoveryOption::ArpDiscovery);
                             app.state = AppState::IpAddressInput;
                         }
-                        KeyCode::Char('7') => {
+                        KeyCode::Char('6') => {
                             app.select_host_discovery(HostDiscoveryOption::IcmpEcho);
                             app.state = AppState::IpAddressInput;
                         }
-                        KeyCode::Char('8') => {
+                        KeyCode::Char('7') => {
                             app.select_host_discovery(HostDiscoveryOption::IcmpTimestamp);
                             app.state = AppState::IpAddressInput;
                         }
@@ -277,31 +274,6 @@ pub fn run_tui<B: Backend>(
                             app.port_needed = true;
                         }
                         KeyCode::Char('4') => {
-                            app.select_port_scan(PortScanOption::WindowScan);
-                            app.state = AppState::IpAddressInput;
-                            app.port_needed = true;
-                        }
-                        KeyCode::Char('5') => {
-                            app.select_port_scan(PortScanOption::MaimonScan);
-                            app.state = AppState::IpAddressInput;
-                            app.port_needed = true;
-                        }
-                        KeyCode::Char('6') => {
-                            app.select_port_scan(PortScanOption::NullScan);
-                            app.state = AppState::IpAddressInput;
-                            app.port_needed = true;
-                        }
-                        KeyCode::Char('7') => {
-                            app.select_port_scan(PortScanOption::FinScan);
-                            app.state = AppState::IpAddressInput;
-                            app.port_needed = true;
-                        }
-                        KeyCode::Char('8') => {
-                            app.select_port_scan(PortScanOption::XmasScan);
-                            app.state = AppState::IpAddressInput;
-                            app.port_needed = true;
-                        }
-                        KeyCode::Char('9') => {
                             app.select_port_scan(PortScanOption::UdpScan);
                             app.state = AppState::IpAddressInput;
                             app.port_needed = true;
@@ -574,35 +546,31 @@ pub fn run_tui<B: Backend>(
                     //  Create submenu items
                     let sub_items = vec![
                         ListItem::new(Line::from(Span::styled(
-                            "1. List scan (-sL)",
+                            "1. TCP Connect Discovery (-sT)",
                             Style::default().fg(Color::White),
                         ))),
                         ListItem::new(Line::from(Span::styled(
-                            "2. Ping scan (-sn)",
+                            "2. TCP SYN Discovery (-PS)",
                             Style::default().fg(Color::White),
                         ))),
                         ListItem::new(Line::from(Span::styled(
-                            "3. TCP SYN Discovery (-PS)",
+                            "3. TCP ACK Discovery (-PA)",
                             Style::default().fg(Color::White),
                         ))),
                         ListItem::new(Line::from(Span::styled(
-                            "4. TCP ACK Discovery (-PA)",
+                            "4. UDP Discovery (-PU)",
                             Style::default().fg(Color::White),
                         ))),
                         ListItem::new(Line::from(Span::styled(
-                            "5. UDP Discovery (-PU)",
+                            "5. ARP Discovery (-ARP)",
                             Style::default().fg(Color::White),
                         ))),
                         ListItem::new(Line::from(Span::styled(
-                            "6. ARP Discovery (-ARP)",
+                            "6. ICMP echo (-PE)",
                             Style::default().fg(Color::White),
                         ))),
                         ListItem::new(Line::from(Span::styled(
-                            "7. ICMP echo (-PE)",
-                            Style::default().fg(Color::White),
-                        ))),
-                        ListItem::new(Line::from(Span::styled(
-                            "8. ICMP timestamp (-PP)",
+                            "7. ICMP timestamp (-PP)",
                             Style::default().fg(Color::White),
                         ))),
                     ];
@@ -622,7 +590,7 @@ pub fn run_tui<B: Backend>(
 
                     //  Add text to the instructions block
                     let instructions_text = Text::from(
-                        "Press 1-8 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
+                        "Press 1-7 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
                     );
                     f.render_widget(
                         Paragraph::new(instructions_text).block(instructions),
@@ -657,27 +625,7 @@ pub fn run_tui<B: Backend>(
                             Style::default().fg(Color::White),
                         ))),
                         ListItem::new(Line::from(Span::styled(
-                            "4. Window scan (-sW)",
-                            Style::default().fg(Color::White),
-                        ))),
-                        ListItem::new(Line::from(Span::styled(
-                            "5. Mainmon scan (-sM)",
-                            Style::default().fg(Color::White),
-                        ))),
-                        ListItem::new(Line::from(Span::styled(
-                            "6. Null scan (-sN)",
-                            Style::default().fg(Color::White),
-                        ))),
-                        ListItem::new(Line::from(Span::styled(
-                            "7. FIN scan (-sF)",
-                            Style::default().fg(Color::White),
-                        ))),
-                        ListItem::new(Line::from(Span::styled(
-                            "8. Xmas scan (-sX)",
-                            Style::default().fg(Color::White),
-                        ))),
-                        ListItem::new(Line::from(Span::styled(
-                            "9. UDP scan (-sU)",
+                            "4. UDP scan (-sU)",
                             Style::default().fg(Color::White),
                         ))),
                     ];
@@ -697,7 +645,7 @@ pub fn run_tui<B: Backend>(
 
                     //  Add text to the instructions block
                     let instructions_text = Text::from(
-                        "Press 1-9 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
+                        "Press 1-4 to select a sub-option\nPress 'b' to go back to main menu\nPress 'q' to quit",
                     );
                     f.render_widget(
                         Paragraph::new(instructions_text).block(instructions),
@@ -1053,16 +1001,16 @@ mod tests {
             state: AppState::SubMenuHostDiscovery,
             ..App::new()
         };
-        //  Simulate pressing '2' (Ping Scan)
-        app.select_host_discovery(HostDiscoveryOption::PingScan);
+        //  Simulate pressing '5' (ARP Discovery)
+        app.select_host_discovery(HostDiscoveryOption::ArpDiscovery);
         app.state = AppState::IpAddressInput;
 
         assert_eq!(app.state, AppState::IpAddressInput);
         assert_eq!(
             app.host_discovery_selected,
-            Some(HostDiscoveryOption::PingScan)
+            Some(HostDiscoveryOption::ArpDiscovery)
         );
-        assert!(!app.port_needed, "Ping scan should not require a port");
+        assert!(!app.port_needed, "ARP discovery should not require a port");
     }
 
     // / Tests selecting a host discovery option that DOES require a port.

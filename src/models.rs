@@ -368,6 +368,8 @@ pub enum HostDiscoveryOption {
     ListScan,
     /// A standard ICMP echo request (ping) scan to see if hosts are up.
     PingScan,
+    /// A discovery scan using TCP Connect (full handshake) packets.
+    TcpConnectDiscovery,
     /// A discovery scan using TCP SYN packets.
     TcpSynDiscovery,
     /// A discovery scan using TCP ACK packets.

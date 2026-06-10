@@ -318,7 +318,7 @@ fn build_command_from_tui(
             let plan = DiscoveryPlan {
                 mode: DiscoveryMode::DiscoveryOnly,
                 probes: tui_option_to_probes(method, ports)?,
-                disable_arp_ping: false,
+                disable_arp_ping: true,
             };
             ExecutionCommand::HostDiscovery {
                 plan,
@@ -365,6 +365,13 @@ fn tui_option_to_probes(
         HostDiscoveryOption::ArpDiscovery => Ok(vec![DiscoveryProbe::Arp]),
         HostDiscoveryOption::IcmpEcho => Ok(vec![DiscoveryProbe::IcmpEcho]),
         HostDiscoveryOption::IcmpTimestamp => Ok(vec![DiscoveryProbe::IcmpTimestamp]),
+        HostDiscoveryOption::TcpConnectDiscovery => {
+            let ports = ports.unwrap_or_else(|| vec![80]);
+            Ok(ports
+                .into_iter()
+                .map(|port| DiscoveryProbe::TcpConnect { port })
+                .collect())
+        }
         HostDiscoveryOption::TcpSynDiscovery => {
             let ports = ports.unwrap_or_else(|| vec![80]);
             Ok(ports
