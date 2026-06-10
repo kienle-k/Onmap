@@ -1235,6 +1235,379 @@ mod tests {
         }
     }
 
+    /// All IPv4 targets must be converted correctly.
+    #[test]
+    fn to_ipv4_vec_converts_all_ipv4() {
+        let targets = vec![
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+        ];
+        let result = to_ipv4_vec(&targets).expect("should succeed for all IPv4");
+        assert_eq!(
+            result,
+            vec![Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2)]
+        );
+    }
+
+    /// An empty slice must return an empty vector.
+    #[test]
+    fn to_ipv4_vec_empty_input_returns_empty() {
+        let result = to_ipv4_vec(&[]).expect("should succeed for empty input");
+        assert!(result.is_empty());
+    }
+
+    /// An IPv6 address among the targets must return an Err.
+    #[test]
+    fn to_ipv4_vec_errors_on_ipv6_address() {
+        use std::net::Ipv6Addr;
+        let targets = vec![IpAddr::V6(Ipv6Addr::LOCALHOST)];
+        let err = to_ipv4_vec(&targets).expect_err("IPv6 should return Err");
+        assert!(
+            err.to_lowercase().contains("ipv6"),
+            "error should mention IPv6, got: {err}"
+        );
+    }
+
+    /// SYN scan must require root.
+    #[test]
+    fn requires_root_syn_scan_returns_true() {
+        let cli = parse_cli(&["onmap", "-sS", "-p", "80", "127.0.0.1"]);
+        let cmd = build_command_from_cli(&cli).unwrap().unwrap();
+        assert!(requires_root(&cmd));
+    }
+
+    /// ACK scan must require root.
+    #[test]
+    fn requires_root_ack_scan_returns_true() {
+        let cli = parse_cli(&["onmap", "-sA", "-p", "80", "127.0.0.1"]);
+        let cmd = build_command_from_cli(&cli).unwrap().unwrap();
+        assert!(requires_root(&cmd));
+    }
+
+    /// UDP scan must require root.
+    #[test]
+    fn requires_root_udp_scan_returns_true() {
+        let cli = parse_cli(&["onmap", "-sU", "-p", "80", "127.0.0.1"]);
+        let cmd = build_command_from_cli(&cli).unwrap().unwrap();
+        assert!(requires_root(&cmd));
+    }
+
+    /// TCP connect scan must not require root.
+    #[test]
+    fn requires_root_connect_scan_returns_false() {
+        let cli = parse_cli(&["onmap", "-sT", "-p", "80", "127.0.0.1"]);
+        let cmd = build_command_from_cli(&cli).unwrap().unwrap();
+        assert!(!requires_root(&cmd));
+    }
+
+    /// Host discovery command must never require root.
+    #[test]
+    fn requires_root_host_discovery_returns_false() {
+        let cli = parse_cli(&["onmap", "-sn", "127.0.0.1"]);
+        let cmd = build_command_from_cli(&cli).unwrap().unwrap();
+        assert!(!requires_root(&cmd));
+    }
+
+    /// A candidate with lower latency must win over the current.
+    #[test]
+    fn compare_host_priority_lower_latency_wins() {
+        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let fast = HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: Some(Duration::from_millis(1)),
+            is_up: true,
+            reply_type: HostDiscoveryReply::IcmpEchoReply,
+            ttl: 0,
+        };
+        let slow = HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: Some(Duration::from_millis(100)),
+            is_up: true,
+            reply_type: HostDiscoveryReply::IcmpEchoReply,
+            ttl: 0,
+        };
+        assert!(compare_host_priority(&fast, &slow));
+        assert!(!compare_host_priority(&slow, &fast));
+    }
+
+    /// A candidate with a known latency beats one with no latency.
+    #[test]
+    fn compare_host_priority_some_latency_beats_none() {
+        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let with_latency = HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: Some(Duration::from_millis(50)),
+            is_up: true,
+            reply_type: HostDiscoveryReply::IcmpEchoReply,
+            ttl: 0,
+        };
+        let no_latency = HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: None,
+            is_up: true,
+            reply_type: HostDiscoveryReply::IcmpEchoReply,
+            ttl: 0,
+        };
+        assert!(compare_host_priority(&with_latency, &no_latency));
+        assert!(!compare_host_priority(&no_latency, &with_latency));
+    }
+
+    /// When both have no latency the candidate must not replace the current.
+    #[test]
+    fn compare_host_priority_both_none_returns_false() {
+        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let host = HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: None,
+            is_up: true,
+            reply_type: HostDiscoveryReply::IcmpEchoReply,
+            ttl: 0,
+        };
+        assert!(!compare_host_priority(&host, &host.clone()));
+    }
+
+    /// Providing SYN-discovery ports without -PS must return Err mentioning -PS.
+    #[test]
+    fn validate_discovery_port_flags_syn_ports_without_ps_errors() {
+        let cli = parse_cli(&["onmap", "--PS-ports", "22", "127.0.0.1"]);
+        let err = validate_discovery_port_flags(&cli)
+            .expect_err("PS ports without -PS flag should fail");
+        assert!(err.contains("-PS"), "error should mention -PS, got: {err}");
+    }
+
+    /// Providing ACK-discovery ports without -PA must return Err mentioning -PA.
+    #[test]
+    fn validate_discovery_port_flags_ack_ports_without_pa_errors() {
+        let cli = parse_cli(&["onmap", "--PA-ports", "80", "127.0.0.1"]);
+        let err = validate_discovery_port_flags(&cli)
+            .expect_err("PA ports without -PA flag should fail");
+        assert!(err.contains("-PA"), "error should mention -PA, got: {err}");
+    }
+
+    /// Providing UDP-discovery ports without -PU must return Err mentioning -PU.
+    #[test]
+    fn validate_discovery_port_flags_udp_ports_without_pu_errors() {
+        let cli = parse_cli(&["onmap", "--PU-ports", "53", "127.0.0.1"]);
+        let err = validate_discovery_port_flags(&cli)
+            .expect_err("PU ports without -PU flag should fail");
+        assert!(err.contains("-PU"), "error should mention -PU, got: {err}");
+    }
+
+    /// Valid combination (-PS with --PS-ports) must return Ok.
+    #[test]
+    fn validate_discovery_port_flags_valid_combination_returns_ok() {
+        let cli = parse_cli(&["onmap", "-PS", "--PS-ports", "22", "127.0.0.1"]);
+        assert!(validate_discovery_port_flags(&cli).is_ok());
+    }
+
+    /// No scan flag must return Ok(None).
+    #[test]
+    fn selected_port_scan_method_no_flag_returns_none() {
+        let cli = parse_cli(&["onmap", "127.0.0.1"]);
+        let result = selected_port_scan_method(&cli).expect("should not fail");
+        assert!(result.is_none());
+    }
+
+    /// -sS must return SynScan.
+    #[test]
+    fn selected_port_scan_method_syn_scan() {
+        let cli = parse_cli(&["onmap", "-sS", "-p", "80", "127.0.0.1"]);
+        assert_eq!(
+            selected_port_scan_method(&cli).unwrap(),
+            Some(PortScanOption::SynScan)
+        );
+    }
+
+    /// -sT must return ConnectScan.
+    #[test]
+    fn selected_port_scan_method_connect_scan() {
+        let cli = parse_cli(&["onmap", "-sT", "-p", "80", "127.0.0.1"]);
+        assert_eq!(
+            selected_port_scan_method(&cli).unwrap(),
+            Some(PortScanOption::ConnectScan)
+        );
+    }
+
+    /// Two scan flags simultaneously must return Err.
+    #[test]
+    fn selected_port_scan_method_two_flags_errors() {
+        let cli = parse_cli(&["onmap", "-sS", "-sT", "-p", "80", "127.0.0.1"]);
+        let err = selected_port_scan_method(&cli).expect_err("two scan methods should fail");
+        assert!(
+            err.to_lowercase().contains("one"),
+            "error should mention 'one', got: {err}"
+        );
+    }
+
+    /// An empty input must return an empty result with zeroed summary fields.
+    #[test]
+    fn merge_host_discovery_empty_input_returns_empty() {
+        let merged = merge_host_discovery_results(vec![]);
+        assert!(merged.0.is_empty());
+        assert_eq!(merged.1.hosts_up, 0);
+        assert_eq!(merged.1.packets_sent, 0);
+    }
+
+    /// packets_sent is the sum of all individual batch summaries.
+    #[test]
+    fn merge_host_discovery_packets_sent_is_summed() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let now = SystemTime::now();
+        let make_batch = |packets: u64| {
+            (
+                vec![],
+                HostDiscoveryAllResult {
+                    scanned_addresses: vec![ip],
+                    ports_per_host: 0,
+                    hosts_up: 0,
+                    hosts_dns_resolution: 0,
+                    start_time: now,
+                    end_time: now,
+                    packets_sent: packets,
+                    dns_elapsed_secs: 0.0,
+                },
+            )
+        };
+        let merged = merge_host_discovery_results(vec![make_batch(3), make_batch(7)]);
+        assert_eq!(merged.1.packets_sent, 10);
+    }
+
+    /// start_time must be the minimum across all batches.
+    #[test]
+    fn merge_host_discovery_start_time_is_minimum() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let early = SystemTime::UNIX_EPOCH + Duration::from_secs(100);
+        let late = SystemTime::UNIX_EPOCH + Duration::from_secs(200);
+        let make_batch = |start: SystemTime, end: SystemTime| {
+            (
+                vec![],
+                HostDiscoveryAllResult {
+                    scanned_addresses: vec![ip],
+                    ports_per_host: 0,
+                    hosts_up: 0,
+                    hosts_dns_resolution: 0,
+                    start_time: start,
+                    end_time: end,
+                    packets_sent: 0,
+                    dns_elapsed_secs: 0.0,
+                },
+            )
+        };
+        let merged =
+            merge_host_discovery_results(vec![make_batch(late, late), make_batch(early, early)]);
+        assert_eq!(merged.1.start_time, early);
+    }
+
+    /// end_time must be the maximum across all batches.
+    #[test]
+    fn merge_host_discovery_end_time_is_maximum() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let early = SystemTime::UNIX_EPOCH + Duration::from_secs(100);
+        let late = SystemTime::UNIX_EPOCH + Duration::from_secs(200);
+        let make_batch = |start: SystemTime, end: SystemTime| {
+            (
+                vec![],
+                HostDiscoveryAllResult {
+                    scanned_addresses: vec![ip],
+                    ports_per_host: 0,
+                    hosts_up: 0,
+                    hosts_dns_resolution: 0,
+                    start_time: start,
+                    end_time: end,
+                    packets_sent: 0,
+                    dns_elapsed_secs: 0.0,
+                },
+            )
+        };
+        let merged =
+            merge_host_discovery_results(vec![make_batch(early, early), make_batch(late, late)]);
+        assert_eq!(merged.1.end_time, late);
+    }
+
+    /// A host that is up in one batch and down in another must be reported as up.
+    #[test]
+    fn merge_host_discovery_up_wins_over_down() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let now = SystemTime::now();
+        let make_summary = || HostDiscoveryAllResult {
+            scanned_addresses: vec![ip],
+            ports_per_host: 0,
+            hosts_up: 0,
+            hosts_dns_resolution: 0,
+            start_time: now,
+            end_time: now,
+            packets_sent: 0,
+            dns_elapsed_secs: 0.0,
+        };
+        let merged = merge_host_discovery_results(vec![
+            (
+                vec![HostDiscoverySingleResult {
+                    ip_address: ip,
+                    dns_resolve: None,
+                    latency: None,
+                    is_up: false,
+                    reply_type: HostDiscoveryReply::NoResponse,
+                    ttl: 0,
+                }],
+                make_summary(),
+            ),
+            (
+                vec![HostDiscoverySingleResult {
+                    ip_address: ip,
+                    dns_resolve: None,
+                    latency: Some(Duration::from_millis(10)),
+                    is_up: true,
+                    reply_type: HostDiscoveryReply::IcmpEchoReply,
+                    ttl: 64,
+                }],
+                make_summary(),
+            ),
+        ]);
+        assert_eq!(merged.0.len(), 1);
+        assert!(merged.0[0].is_up, "up result must win over down result");
+        assert_eq!(merged.1.hosts_up, 1);
+    }
+
+    /// hosts_up in the summary must reflect only unique up hosts after merging.
+    #[test]
+    fn merge_host_discovery_hosts_up_counts_unique_hosts() {
+        let ip1 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let ip2 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
+        let now = SystemTime::now();
+        let make_host = |ip: IpAddr, up: bool| HostDiscoverySingleResult {
+            ip_address: ip,
+            dns_resolve: None,
+            latency: None,
+            is_up: up,
+            reply_type: if up {
+                HostDiscoveryReply::IcmpEchoReply
+            } else {
+                HostDiscoveryReply::NoResponse
+            },
+            ttl: 0,
+        };
+        let summary = |ips: Vec<IpAddr>| HostDiscoveryAllResult {
+            scanned_addresses: ips,
+            ports_per_host: 0,
+            hosts_up: 0,
+            hosts_dns_resolution: 0,
+            start_time: now,
+            end_time: now,
+            packets_sent: 0,
+            dns_elapsed_secs: 0.0,
+        };
+        let merged = merge_host_discovery_results(vec![(
+            vec![make_host(ip1, true), make_host(ip2, false)],
+            summary(vec![ip1, ip2]),
+        )]);
+        assert_eq!(merged.1.hosts_up, 1);
+    }
+
     #[test]
     fn merge_host_discovery_results_uses_any_up_and_best_latency() {
         let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
