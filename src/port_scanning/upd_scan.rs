@@ -204,10 +204,6 @@ mod tests {
         (Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST)
     }
 
-    // -------------------------------------------------------------------------
-    // Empty-input tests — no network I/O
-    // -------------------------------------------------------------------------
-
     /// An empty host list must succeed and return no per-port results.
     #[tokio::test]
     async fn empty_hosts_returns_zero_results() {
@@ -253,10 +249,6 @@ mod tests {
             .expect("empty host list must not fail");
         assert!(summary.end_time >= summary.start_time);
     }
-
-    // -------------------------------------------------------------------------
-    // Loopback tests — real UDP sockets, no root required
-    // -------------------------------------------------------------------------
 
     /// A port that echoes UDP datagrams back must be reported as Open.
     #[tokio::test]
