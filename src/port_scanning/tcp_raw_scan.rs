@@ -11,7 +11,13 @@ use std::time::{Duration, Instant, SystemTime};
 
 const MAX_SENDS_PER_TICK: usize = 128;
 const SEND_BACKPRESSURE_WAIT: Duration = Duration::from_millis(1);
-const RAW_SOCKET_RECV_BUFFER_BYTES: libc::c_int = 8 * 1024 * 1024;
+// Receive-buffer sizing. Each in-flight probe yields at most one reply, so the buffer only has to
+// hold `in_flight` replies. We size it from the actual scan load (not a fixed constant) and charge a
+// conservative per-reply kernel cost plus headroom, then keep the in-flight window within whatever the
+// kernel actually grants (see `scan_blocking`) so the buffer can never overflow on a clean network.
+const REPLY_TRUESIZE_BYTES: usize = 2048; // conservative sk_buff truesize for one small TCP reply
+const RCVBUF_SAFETY_FACTOR: usize = 2; // headroom over the pure reply burst (background traffic, jitter)
+const MAX_GLOBAL_IN_FLIGHT: usize = 32_768; // global in-flight cap; bounds host-count growth (== 128 MiB buffer)
 
 #[derive(Clone, Copy)]
 pub(crate) struct ScanConfig {
@@ -115,14 +121,35 @@ fn scan_blocking(
     let mut completed = 0usize;
     let mut packets_sent = 0u32;
     let per_host_limit = config.max_in_flight.max(1);
-    let global_limit = per_host_limit.saturating_mul(hosts.len()).max(1);
+    // Desired concurrency is the scan's own load, capped so a large host count cannot grow the
+    // in-flight window — and the receive buffer derived from it — without bound.
+    let desired_in_flight = per_host_limit
+        .saturating_mul(hosts.len())
+        .min(MAX_GLOBAL_IN_FLIGHT)
+        .min(total_probes)
+        .max(1);
     let mut next_host_index = 0usize;
     let mut next_send_at = Instant::now();
     let mut rng = rand::thread_rng();
 
     let (mut tx, mut rx) = open_channel()?;
     let rx_fd = rx.socket.fd;
-    set_receive_buffer(rx_fd)?;
+    // Size the receive buffer to the worst-case reply burst, then clamp the in-flight window to what
+    // the kernel actually granted: `sk_rcvbuf >= in_flight * truesize * safety` always holds, so a
+    // clean-network reply burst cannot overflow the buffer (a smaller grant just lowers concurrency).
+    let requested_rcvbuf = desired_in_flight.saturating_mul(REPLY_TRUESIZE_BYTES * RCVBUF_SAFETY_FACTOR);
+    let rcvbuf = set_receive_buffer(rx_fd, requested_rcvbuf)?;
+    let global_limit = desired_in_flight
+        .min(rcvbuf / (REPLY_TRUESIZE_BYTES * RCVBUF_SAFETY_FACTOR))
+        .max(1);
+    // Record the sizing so a benchmark can never silently run on a smaller buffer / window than intended.
+    log::info!(
+        "tcp raw scan: recv buffer requested {} B, granted {} B; in-flight window {} (desired {})",
+        requested_rcvbuf,
+        rcvbuf,
+        global_limit,
+        desired_in_flight
+    );
     set_nonblocking(rx_fd)?;
     let mut iter = tcp_packet_iter(&mut rx);
 
@@ -305,24 +332,48 @@ fn open_channel() -> Result<(TransportSender, pnet::transport::TransportReceiver
     })
 }
 
-fn set_receive_buffer(fd: libc::c_int) -> Result<(), String> {
-    let size = RAW_SOCKET_RECV_BUFFER_BYTES;
-    let result = unsafe {
+/// Request a receive-buffer size and return the size the kernel actually granted (in bytes).
+///
+/// Plain `SO_RCVBUF` is silently clamped to `net.core.rmem_max`, so the request alone is not
+/// trustworthy. We prefer `SO_RCVBUFFORCE`, which bypasses that clamp (we already hold
+/// `CAP_NET_ADMIN` for the raw socket), fall back to `SO_RCVBUF` when unprivileged, then read the
+/// applied value back. `getsockopt` reports the full `sk_rcvbuf` — the real budget that incoming
+/// packets' truesizes are charged against — which the caller uses to bound the in-flight window.
+fn set_receive_buffer(fd: libc::c_int, request: usize) -> Result<usize, String> {
+    let size = request as libc::c_int;
+    let apply = |opt: libc::c_int| unsafe {
         libc::setsockopt(
             fd,
             libc::SOL_SOCKET,
-            libc::SO_RCVBUF,
+            opt,
             &size as *const _ as *const libc::c_void,
             std::mem::size_of_val(&size) as libc::socklen_t,
         )
     };
-    if result < 0 {
+    if apply(libc::SO_RCVBUFFORCE) < 0 && apply(libc::SO_RCVBUF) < 0 {
         return Err(format!(
             "Failed to set raw socket receive buffer: {}",
             io::Error::last_os_error()
         ));
     }
-    Ok(())
+
+    let mut applied: libc::c_int = 0;
+    let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+    let got = unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVBUF,
+            &mut applied as *mut _ as *mut libc::c_void,
+            &mut len,
+        )
+    };
+    // Trust the read-back; only if it failed do we fall back to assuming the request took effect.
+    Ok(if got == 0 {
+        applied.max(0) as usize
+    } else {
+        request
+    })
 }
 
 fn set_nonblocking(fd: libc::c_int) -> Result<(), String> {
