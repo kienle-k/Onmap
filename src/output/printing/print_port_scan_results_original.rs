@@ -148,17 +148,14 @@ pub async fn print_port_scan_results_original(
                         port_state_name(g.state),
                         protocol_name(g.proto)
                     );
-                    if show_reason {
-                        let reason = g
-                            .reasons
-                            .iter()
-                            .max_by_key(|(_, ports)| ports.len())
-                            .map(|(r, _)| state_reason_name(*r))
-                            .unwrap_or("");
-                        format!("{} ({})", base, reason)
-                    } else {
-                        base
-                    }
+                    let reason = g
+                        .reasons
+                        .iter()
+                        .max_by_key(|(_, ports)| ports.len())
+                        .map(|(r, _)| state_reason_name(*r))
+                        .unwrap_or("");
+
+                    format!("{} ({})", base, reason)
                 })
                 .collect();
             println!("Not shown: {}", parts.join(", "));

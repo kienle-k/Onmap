@@ -24,12 +24,13 @@ pub struct PortSummary<'a> {
     pub extra: Vec<ExtraPortsGroup>,
 }
 
-/// Returns the collapse threshold for non-open ports at a verbosity level.
+/// Returns the collapse threshold for non-open ports at a verbosity level; values here are nmap-behavior observations
 pub fn collapse_threshold(verbosity: u8) -> usize {
     match verbosity {
         0 => 25,
-        1 => 100,
-        2 => 1000,
+        1 => 50,
+        2 => 76,
+        3 => 103,
         _ => usize::MAX,
     }
 }
