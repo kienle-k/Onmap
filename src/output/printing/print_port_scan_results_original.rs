@@ -1,4 +1,5 @@
-use crate::models::{PortScanAllResult, PortScanSingleResult};
+use crate::models::{HostDiscoverySingleResult, PortScanAllResult, PortScanSingleResult};
+use crate::output::host_result_processing::host_reply_nmap_reason;
 use crate::output::port_result_processing::{
     port_state_name, protocol_name, state_reason_name, state_reason_with_ttl, summarize_ports,
 };
@@ -12,6 +13,7 @@ use std::time::Instant;
 // Hauptfunktion zum Ausführen des Connect-Scans
 pub async fn print_port_scan_results_original(
     results: &(Vec<PortScanSingleResult>, PortScanAllResult),
+    host_discovery_results: &[HostDiscoverySingleResult],
     total_targets: usize,
     verbosity: u8,
     no_dns: bool,
@@ -27,6 +29,12 @@ pub async fn print_port_scan_results_original(
             .or_insert_with(Vec::new)
             .push(result);
     }
+
+    let discovery_by_ip: HashMap<IpAddr, &HostDiscoverySingleResult> = host_discovery_results
+        .iter()
+        .filter(|host| host.is_up)
+        .map(|host| (host.ip_address, host))
+        .collect();
 
     // DNS resolution phase (batch, for verbosity messages).
     // `-n` (no_dns) must suppress all reverse DNS here, mirroring discovery.
@@ -98,9 +106,30 @@ pub async fn print_port_scan_results_original(
             println!("Onmap scan report for {} ({})", hostname, ip_address);
         }
 
-        // verbosity 2: "Host is up, received user-set"
-        if show_reason {
+        // Show host status (with latency if applicable). verbosity 2: "Display reason"
+        if let Some(host) = discovery_by_ip.get(ip_address) {
+            if let Some(latency) = host.latency {
+                if show_reason {
+                    println!(
+                        "Host is up, received {} ({:.7}s latency).",
+                        host_reply_nmap_reason(&host.reply_type),
+                        latency.as_secs_f64()
+                    );
+                } else {
+                    println!("Host is up ({:.7}s latency).", latency.as_secs_f64());
+                }
+            } else if show_reason {
+                println!(
+                    "Host is up, received {}",
+                    host_reply_nmap_reason(&host.reply_type)
+                );
+            } else {
+                println!("Host is up.");
+            }
+        } else if show_reason {
             println!("Host is up, received user-set");
+        } else {
+            println!("Host is up.");
         }
 
         // Shared collapse decision (open never collapsed; non-open collapses

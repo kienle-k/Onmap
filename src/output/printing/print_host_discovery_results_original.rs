@@ -45,7 +45,7 @@ pub fn print_host_discovery_results_original(
                 println!("Onmap scan report for {}", host.ip_address);
             }
 
-            let latency = host.latency.map(|d| d.as_secs_f32() / 10.0).unwrap_or(-1.0);
+            let latency = host.latency.map(|d| d.as_secs_f64()).unwrap_or(-1.0);
 
             if show_reason {
                 let reply = host_reply_nmap_reason(&host.reply_type);

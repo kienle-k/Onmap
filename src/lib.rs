@@ -864,6 +864,7 @@ async fn execute_command(
             if use_original_printing {
                 print_port_scan_results_original(
                     &result,
+                    &host_disc.0,
                     original_targets.len(),
                     verbosity,
                     no_dns,
