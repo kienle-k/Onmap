@@ -9,7 +9,7 @@ use std::io::{self, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant, SystemTime};
 
-const MAX_SENDS_PER_TICK: usize = 128;
+const MAX_SENDS_PER_TICK: usize = 16; //16; //128;
 const SEND_BACKPRESSURE_WAIT: Duration = Duration::from_millis(1);
 // Receive-buffer sizing. Each in-flight probe yields at most one reply, so the buffer only has to
 // hold `in_flight` replies. We size it from the actual scan load (not a fixed constant) and charge a

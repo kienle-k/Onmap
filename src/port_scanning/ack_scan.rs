@@ -11,8 +11,8 @@ use crate::models::{
 };
 
 const DEFAULT_READ_TIMEOUT_MS: u64 = 1000;
-const MAX_ACK_IN_FLIGHT: usize = 200;
-const MIN_SEND_INTERVAL: Duration = Duration::ZERO;
+const MAX_ACK_IN_FLIGHT: usize = 100;
+const MIN_SEND_INTERVAL: Duration = Duration::from_micros(2); //Duration::ZERO;
 const MAX_ACK_ATTEMPTS: u8 = 1;
 
 fn ack_result_from_probe(probe: TcpProbeResult) -> PortScanSingleResult {

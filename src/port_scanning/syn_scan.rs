@@ -11,7 +11,7 @@ use crate::models::{
 
 const DEFAULT_READ_TIMEOUT_MS: u64 = 1000;
 const MAX_SYN_IN_FLIGHT: usize = 100;
-const MIN_SEND_INTERVAL: Duration = Duration::ZERO;
+const MIN_SEND_INTERVAL: Duration = Duration::from_micros(2); //Duration::ZERO;
 const MAX_SYN_ATTEMPTS: u8 = 1;
 
 fn syn_result_from_probe(probe: TcpProbeResult) -> PortScanSingleResult {
