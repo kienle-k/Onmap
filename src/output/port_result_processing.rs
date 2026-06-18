@@ -332,7 +332,10 @@ mod tests {
 
     #[test]
     fn port_state_name_closed_or_filtered() {
-        assert_eq!(port_state_name(PortStates::ClosedOrFiltered), "closed|filtered");
+        assert_eq!(
+            port_state_name(PortStates::ClosedOrFiltered),
+            "closed|filtered"
+        );
     }
 
     #[test]
@@ -352,22 +355,34 @@ mod tests {
 
     #[test]
     fn state_reason_name_conn_refused() {
-        assert_eq!(state_reason_name(PortStateReasons::ConnRefused), "conn-refused");
+        assert_eq!(
+            state_reason_name(PortStateReasons::ConnRefused),
+            "conn-refused"
+        );
     }
 
     #[test]
     fn state_reason_name_icmp_port_unreachable() {
-        assert_eq!(state_reason_name(PortStateReasons::IcmpPortUnreachable), "port-unreach");
+        assert_eq!(
+            state_reason_name(PortStateReasons::IcmpPortUnreachable),
+            "port-unreach"
+        );
     }
 
     #[test]
     fn state_reason_with_ttl_appends_ttl_for_syn_ack() {
-        assert_eq!(state_reason_with_ttl(PortStateReasons::SynAck, 64), "syn-ack ttl 64");
+        assert_eq!(
+            state_reason_with_ttl(PortStateReasons::SynAck, 64),
+            "syn-ack ttl 64"
+        );
     }
 
     #[test]
     fn state_reason_with_ttl_omits_ttl_for_timeout() {
-        assert_eq!(state_reason_with_ttl(PortStateReasons::Timeout, 64), "no-response");
+        assert_eq!(
+            state_reason_with_ttl(PortStateReasons::Timeout, 64),
+            "no-response"
+        );
     }
 
     #[test]
@@ -400,7 +415,10 @@ mod tests {
 
     #[test]
     fn extraport_reason_name_timeout_is_plural() {
-        assert_eq!(extraport_reason_name(PortStateReasons::Timeout), "no-responses");
+        assert_eq!(
+            extraport_reason_name(PortStateReasons::Timeout),
+            "no-responses"
+        );
     }
 
     #[test]
@@ -414,8 +432,9 @@ mod tests {
     /// Open ports are always individually shown, never collapsed.
     #[test]
     fn summarize_ports_open_ports_always_shown() {
-        let results: Vec<PortScanSingleResult> =
-            (0u16..50).map(|i| make_result(i, PortStates::Open, PortStateReasons::SynAck)).collect();
+        let results: Vec<PortScanSingleResult> = (0u16..50)
+            .map(|i| make_result(i, PortStates::Open, PortStateReasons::SynAck))
+            .collect();
         let refs: Vec<&PortScanSingleResult> = results.iter().collect();
         let summary = summarize_ports(&refs, 0);
         assert_eq!(summary.shown.len(), 50);
@@ -425,8 +444,9 @@ mod tests {
     /// Non-open ports below the threshold are shown individually.
     #[test]
     fn summarize_ports_few_closed_ports_are_shown() {
-        let results: Vec<PortScanSingleResult> =
-            (0u16..10).map(|i| make_result(i, PortStates::Closed, PortStateReasons::Reset)).collect();
+        let results: Vec<PortScanSingleResult> = (0u16..10)
+            .map(|i| make_result(i, PortStates::Closed, PortStateReasons::Reset))
+            .collect();
         let refs: Vec<&PortScanSingleResult> = results.iter().collect();
         let summary = summarize_ports(&refs, 0);
         // 10 < threshold(25), so all are shown individually
@@ -437,8 +457,9 @@ mod tests {
     /// Non-open ports exceeding the threshold are collapsed into an extra group.
     #[test]
     fn summarize_ports_many_closed_ports_are_collapsed() {
-        let results: Vec<PortScanSingleResult> =
-            (0u16..30).map(|i| make_result(i, PortStates::Closed, PortStateReasons::Reset)).collect();
+        let results: Vec<PortScanSingleResult> = (0u16..30)
+            .map(|i| make_result(i, PortStates::Closed, PortStateReasons::Reset))
+            .collect();
         let refs: Vec<&PortScanSingleResult> = results.iter().collect();
         let summary = summarize_ports(&refs, 0);
         // 30 > threshold(25), so they collapse
@@ -450,8 +471,9 @@ mod tests {
     /// Collapsed group state must match the collapsed port state.
     #[test]
     fn summarize_ports_extra_group_has_correct_state() {
-        let results: Vec<PortScanSingleResult> =
-            (0u16..30).map(|i| make_result(i, PortStates::Filtered, PortStateReasons::Timeout)).collect();
+        let results: Vec<PortScanSingleResult> = (0u16..30)
+            .map(|i| make_result(i, PortStates::Filtered, PortStateReasons::Timeout))
+            .collect();
         let refs: Vec<&PortScanSingleResult> = results.iter().collect();
         let summary = summarize_ports(&refs, 0);
         assert_eq!(summary.extra[0].state, PortStates::Filtered);
@@ -473,8 +495,9 @@ mod tests {
     #[test]
     fn summarize_ports_higher_verbosity_raises_threshold() {
         // 30 closed: collapsed at verbosity 0, shown at verbosity 1 (threshold=100)
-        let results: Vec<PortScanSingleResult> =
-            (0u16..30).map(|i| make_result(i, PortStates::Closed, PortStateReasons::Reset)).collect();
+        let results: Vec<PortScanSingleResult> = (0u16..30)
+            .map(|i| make_result(i, PortStates::Closed, PortStateReasons::Reset))
+            .collect();
         let refs: Vec<&PortScanSingleResult> = results.iter().collect();
         let summary = summarize_ports(&refs, 1);
         assert_eq!(summary.shown.len(), 30);

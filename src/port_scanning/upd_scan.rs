@@ -175,8 +175,7 @@ mod tests {
     // datagram back.  Returns the bound port.  The echo loop runs indefinitely
     // so multiple probes (ATTEMPTS = 2) are all answered.
     fn spawn_udp_echo_server() -> u16 {
-        let socket =
-            UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
+        let socket = UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
         std::thread::spawn(move || {
             let mut buf = [0u8; 512];
@@ -192,8 +191,7 @@ mod tests {
     // Binds to get an OS-assigned port, then drops the socket.  Any connect
     // to the returned port receives ICMP port unreachable (ECONNREFUSED).
     fn closed_udp_port() -> u16 {
-        let socket =
-            UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
+        let socket = UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
         let port = socket.local_addr().unwrap().port();
         drop(socket);
         port

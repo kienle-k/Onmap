@@ -9,7 +9,14 @@ use std::io::{self, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant, SystemTime};
 
-const MAX_SENDS_PER_TICK: usize = 16; //16; //128;
+// Bound the producer-side burst before the receiver is drained again. This is not
+// a throughput target; it limits contiguous raw-packet trains in the SYN/ACK engine.
+const MAX_SENDS_PER_TICK: usize = 16;
+
+// Small pause after a full send burst. This avoids continuous 16-packet trains while
+// adding only ports/16 * 25us theoretical overhead.
+const INTER_BURST_GAP: Duration = Duration::from_micros(25);
+
 const SEND_BACKPRESSURE_WAIT: Duration = Duration::from_millis(1);
 // Receive-buffer sizing. Each in-flight probe yields at most one reply, so the buffer only has to
 // hold `in_flight` replies. We size it from the actual scan load (not a fixed constant) and charge a
@@ -137,7 +144,8 @@ fn scan_blocking(
     // Size the receive buffer to the worst-case reply burst, then clamp the in-flight window to what
     // the kernel actually granted: `sk_rcvbuf >= in_flight * truesize * safety` always holds, so a
     // clean-network reply burst cannot overflow the buffer (a smaller grant just lowers concurrency).
-    let requested_rcvbuf = desired_in_flight.saturating_mul(REPLY_TRUESIZE_BYTES * RCVBUF_SAFETY_FACTOR);
+    let requested_rcvbuf =
+        desired_in_flight.saturating_mul(REPLY_TRUESIZE_BYTES * RCVBUF_SAFETY_FACTOR);
     let rcvbuf = set_receive_buffer(rx_fd, requested_rcvbuf)?;
     let global_limit = desired_in_flight
         .min(rcvbuf / (REPLY_TRUESIZE_BYTES * RCVBUF_SAFETY_FACTOR))
@@ -210,6 +218,17 @@ fn scan_blocking(
             &mut completed,
             config.max_attempts,
         );
+
+        // If the sender reached the per-tick burst cap, delay the next send window slightly.
+        // This is intentionally burst-level pacing, not per-probe sleeping. It reduces pressure
+        // on the target/bridge/receive path without making large port ranges scale linearly with
+        // a large per-probe interval.
+        if sends_this_tick >= MAX_SENDS_PER_TICK && !INTER_BURST_GAP.is_zero() {
+            let resume_at = Instant::now() + INTER_BURST_GAP;
+            if next_send_at < resume_at {
+                next_send_at = resume_at;
+            }
+        }
 
         if in_flight.is_empty() && hosts_done(&hosts, ports.len()) {
             break;
@@ -401,13 +420,17 @@ fn wait_for_readable(fd: libc::c_int, timeout: Duration) -> Result<bool, String>
         events: libc::POLLIN,
         revents: 0,
     };
-    let result = unsafe { libc::poll(&mut poll_fd, 1, timeout_ms) };
-    if result < 0 {
-        return Err(format!(
-            "Failed to poll raw socket: {}",
-            io::Error::last_os_error()
-        ));
-    }
+    let result = loop {
+        let result = unsafe { libc::poll(&mut poll_fd, 1, timeout_ms) };
+        if result >= 0 {
+            break result;
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() == ErrorKind::Interrupted {
+            continue;
+        }
+        return Err(format!("Failed to poll raw socket: {err}"));
+    };
     Ok(result > 0 && (poll_fd.revents & libc::POLLIN) != 0)
 }
 

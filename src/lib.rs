@@ -1383,8 +1383,8 @@ mod tests {
     #[test]
     fn validate_discovery_port_flags_syn_ports_without_ps_errors() {
         let cli = parse_cli(&["onmap", "--PS-ports", "22", "127.0.0.1"]);
-        let err = validate_discovery_port_flags(&cli)
-            .expect_err("PS ports without -PS flag should fail");
+        let err =
+            validate_discovery_port_flags(&cli).expect_err("PS ports without -PS flag should fail");
         assert!(err.contains("-PS"), "error should mention -PS, got: {err}");
     }
 
@@ -1392,8 +1392,8 @@ mod tests {
     #[test]
     fn validate_discovery_port_flags_ack_ports_without_pa_errors() {
         let cli = parse_cli(&["onmap", "--PA-ports", "80", "127.0.0.1"]);
-        let err = validate_discovery_port_flags(&cli)
-            .expect_err("PA ports without -PA flag should fail");
+        let err =
+            validate_discovery_port_flags(&cli).expect_err("PA ports without -PA flag should fail");
         assert!(err.contains("-PA"), "error should mention -PA, got: {err}");
     }
 
@@ -1401,8 +1401,8 @@ mod tests {
     #[test]
     fn validate_discovery_port_flags_udp_ports_without_pu_errors() {
         let cli = parse_cli(&["onmap", "--PU-ports", "53", "127.0.0.1"]);
-        let err = validate_discovery_port_flags(&cli)
-            .expect_err("PU ports without -PU flag should fail");
+        let err =
+            validate_discovery_port_flags(&cli).expect_err("PU ports without -PU flag should fail");
         assert!(err.contains("-PU"), "error should mention -PU, got: {err}");
     }
 

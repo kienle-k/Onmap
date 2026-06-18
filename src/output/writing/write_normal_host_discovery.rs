@@ -86,11 +86,12 @@ mod tests {
     fn write_and_read(
         results: (&Vec<HostDiscoverySingleResult>, &HostDiscoveryAllResult),
     ) -> String {
-        let path = std::env::temp_dir()
-            .join(format!("onmap_test_normal_hd_{}.nmap", rand::random::<u64>()));
+        let path = std::env::temp_dir().join(format!(
+            "onmap_test_normal_hd_{}.nmap",
+            rand::random::<u64>()
+        ));
         let path_str = path.to_str().unwrap();
-        save_to_file_normal_host_discovery(path_str, results)
-            .expect("write must not fail");
+        save_to_file_normal_host_discovery(path_str, results).expect("write must not fail");
         let content = std::fs::read_to_string(&path).expect("read must not fail");
         let _ = std::fs::remove_file(&path);
         content

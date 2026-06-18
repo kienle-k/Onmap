@@ -124,7 +124,9 @@ pub fn save_to_file_normal_port_scan(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols};
+    use crate::models::{
+        PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+    };
     use std::net::{IpAddr, Ipv4Addr};
     use std::time::SystemTime;
 
@@ -140,11 +142,7 @@ mod tests {
         }
     }
 
-    fn make_port_result(
-        ip: IpAddr,
-        port: u16,
-        state: PortStates,
-    ) -> PortScanSingleResult {
+    fn make_port_result(ip: IpAddr, port: u16, state: PortStates) -> PortScanSingleResult {
         PortScanSingleResult {
             ip_address: ip,
             port,
@@ -155,14 +153,13 @@ mod tests {
         }
     }
 
-    fn write_and_read(
-        results: (&Vec<PortScanSingleResult>, &PortScanAllResult),
-    ) -> String {
-        let path = std::env::temp_dir()
-            .join(format!("onmap_test_normal_ps_{}.nmap", rand::random::<u64>()));
+    fn write_and_read(results: (&Vec<PortScanSingleResult>, &PortScanAllResult)) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "onmap_test_normal_ps_{}.nmap",
+            rand::random::<u64>()
+        ));
         let path_str = path.to_str().unwrap();
-        save_to_file_normal_port_scan(path_str, results)
-            .expect("write must not fail");
+        save_to_file_normal_port_scan(path_str, results).expect("write must not fail");
         let content = std::fs::read_to_string(&path).expect("read must not fail");
         let _ = std::fs::remove_file(&path);
         content
@@ -268,7 +265,11 @@ mod tests {
     fn footer_starts_with_onmap_done() {
         let summary = make_summary();
         let content = write_and_read((&vec![], &summary));
-        let last = content.lines().filter(|l| !l.is_empty()).last().unwrap_or("");
+        let last = content
+            .lines()
+            .filter(|l| !l.is_empty())
+            .last()
+            .unwrap_or("");
         assert!(
             last.starts_with("# Onmap done at"),
             "footer should start with '# Onmap done at', got: {last}"

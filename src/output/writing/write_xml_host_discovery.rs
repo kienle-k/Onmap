@@ -149,8 +149,8 @@ mod tests {
         results: (&Vec<HostDiscoverySingleResult>, &HostDiscoveryAllResult),
         verbosity: u8,
     ) -> String {
-        let path = std::env::temp_dir()
-            .join(format!("onmap_test_xml_hd_{}.xml", rand::random::<u64>()));
+        let path =
+            std::env::temp_dir().join(format!("onmap_test_xml_hd_{}.xml", rand::random::<u64>()));
         save_to_file_xml_host_discovery(path.to_str().unwrap(), results, verbosity)
             .expect("write must not fail");
         let content = fs::read_to_string(&path).expect("read must not fail");
@@ -221,8 +221,14 @@ mod tests {
     fn output_has_nmaprun_root_element() {
         let summary = make_summary(vec![], 0);
         let content = write_and_read((&vec![], &summary), 0);
-        assert!(content.contains("<nmaprun "), "output should contain <nmaprun> root element");
-        assert!(content.contains("</nmaprun>"), "output should close </nmaprun>");
+        assert!(
+            content.contains("<nmaprun "),
+            "output should contain <nmaprun> root element"
+        );
+        assert!(
+            content.contains("</nmaprun>"),
+            "output should close </nmaprun>"
+        );
     }
 
     /// The crate version must appear in the <nmaprun> opening tag.

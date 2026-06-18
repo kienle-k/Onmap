@@ -99,7 +99,9 @@ pub fn save_to_file_grepable_port_scan(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols};
+    use crate::models::{
+        PortScanAllResult, PortScanSingleResult, PortStateReasons, PortStates, Protocols,
+    };
     use std::net::{IpAddr, Ipv4Addr};
     use std::time::SystemTime;
 
@@ -132,14 +134,13 @@ mod tests {
     }
 
     // Writes to a temp file and returns its contents as a String.
-    fn write_and_read(
-        results: (&Vec<PortScanSingleResult>, &PortScanAllResult),
-    ) -> String {
-        let path = std::env::temp_dir()
-            .join(format!("onmap_test_grepable_ps_{}.gnmap", rand::random::<u64>()));
+    fn write_and_read(results: (&Vec<PortScanSingleResult>, &PortScanAllResult)) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "onmap_test_grepable_ps_{}.gnmap",
+            rand::random::<u64>()
+        ));
         let path_str = path.to_str().unwrap();
-        save_to_file_grepable_port_scan(path_str, results)
-            .expect("write must not fail");
+        save_to_file_grepable_port_scan(path_str, results).expect("write must not fail");
         let content = std::fs::read_to_string(&path).expect("read must not fail");
         let _ = std::fs::remove_file(&path);
         content
@@ -165,7 +166,12 @@ mod tests {
     #[test]
     fn scanned_host_gets_status_up_line() {
         let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-        let results = vec![make_port_result(ip, 80, PortStates::Open, PortStateReasons::SynAck)];
+        let results = vec![make_port_result(
+            ip,
+            80,
+            PortStates::Open,
+            PortStateReasons::SynAck,
+        )];
         let summary = make_summary();
         let content = write_and_read((&results, &summary));
         assert!(
@@ -178,7 +184,12 @@ mod tests {
     #[test]
     fn status_line_contains_ip_address() {
         let ip = IpAddr::V4(Ipv4Addr::new(172, 16, 0, 5));
-        let results = vec![make_port_result(ip, 22, PortStates::Open, PortStateReasons::SynAck)];
+        let results = vec![make_port_result(
+            ip,
+            22,
+            PortStates::Open,
+            PortStateReasons::SynAck,
+        )];
         let summary = make_summary();
         let content = write_and_read((&results, &summary));
         assert!(
@@ -191,7 +202,12 @@ mod tests {
     #[test]
     fn ports_line_contains_port_number() {
         let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-        let results = vec![make_port_result(ip, 443, PortStates::Open, PortStateReasons::SynAck)];
+        let results = vec![make_port_result(
+            ip,
+            443,
+            PortStates::Open,
+            PortStateReasons::SynAck,
+        )];
         let summary = make_summary();
         let content = write_and_read((&results, &summary));
         assert!(
@@ -204,7 +220,12 @@ mod tests {
     #[test]
     fn ports_line_contains_protocol() {
         let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-        let results = vec![make_port_result(ip, 80, PortStates::Open, PortStateReasons::SynAck)];
+        let results = vec![make_port_result(
+            ip,
+            80,
+            PortStates::Open,
+            PortStateReasons::SynAck,
+        )];
         let summary = make_summary();
         let content = write_and_read((&results, &summary));
         assert!(
@@ -217,7 +238,12 @@ mod tests {
     #[test]
     fn ports_line_has_ports_label() {
         let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-        let results = vec![make_port_result(ip, 80, PortStates::Open, PortStateReasons::SynAck)];
+        let results = vec![make_port_result(
+            ip,
+            80,
+            PortStates::Open,
+            PortStateReasons::SynAck,
+        )];
         let summary = make_summary();
         let content = write_and_read((&results, &summary));
         assert!(
@@ -242,7 +268,12 @@ mod tests {
     #[test]
     fn footer_uses_singular_for_one_host() {
         let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-        let results = vec![make_port_result(ip, 80, PortStates::Open, PortStateReasons::SynAck)];
+        let results = vec![make_port_result(
+            ip,
+            80,
+            PortStates::Open,
+            PortStateReasons::SynAck,
+        )];
         let summary = make_summary();
         let content = write_and_read((&results, &summary));
         assert!(
